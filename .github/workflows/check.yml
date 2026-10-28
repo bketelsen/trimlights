@@ -1,0 +1,65 @@
+name: Check
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.25.0'
+      - run: make check
+  image:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.25.0'
+      - name: Compile static binaries
+        env:
+          BUILD_COMMIT: ${{ github.sha }}
+        run: |
+          GOOS=linux GOARCH=amd64 make build VERSION=main COMMIT="$BUILD_COMMIT" BUILT_BY=github-actions
+          GOOS=linux GOARCH=arm64 make build VERSION=main COMMIT="$BUILD_COMMIT" BUILT_BY=github-actions
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Containerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/bketelsen/trimlights:main
+            ghcr.io/bketelsen/trimlights:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/bketelsen/trimlights
+            org.opencontainers.image.revision=${{ github.sha }}

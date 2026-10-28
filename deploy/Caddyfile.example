@@ -1,0 +1,4 @@
+# Supply these variables to Caddy's service, or replace them with local values.
+{$TRIMLIGHT_DOMAIN} {
+    reverse_proxy {$TRIMLIGHT_UPSTREAM}
+}

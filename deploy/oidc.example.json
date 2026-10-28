@@ -1,0 +1,7 @@
+{
+  "origin": "https://trimlights.example.com",
+  "issuer": "https://id.example.com",
+  "client_id": "",
+  "client_secret_file": "pocket-id.secret",
+  "allowed_subjects": []
+}

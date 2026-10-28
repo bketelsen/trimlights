@@ -1,0 +1,26 @@
+# TrueNAS Custom App > Install via YAML. Supply deployment values from .env or
+# substitute them in the TrueNAS editor. See deploy/env.example for variables.
+# Run one instance; keep the live SQLite database on a local dataset.
+services:
+  trimlights:
+    image: ghcr.io/bketelsen/trimlights:${TRIMLIGHT_IMAGE_TAG:-main}
+    user: "65532:65532"
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      TRIMLIGHT_CONTROLLER_HOST: ${TRIMLIGHT_CONTROLLER_HOST:-}
+    ports:
+      - "${TRIMLIGHT_BIND_ADDRESS:-127.0.0.1}:${TRIMLIGHT_PORT:-8787}:8787"
+    volumes:
+      - ${TRIMLIGHT_DATA_PATH:?Set TRIMLIGHT_DATA_PATH}:/data
+      - ${TRIMLIGHT_CONFIG_PATH:?Set TRIMLIGHT_CONFIG_PATH}:/config:ro
+    command:
+      - serve
+      - --listen=0.0.0.0:8787
+      - --data-dir=/data
+      - --oidc-config=/config/oidc.json
+      - --timezone=${TRIMLIGHT_TIMEZONE:-UTC}
+      - --daily-schedules-offset=${TRIMLIGHT_SCHEDULE_OFFSET:--1}
+    stop_grace_period: 30s

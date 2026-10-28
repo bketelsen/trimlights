@@ -1,0 +1,9 @@
+*
+!build/
+build/*
+!build/amd64/
+!build/arm64/
+build/amd64/*
+build/arm64/*
+!build/amd64/trimlight
+!build/arm64/trimlight

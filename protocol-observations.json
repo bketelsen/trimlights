@@ -1,0 +1,85 @@
+{
+  "scope": "Protocol observations from one privately captured controller. Public fixtures are entirely synthetic; original hardware evidence is not distributed.",
+  "transport": {
+    "type": "TCP",
+    "port": 8586
+  },
+  "live_test": "Python client changed only disabled Schedule 2 off-minute from 03 to 04, read it back, restored 03, and verified all 3485 non-clock snapshot bytes match baseline. A fresh connection independently confirmed restoration.",
+  "encoded_frame": {
+    "magic": "SPTECH",
+    "command_offset": 6,
+    "payload_length_offset": 8,
+    "payload_length_encoding": "2-byte big-endian",
+    "md5_offset": 10,
+    "xor_byte_offset": 26,
+    "encoded_payload_offset": 27,
+    "validation": "Every captured encoded frame passed MD5 verification after XOR decoding. Plain acknowledgments use a different layout."
+  },
+  "daily_schedule_records": {
+    "offset_in_decoded_snapshot": 3306,
+    "record_size": 7,
+    "field_order": [
+      "enabled",
+      "pattern_id",
+      "repetition",
+      "start_hour",
+      "start_minute",
+      "off_hour",
+      "off_minute"
+    ],
+    "repetition_observed": {
+      "0": "today only",
+      "1": "every day"
+    },
+    "evidence": "Layout was checked against privately reviewed settings. No household schedule is included in the public fixtures.",
+    "limitations": "Offset 3306 works in both captured snapshots and the live snapshot. Other recurrence encodings and variable-length data before these records remain unresolved."
+  },
+  "daily_schedule_save": {
+    "outer_command": 4,
+    "inner_opcode": 19,
+    "inner_opcode_hex": "13",
+    "inner_length": 10,
+    "observed_field_order": [
+      "slot_index",
+      "enabled",
+      "pattern_id",
+      "repetition",
+      "start_hour",
+      "start_minute",
+      "off_hour",
+      "off_minute",
+      "month",
+      "day"
+    ],
+    "slot_mapping": "1 corresponds to Daily Schedule 2; slot 0 for Daily Schedule 1 remains inferred",
+    "date_fields": "Trailing 0a 1c matches October 28. Likely related to today-only recurrence; behavior for other recurrence modes unverified.",
+    "change_payload_hex": "13000a01000100000200040a1c",
+    "restore_payload_hex": "13000a01000100000200030a1c",
+    "differing_payload_offsets": [
+      10
+    ],
+    "acknowledgment": "No distinct schedule-save application acknowledgment was observed. Command 0x0b responses followed earlier 0x0b requests; TCP ACKs alone do not prove persistence.",
+    "verification": "Python client changed only disabled Schedule 2 off-minute from 03 to 04, read it back, restored 03, and verified all 3485 non-clock snapshot bytes match baseline. A fresh connection independently confirmed restoration.",
+    "limits": "Only disabled Schedule 2, today-only recurrence, and off-minute 03/04 have been independently write-tested. General dates, enabled schedules, other recurrence settings and calendar writes remain unverified."
+  },
+  "next_step": "Build a serialized, paced local client with read-back verification. Generalize snapshot layout and recurrence/date decoding before exposing arbitrary schedule edits.",
+  "edit_session": {
+    "request_outer_command": 11,
+    "request_payload_hex": "01",
+    "observed_response_hex": "5350544543480b00000100",
+    "semantics": "Short session exchange seen before app edits; exact ownership/keepalive semantics unknown."
+  },
+  "successful_write_sequence": [
+    "Connect to TCP 8586 and exchange opening handshake.",
+    "Fetch full snapshot with current local time; validate checksum and expected baseline.",
+    "Send encoded 0x0b/01 and require observed 0x0b/00 response.",
+    "Wait one second.",
+    "Send encoded 0x04 frame containing schedule-save opcode 0x13.",
+    "Wait one second.",
+    "Fetch full snapshot on the same TCP connection and compare intended state.",
+    "Restore baseline using same save format, wait one second, and read back.",
+    "Disconnect; independent connection verifies persisted restored state."
+  ],
+  "timing_findings": "Earlier faster sequences timed out; a persistent connection with one-second pauses succeeded. Minimum timing and necessity of each session step are not isolated. Phone app was closed during successful test. Timeouts alone must not be interpreted as a successful or failed write.",
+  "test_evidence": "experiments/schedule-write-004/result.json"
+}
