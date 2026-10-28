@@ -129,7 +129,9 @@ and [schedule acceptance](../specs/v1-acceptance.md#rules).
 ## Phase 5 — House photos, roofline mapping and previews (L)
 
 Implements [photo/layout design](../design/application.md#pattern-library-and-photo-mapping)
-and [photo acceptance](../specs/v1-acceptance.md#rules).
+and [photo acceptance](../specs/v1-acceptance.md#rules), following
+[ADR-0008](../adr/0008-private-photos-and-physical-mapping.md) and the
+[house contract](../specs/house.md).
 
 - Validate actual output counts, pixel order, direction, gaps and mirrored runs.
   Separate logical hardware addresses from photo coordinates. Any identify/calibrate
@@ -323,3 +325,30 @@ passkey sign-in and both phones still require user testing. The deployed build
 supports shared pattern editing and calendar planning, not physical control or
 schedule execution. Hostnames, addresses, credentials and deployment evidence
 remain in private configuration. Deployment is an early checkpoint, not v1 release.
+
+
+### House workspace checkpoint — 2026-10-28
+
+Following [ADR-0008](../adr/0008-private-photos-and-physical-mapping.md), the
+[house contract](../specs/house.md) now has an implementation:
+
+- Bounded JPEG/PNG/WebP ingestion, eight EXIF orientations, JPEG normalization,
+  metadata removal, thumbnails and authenticated media delivery. HEIC receives
+  format-specific conversion advice; the picker requests supported formats.
+- SQLite schema 5 stores photo blobs and immutable layout revisions with foreign
+  keys. Upgrades back up schema 4 and retain sessions, patterns and calendars.
+- Physical address ranges and mirrored outputs are separate from normalized photo
+  views. Aspect-correct interpolation, direction and individual bulb adjustments
+  are covered by shared Go/TypeScript geometry vectors.
+- The House editor supports touch drawing, corner/bulb dragging, numeric corner
+  coordinates, zoom/pan, rotation, undo/redo, conflict preservation and history.
+- Library preview uses the current draft; Calendar preview resolves its exact
+  pinned pattern revision. Neither contacts the controller. All maps are uncalibrated.
+- Browser fixture verification covered upload, drawing/saving/reopening, pattern
+  overlay, rotation/undo, zoom and a two-tab stale save retaining the first draft.
+  A 375-pixel viewport had no horizontal overflow. Fixtures use synthetic images.
+
+The owner confirmed real Pocket ID desktop sign-in. Actual iPhone uploads, phone
+passkeys, the second household identity, physical calibration and real-light
+comparison remain open. Photo deletion and layout-file import are not implemented.
+This checkpoint does not enable controller writes or server-owned scheduling.

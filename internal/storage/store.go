@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/sys/unix"
 	_ "modernc.org/sqlite"
+	"trimlights/internal/house"
 	"trimlights/internal/schedule"
 	"trimlights/internal/trimlight"
 )
@@ -65,10 +66,10 @@ func (s *Store) init() error {
 	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 4 {
+	if version > 5 {
 		return fmt.Errorf("database schema %d is newer than this binary supports", version)
 	}
-	if version == 4 {
+	if version == 5 {
 		return nil
 	}
 	if version > 0 {
@@ -110,15 +111,35 @@ func (s *Store) init() error {
 			return err
 		}
 	}
-	_, err = tx.Exec(`CREATE TABLE schedule_revisions(revision INTEGER PRIMARY KEY,body BLOB NOT NULL,actor TEXT NOT NULL,created TEXT NOT NULL);
+	if version < 4 {
+		_, err = tx.Exec(`CREATE TABLE schedule_revisions(revision INTEGER PRIMARY KEY,body BLOB NOT NULL,actor TEXT NOT NULL,created TEXT NOT NULL);
  CREATE TABLE schedule_references(schedule_revision INTEGER NOT NULL REFERENCES schedule_revisions(revision),rule_id TEXT NOT NULL,name TEXT NOT NULL,enabled INTEGER NOT NULL,pattern_id TEXT NOT NULL,pattern_revision INTEGER NOT NULL,PRIMARY KEY(schedule_revision,rule_id),FOREIGN KEY(pattern_id,pattern_revision) REFERENCES pattern_revisions(id,revision));
  CREATE INDEX schedule_pattern_refs ON schedule_references(pattern_id,schedule_revision);
  PRAGMA user_version=4;`)
-	if err != nil {
-		return err
+		if err != nil {
+			return err
+		}
+		if err = insertSchedule(context.Background(), tx, SavedSchedule{Revision: 1, Plan: schedule.Default(), Actor: "system", Updated: time.Now().UTC()}); err != nil {
+			return err
+		}
 	}
-	if err = insertSchedule(context.Background(), tx, SavedSchedule{Revision: 1, Plan: schedule.Default(), Actor: "system", Updated: time.Now().UTC()}); err != nil {
-		return err
+	if version < 5 {
+		_, err = tx.Exec(`CREATE TABLE IF NOT EXISTS photos(id TEXT PRIMARY KEY,name TEXT NOT NULL,width INTEGER NOT NULL,height INTEGER NOT NULL,created TEXT NOT NULL,actor TEXT NOT NULL,image BLOB NOT NULL,thumbnail BLOB NOT NULL);
+ CREATE TABLE IF NOT EXISTS house_revisions(revision INTEGER PRIMARY KEY,body BLOB NOT NULL,actor TEXT NOT NULL,created TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS house_photo_refs(revision INTEGER NOT NULL REFERENCES house_revisions(revision),photo_id TEXT NOT NULL REFERENCES photos(id),PRIMARY KEY(revision,photo_id));
+ PRAGMA user_version=5;`)
+		if err != nil {
+			return err
+		}
+		var count int
+		if err = tx.QueryRow("SELECT COUNT(*) FROM house_revisions").Scan(&count); err != nil {
+			return err
+		}
+		if count == 0 {
+			if err = insertHouse(context.Background(), tx, SavedHouse{Revision: 1, Layout: house.Default(), Actor: "system", Updated: time.Now().UTC()}); err != nil {
+				return err
+			}
+		}
 	}
 	return tx.Commit()
 }

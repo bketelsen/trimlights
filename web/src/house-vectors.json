@@ -1,0 +1,5 @@
+[
+ {"name":"wide photo uses pixel distance","width":200,"height":100,"count":4,"mapping":{"run_id":"a","points":[{"x":0,"y":0},{"x":1,"y":0},{"x":1,"y":1}],"reverse":false,"adjustments":[]},"expected":[{"x":0,"y":0},{"x":0.5,"y":0},{"x":1,"y":0},{"x":1,"y":1}]},
+ {"name":"reverse retains index with explicit bulb correction","width":100,"height":100,"count":3,"mapping":{"run_id":"a","points":[{"x":0,"y":0},{"x":1,"y":1}],"reverse":true,"adjustments":[{"index":1,"point":{"x":0.4,"y":0.6}}]},"expected":[{"x":1,"y":1},{"x":0.4,"y":0.6},{"x":0,"y":0}]},
+ {"name":"single bulb at midpoint and duplicate vertex","width":200,"height":100,"count":1,"mapping":{"run_id":"a","points":[{"x":0,"y":0},{"x":0,"y":0},{"x":1,"y":0}],"reverse":false,"adjustments":[]},"expected":[{"x":0.5,"y":0}]}
+]

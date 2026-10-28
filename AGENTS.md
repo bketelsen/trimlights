@@ -69,3 +69,9 @@ implementation. Use absolute dates in documentation.
   Resolve civil-time boundaries explicitly; never rely on Go's ambiguous DST
   choice. Calendar saves and reference indexes commit atomically, pin pattern
   revisions, and require compare-and-swap. Preview must never enable execution.
+
+- House photos are normalized in `internal/house` before storage. Keep byte/pixel
+  limits, EXIF transforms and metadata removal intact; never serve upload originals.
+  Photo blobs and immutable layout references share SQLite transactions. Geometry
+  changes must pass the shared Go/TypeScript vectors. Software mappings remain
+  uncalibrated until a verified hardware workflow can establish their addresses.

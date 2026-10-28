@@ -4,10 +4,11 @@ Living document. Rationale: [ADR-0003](../adr/0003-shared-homelab-application.md
 [ADR-0004](../adr/0004-pocket-id-and-truenas.md).
 Pattern rationale: [ADR-0005](../adr/0005-versioned-household-patterns.md).
 Calendar rationale: [ADR-0006](../adr/0006-explicit-calendar-intent.md).
+Photo rationale: [ADR-0008](../adr/0008-private-photos-and-physical-mapping.md).
 Publication: [ADR-0007](../adr/0007-public-repository-and-private-deployment.md).
 Contracts: [local service](../specs/local-service.md),
 [household authentication](../specs/household-auth.md),
-[pattern library](../specs/patterns.md), [calendar](../specs/schedules.md),
+[house mapping](../specs/house.md), [pattern library](../specs/patterns.md), [calendar](../specs/schedules.md),
 [draft v1 acceptance](../specs/v1-acceptance.md).
 
 ## Overview
@@ -18,13 +19,14 @@ container recipe. A loopback service persists observations and operation history
 in SQLite, serializes explicit refresh requests, and requires a private API token.
 Alternatively, household mode uses Pocket ID OIDC and serves the embedded React
 UI. Initial screens show cached controller patterns, daily schedules and refresh
-history. Authentication has simulated-provider coverage; real household login
-awaits real passkey sign-in. The initial TrueNAS app and public Caddy HTTPS route
+history. Authentication has simulated-provider coverage and confirmed desktop
+Pocket ID sign-in; both-phone acceptance remains open. The initial TrueNAS app and public Caddy HTTPS route
 are deployed with controller access disabled; readiness, API authentication gates
 and the OIDC redirect have passed integration checks.
 Shared pattern editing, software strip previews, calendar editing and calendar
-intent preview are implemented. Schedule execution, photo mapping and verified
-hardware playback are not built.
+intent preview are implemented. House photo upload, manual mapping and software
+previews are implemented under the house contract. Schedule execution, physical
+calibration and verified hardware playback are not built.
 
 The following is the accepted target, not a description of shipped components:
 
@@ -57,7 +59,8 @@ flowchart LR
 - `internal/webui`: embedded browser build and restrictive content security policy.
 - `internal/pattern`: validated design schema and deterministic logical-pixel render.
 - `internal/schedule`: pure calendar validation, civil/solar intervals and precedence.
-- Planned package: image handling.
+- `internal/house`: bounded photo normalization and validated address/geometry model.
+  SQLite holds sanitized JPEG blobs and versioned layout references atomically.
 - `web/`: compiled browser assets. Go embeds release assets; development may use
   a frontend dev server. No Node process is required in production.
 - CLI commands proposed: `serve`, `status`, `doctor`, `patterns`, `schedules`,
@@ -200,7 +203,8 @@ Deploy one non-root OCI container on a chosen Docker/Podman host (or an Incus gu
 running it), behind the existing Caddy VM. Use local persistent storage for SQLite;
 TrueNAS is a backup destination unless the selected deployment validates its local
 dataset semantics. Do not place a live SQLite WAL database on a generic network
-share. Export transactionally consistent database backups plus referenced media
+share. Export transactionally consistent database backups (including sanitized photo blobs)
+plus required private configuration
 and manifests; exercise restoration on an isolated instance with hardware disabled.
 
 Provide separate process health and controller connectivity, structured logs,

@@ -6,21 +6,27 @@ React assets are embedded in one static binary; SQLite stores shared state.
 Caddy provides HTTPS and Pocket ID provides household sign-in.
 
 **Work in progress.** Shared pattern editing and calendar planning are implemented.
-Verified physical controls, calendar execution, house-photo mapping and production
-acceptance remain unfinished. This is an independent project, not an official
+House-photo mapping and software previews are implemented. Verified physical
+controls, calendar execution, hardware calibration and production acceptance remain
+unfinished. This is an independent project, not an official
 Trimlight application or a general-purpose controller driver.
 
 ## What works
 
 - Pocket ID authorization-code login with PKCE, subject allowlisting, sessions and
   CSRF protection; simulated-provider tests pass. The initial TrueNAS/Caddy deployment
-  passes readiness and login-redirect checks; real household sign-in is pending.
+  passes readiness and login-redirect checks; the owner has signed in on desktop.
+  Both phones and the second household account remain acceptance work.
 - Shared pattern library: static/chase software previews, color runs, brightness,
   favorites, duplication, JSON import/export, revision history and stale-edit detection.
 - Import opaque native patterns from a cached snapshot without guessing their effect.
 - Calendar planning: weekly routines, seasonal ranges, one-day exceptions, solar
   offsets, overnight windows, expiring override drafts and precedence explanations.
 - Pinned pattern revisions with visible calendar references before edits/archives.
+- Private house photos, oriented and stripped of metadata; roofline drawing,
+  physical addresses, mirrors, individual bulb adjustments, undo/redo and revisions.
+- House previews in Library and Calendar, including the calendar’s pinned pattern
+  revision; no simulated preview sends a hardware command.
 - Serialized controller snapshot requests, persisted observations and operation
   history, and a bounded diagnostic write/restore experiment behind a fingerprint guard.
 
@@ -84,6 +90,24 @@ podman build -f Containerfile -t trimlights-local .
 
 For ARM, compile with `GOARCH=arm64` and build for `linux/arm64` with
 `--build-arg TARGETARCH=arm64`. Only the compiled binaries enter the build context.
+
+## House photos and previews
+
+In House, upload a JPEG, PNG or WebP (up to 12 MiB and 50 million pixels). The picker
+requests supported formats so Safari can convert compatible photos. If HEIC still
+arrives, export it as JPEG in Photos or Preview. Original files and metadata are
+not retained. Up to 20 sanitized photos and their thumbnails stay in SQLite.
+
+Add a roofline, set its output, first bulb and count, then tap its corners in order.
+Use Move corners or percentage coordinates for precision, Move bulbs for perspective
+adjustments, and separate runs for gaps. Multiple photo views can map the same run.
+Mirrored runs reuse their source's logical colors. Rotation preserves mapped points.
+Save the layout to preview it in Library or while selecting a calendar scene.
+
+All mappings are uncalibrated. Preview colors come from the software pattern model;
+opaque native effects cannot be previewed. Actual wiring and real-light comparison
+still need verification. Photo deletion and layout-file import are not implemented;
+exported layout drafts can currently be retained for manual recovery only.
 
 ## Calendar and preview
 

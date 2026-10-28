@@ -11,6 +11,7 @@ require (
 	github.com/nathan-osman/go-sunrise v1.1.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto/x509roots/fallback v0.0.0-20261027005312-1da6254a58cf
+	golang.org/x/image v0.47.0
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sys v0.49.0
 	modernc.org/sqlite v1.61.0
