@@ -185,7 +185,8 @@ export. Do not let these delay the scheduling beta or required photo feature.
 - **Deployment details:** a TrueNAS custom app, Caddy and Pocket ID are selected.
   Private local configuration contains actual host/domain/client values. The owner
   selected public repository bketelsen/trimlights; GHCR is the image registry.
-  App public exposure and away-from-home access policy remain to be confirmed.
+  The owner selected public HTTPS access behind Pocket ID; household subjects remain
+  explicitly allowlisted.
 - **Scheduling policy:** finalize priority ties, DST gaps/repeated hours, external
   app activity and outage expectations by Phase 4. Record substantive decisions
   in ADRs before implementation.
@@ -306,3 +307,19 @@ Documentation uses example values. Compose takes its host, dataset paths, image
 and timezone from variables. Probe authorization now pins the entire reviewed
 non-clock baseline with SHA-256 instead of household-specific scene names.
 The publication workflow builds amd64/arm64 images after the check gate.
+
+### Initial homelab deployment — 2026-10-28
+
+The public repository and amd64/arm64 image pipeline are live. The initial pinned
+image passed CI and anonymous registry-pull verification. A single TrueNAS custom
+app is running with private configuration and a separate writable data directory.
+Caddy serves its public HTTPS origin with a valid certificate. Readiness succeeds;
+unauthenticated household API requests return 401; login redirects to Pocket ID
+with the exact callback, S256 PKCE, state, nonce and a secure browser-binding cookie.
+The prior Caddy configuration was backed up before validation and reload.
+
+Controller access remains disabled during real-account acceptance. Household
+passkey sign-in and both phones still require user testing. The deployed build
+supports shared pattern editing and calendar planning, not physical control or
+schedule execution. Hostnames, addresses, credentials and deployment evidence
+remain in private configuration. Deployment is an early checkpoint, not v1 release.

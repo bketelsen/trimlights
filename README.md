@@ -5,7 +5,7 @@ The server and CLI are written in Go, using [clix](https://github.com/frostyard/
 React assets are embedded in one static binary; SQLite stores shared state.
 Caddy provides HTTPS and Pocket ID provides household sign-in.
 
-**Work in progress.** Shared pattern editing and calendar planning work locally.
+**Work in progress.** Shared pattern editing and calendar planning are implemented.
 Verified physical controls, calendar execution, house-photo mapping and production
 acceptance remain unfinished. This is an independent project, not an official
 Trimlight application or a general-purpose controller driver.
@@ -13,7 +13,8 @@ Trimlight application or a general-purpose controller driver.
 ## What works
 
 - Pocket ID authorization-code login with PKCE, subject allowlisting, sessions and
-  CSRF protection; simulated-provider tests pass. Real household sign-in is pending.
+  CSRF protection; simulated-provider tests pass. The initial TrueNAS/Caddy deployment
+  passes readiness and login-redirect checks; real household sign-in is pending.
 - Shared pattern library: static/chase software previews, color runs, brightness,
   favorites, duplication, JSON import/export, revision history and stale-edit detection.
 - Import opaque native patterns from a cached snapshot without guessing their effect.

@@ -2,7 +2,9 @@
 
 Implementation baseline: 2026-10-28. The clix CLI and local service foundation
 exist. OIDC login and the initial read-only mobile UI are implemented and tested
-locally. The shared pattern editor now supports revisions, conflict detection,
+locally. An initial TrueNAS/Caddy deployment passes HTTPS, readiness and login-redirect
+checks with controller access disabled. The shared pattern editor now supports
+revisions, conflict detection,
 favorites, import/export and software previews. Real household login, hardware
 controls, schedule execution and photo mapping remain in progress. Calendar editing,
 versioned saves and deterministic intent preview are implemented.
