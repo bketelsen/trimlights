@@ -4,6 +4,9 @@ Living document. Rationale: [ADR-0003](../adr/0003-shared-homelab-application.md
 [ADR-0004](../adr/0004-pocket-id-and-truenas.md).
 Pattern rationale: [ADR-0005](../adr/0005-versioned-household-patterns.md).
 Calendar rationale: [ADR-0006](../adr/0006-explicit-calendar-intent.md).
+Backup rationale: [ADR-0009](../adr/0009-consistent-portable-backups.md).
+Backup contract: [backup and restore](../specs/backups.md).
+Recovery procedure: [backup operations](backup-operations.md).
 Photo rationale: [ADR-0008](../adr/0008-private-photos-and-physical-mapping.md).
 Publication: [ADR-0007](../adr/0007-public-repository-and-private-deployment.md).
 Contracts: [local service](../specs/local-service.md),

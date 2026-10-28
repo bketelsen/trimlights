@@ -16,3 +16,4 @@ __pycache__/
 web/node_modules/
 internal/webui/dist/*
 !internal/webui/dist/.gitkeep
+*.zip

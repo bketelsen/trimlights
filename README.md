@@ -92,6 +92,15 @@ podman build -f Containerfile -t trimlights-local .
 For ARM, compile with `GOARCH=arm64` and build for `linux/arm64` with
 `--build-arg TARGETARCH=arm64`. Only the compiled binaries enter the build context.
 
+## Backup and restore
+
+The Go CLI can create a private bundle from the live local database plus OIDC
+configuration. It includes photos, mappings, revisions and schedules. Restore
+validates the bundle into a new directory, clears copied sessions, and keeps
+controller access blocked until deliberately re-enabled. See the
+[backup runbook](docs/design/backup-operations.md) for commands and verification.
+Bundles contain the OIDC secret and are not encrypted; store them privately.
+
 ## House photos and previews
 
 In House, upload a JPEG, PNG or WebP (up to 12 MiB and 50 million pixels). The picker

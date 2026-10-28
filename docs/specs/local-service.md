@@ -53,11 +53,14 @@ Refresh accepts exactly one JSON object, with `Content-Type: application/json`:
 - The store MUST reject a second process using the same local data directory and
   reject a schema newer than this binary understands. Schema version 1 creates
   observation and operation tables; version 2 adds auth state, version 3 adds
-  the [pattern library](patterns.md), and version 4 adds the [calendar](schedules.md). Upgrades back up
+  the [pattern library](patterns.md), version 4 adds the [calendar](schedules.md), and version 5 adds
+  [photos and layout history](house.md). Upgrades back up
   the existing database with VACUUM INTO before a transactional migration.
   SQLite uses WAL and FULL sync.
 - A process lock does not protect against another machine or another data directory
   owning the same hardware. Deployment MUST use a single active owner.
+- A restored data directory containing `controller-disabled` MUST disable controller
+  access regardless of host flags or environment. See [backup contract](backups.md).
 - Controller access MUST remain disabled when neither a host flag nor
   `TRIMLIGHT_CONTROLLER_HOST` supplies a value. An explicit `--host=` disables
   environment-provided access. Service

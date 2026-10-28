@@ -80,15 +80,19 @@ func serveCommand() *cobra.Command {
 		if offset < -1 {
 			return errors.New("schedule offset must be -1 or nonnegative")
 		}
+		guarded, err := service.RestoreGuard(dir)
+		if err != nil {
+			return err
+		}
 		c := service.Config{Listen: listen, DataDir: dir, APIToken: token, ScheduleOffset: offset, OIDC: household}
-		if host != "" {
+		if host != "" && !guarded {
 			c.Controller = trimlight.NewClient(net.JoinHostPort(host, "8586"), loc)
 		}
 		if err = service.Validate(c); err != nil {
 			return err
 		}
 		if clix.DryRun {
-			return result(cmd, map[string]any{"dry_run": true, "listen": listen, "controller_enabled": host != ""}, "Configuration valid; no listener, database or controller connection opened.")
+			return result(cmd, map[string]any{"dry_run": true, "listen": listen, "controller_enabled": c.Controller != nil, "restore_guarded": guarded}, "Configuration valid; no listener, database or controller connection opened.")
 		}
 		return service.Run(cmd.Context(), c)
 	})

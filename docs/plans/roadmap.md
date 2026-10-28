@@ -154,6 +154,9 @@ and [photo acceptance](../specs/v1-acceptance.md#rules), following
 
 ## Phase 6 — Operations, household trial and v1 release (M)
 
+Backup work follows [ADR-0009](../adr/0009-consistent-portable-backups.md) and
+the [backup contract](../specs/backups.md).
+
 Implements [operations](../design/application.md#operational-notes) and the complete
 [v1 acceptance contract](../specs/v1-acceptance.md).
 
@@ -361,3 +364,22 @@ This verifies real mobile authentication for the owner. It does not yet establis
 second-user sign-in, home-screen behavior, ordinary iPhone photo upload, roofline
 editing or cross-phone synchronization; those remain in the
 [v1 acceptance contract](../specs/v1-acceptance.md).
+
+### Portable recovery checkpoint — 2026-10-28
+
+The Go CLI implements `backup` and `restore` under
+[ADR-0009](../adr/0009-consistent-portable-backups.md) and the
+[backup contract](../specs/backups.md). The [operations runbook](../design/backup-operations.md)
+describes live capture and isolated recovery. Backups snapshot SQLite consistently
+and include private OIDC configuration. Restore verifies archive contents and the
+database, clears copied sessions/flows, and publishes a new guarded data directory.
+
+Tests recover synthetic photos, thumbnails, all pattern/calendar/layout revisions,
+observations and audits while the source store remains open. Corrupt archives,
+unsafe paths, duplicate entries, symlinks, missing files, invalid schemas and
+checksum mismatches fail without publishing a destination. Dry-run performs no IO;
+restored controller access remains disabled despite a configured host.
+
+A homelab recovery drill and its runtime checks are required before counting the
+operational acceptance item complete. In-app backup controls, automated retention
+and off-host replication remain outside this implemented CLI checkpoint.

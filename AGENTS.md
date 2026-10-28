@@ -75,3 +75,8 @@ implementation. Use absolute dates in documentation.
   Photo blobs and immutable layout references share SQLite transactions. Geometry
   changes must pass the shared Go/TypeScript vectors. Software mappings remain
   uncalibrated until a verified hardware workflow can establish their addresses.
+
+- Keep backups in `internal/backup` independent of controller/network code. Backup
+  opens an existing database read-only; restore publishes only a new directory.
+  Keep archive limits, validation, session clearing and the restore guard intact.
+  Update backup schema support and round-trip tests whenever storage migrations change.

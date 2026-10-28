@@ -9,6 +9,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -151,7 +153,23 @@ func jsonError(w http.ResponseWriter, code int, message string) {
 	jsonResponse(w, code, map[string]string{"error": message})
 }
 
+// RestoreGuard is deliberately independent of runtime host flags and environment.
+func RestoreGuard(dir string) (bool, error) {
+	_, err := os.Lstat(filepath.Join(dir, "controller-disabled"))
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return err == nil, err
+}
 func Run(ctx context.Context, c Config) error {
+	guarded, err := RestoreGuard(c.DataDir)
+	if err != nil {
+		return err
+	}
+	if guarded {
+		c.Controller = nil
+	}
+
 	if err := Validate(c); err != nil {
 		return err
 	}
