@@ -398,3 +398,13 @@ edits on failure, and requires review/save before changing shared state. Missing
 photo references require restoring the matching full backup; layout files contain
 geometry only. The owner has deferred live controller testing. Physical command
 verification and calibration remain pending while software development continues.
+
+
+### Calendar draft recovery — 2026-10-28
+
+Calendar import/export is available from the main calendar toolbar. Imports are
+bounded, validated against the saved revision and exact pattern versions, and
+loaded as drafts for preview and explicit save. Invalid imports and canceled
+replacement retain current edits. Original override expiries remain unchanged.
+The [calendar contract](../specs/schedules.md) defines these rules. This feature
+uses no controller access; physical verification remains deferred.

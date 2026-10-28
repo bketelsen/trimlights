@@ -87,32 +87,8 @@ func (s *Store) SaveSchedule(ctx context.Context, expected int, p schedule.Plan,
 	if current.Revision != expected {
 		return SavedSchedule{}, ErrScheduleConflict
 	}
-	existing := map[schedule.Action]bool{}
-	for _, r := range scheduleReferences(current.Plan) {
-		existing[r.Action] = true
-	}
-	refs := scheduleReferences(p)
-	for _, r := range refs {
-		var headArchived, revisionArchived bool
-		err = tx.QueryRowContext(ctx, "SELECT h.archived,r.archived FROM pattern_revisions r JOIN pattern_heads h ON h.id=r.id WHERE r.id=? AND r.revision=?", r.Action.PatternID, r.Action.Revision).Scan(&headArchived, &revisionArchived)
-		if errors.Is(err, sql.ErrNoRows) {
-			return SavedSchedule{}, fmt.Errorf("%w: %s", ErrScheduleReference, r.Name)
-		}
-		if err != nil {
-			return SavedSchedule{}, err
-		}
-		// Retain an existing pinned reference through archival; do not introduce a new
-		// rule/override pointing at an archived pattern merely because another uses it.
-		retained := false
-		for _, old := range scheduleReferences(current.Plan) {
-			if old.RuleID == r.RuleID && old.Action == r.Action {
-				retained = true
-				break
-			}
-		}
-		if (headArchived || revisionArchived) && (!existing[r.Action] || !retained) {
-			return SavedSchedule{}, fmt.Errorf("%w: %s", ErrScheduleReference, r.Name)
-		}
+	if err = checkScheduleReferences(ctx, tx, current.Plan, p); err != nil {
+		return SavedSchedule{}, err
 	}
 	saved := SavedSchedule{Revision: expected + 1, Plan: p, Actor: actor, Updated: time.Now().UTC()}
 	if err = insertSchedule(ctx, tx, saved); err != nil {
@@ -151,4 +127,56 @@ func (s *Store) PatternScheduleReferences(ctx context.Context, id string) ([]Sch
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// ValidateSchedule checks a draft against the same saved base and reference rules
+// as SaveSchedule, without writing revisions or reference indexes.
+func (s *Store) ValidateSchedule(ctx context.Context, expected int, p schedule.Plan) error {
+	if err := p.Validate(); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	current, err := scanSchedule(tx.QueryRowContext(ctx, "SELECT revision,body,actor,created FROM schedule_revisions ORDER BY revision DESC LIMIT 1"))
+	if err != nil {
+		return err
+	}
+	if current.Revision != expected {
+		return ErrScheduleConflict
+	}
+	return checkScheduleReferences(ctx, tx, current.Plan, p)
+}
+
+func checkScheduleReferences(ctx context.Context, tx *sql.Tx, current, p schedule.Plan) error {
+	existing := map[schedule.Action]bool{}
+	for _, r := range scheduleReferences(current) {
+		existing[r.Action] = true
+	}
+	refs := scheduleReferences(p)
+	for _, r := range refs {
+		var headArchived, revisionArchived bool
+		err := tx.QueryRowContext(ctx, "SELECT h.archived,r.archived FROM pattern_revisions r JOIN pattern_heads h ON h.id=r.id WHERE r.id=? AND r.revision=?", r.Action.PatternID, r.Action.Revision).Scan(&headArchived, &revisionArchived)
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: %s", ErrScheduleReference, r.Name)
+		}
+		if err != nil {
+			return err
+		}
+		// Retain an existing pinned reference through archival; do not introduce a new
+		// rule/override pointing at an archived pattern merely because another uses it.
+		retained := false
+		for _, old := range scheduleReferences(current) {
+			if old.RuleID == r.RuleID && old.Action == r.Action {
+				retained = true
+				break
+			}
+		}
+		if (headArchived || revisionArchived) && (!existing[r.Action] || !retained) {
+			return fmt.Errorf("%w: %s", ErrScheduleReference, r.Name)
+		}
+	}
+	return nil
 }

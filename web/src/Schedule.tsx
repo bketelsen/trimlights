@@ -30,16 +30,17 @@ export function Schedule({csrf,onError,onDirty}:{csrf:string;onError:(error:unkn
  const [preview,setPreview]=useState<Preview|null>(null);const [previewPlan,setPreviewPlan]=useState('');
  const [fromDate,setFromDate]=useState('');const [days,setDays]=useState(7);const [previewRange,setPreviewRange]=useState('');
  const [history,setHistory]=useState<Saved[]|null>(null);const [overrideAction,setOverrideAction]=useState<Action>({kind:'off'});const [overrideHours,setOverrideHours]=useState(1);
- const mounted=useRef(true);const draftRef=useRef<Plan|null>(null);const savedRef=useRef<Saved|null>(null);const loadSequence=useRef(0);const previewSequence=useRef(0);
+ const importing=useRef(false);const mounted=useRef(true);const draftRef=useRef<Plan|null>(null);const savedRef=useRef<Saved|null>(null);const loadSequence=useRef(0);const previewSequence=useRef(0);
  const dirty=!!draft&&JSON.stringify(draft)!==JSON.stringify(saved?.plan);
  draftRef.current=draft;savedRef.current=saved;
  const report=useCallback((e:unknown)=>{if(e instanceof SignedOut)onError(e);else setError(e instanceof Error?e.message:'Could not reach the calendar.');},[onError]);
  useEffect(()=>{onDirty(dirty);return()=>onDirty(false)},[dirty,onDirty]);
  useEffect(()=>{if(!dirty)return;const warn=(e:BeforeUnloadEvent)=>e.preventDefault();window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn)},[dirty]);
  const load=useCallback(async(force=false)=>{
+  if(importing.current)return;
   const sequence=++loadSequence.current;
   try{const [s,p]=await Promise.all([request<Saved>('/api/v1/schedule'),request<{patterns:SavedPattern[]}>('/api/v1/patterns?include_archived=1')]);
-   if(!mounted.current||sequence!==loadSequence.current)return;
+   if(!mounted.current||importing.current||sequence!==loadSequence.current)return;
    if(savedRef.current&&s.revision<savedRef.current.revision)return;
    setPatterns(p.patterns);setRemoteRevision(s.revision);
    if(force||!savedRef.current||JSON.stringify(draftRef.current)===JSON.stringify(savedRef.current.plan)){
@@ -61,6 +62,23 @@ export function Schedule({csrf,onError,onDirty}:{csrf:string;onError:(error:unkn
  };
  const showHistory=async()=>{try{const result=await request<{revisions:Saved[]}>('/api/v1/schedule/revisions');setHistory(result.revisions)}catch(e){report(e)}};
  const exportDraft=()=>{if(!draft)return;const blob=new Blob([JSON.stringify(draft,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='trimlights-calendar-draft.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+ const importDraft=async(file:File)=>{
+  if(!savedRef.current||importing.current)return;
+  importing.current=true;loadSequence.current++;previewSequence.current++;setBusy(true);setError('');setNotice('');
+  try{
+   if(file.size>128*1024)throw new Error('Calendar files must be no larger than 128 KiB.');
+   let input:unknown;
+   try{input=JSON.parse(await file.text())}catch{throw new Error('This file is not valid calendar JSON. Choose an exported calendar draft.')}
+   const result=await request<{plan:Plan}>('/api/v1/schedule/validate',csrf,input,{revision:savedRef.current.revision});
+   if(!mounted.current)return;
+   const changed=JSON.stringify(draftRef.current)!==JSON.stringify(savedRef.current?.plan);
+   if(changed&&!window.confirm('Replace your unsaved calendar with this imported draft? Download your current draft first if you want to keep it.'))return;
+   draftRef.current=result.plan;setDraft(result.plan);setSelected(null);setPreview(null);setHistory(null);
+   setFromDate(today(result.plan.timezone));
+   setNotice('Calendar imported as a draft. Review the rules, location and any override dates, preview the timeline, then save to share it. Pattern designs are not included. No lights were changed.');
+  }catch(e){if(mounted.current){if(e instanceof APIError&&e.status===409)setConflict(true);report(e)}}
+  finally{importing.current=false;if(mounted.current)setBusy(false)}
+ };
  const describeAction=(a:Action)=>a.kind==='off'?'Lights off':`${patterns.find(p=>p.id===a.pattern_id)?.design.name??'Saved pattern'} · revision ${a.revision}`;
  const dateTime=(s:string)=>new Date(s).toLocaleString(undefined,{timeZone:preview?.timezone??draft?.timezone,dateStyle:'medium',timeStyle:'short'});
  if(!draft||!saved)return <section className="panel empty"><h2>Loading your calendar…</h2>{error&&<p role="alert">{error}</p>}</section>;
@@ -69,8 +87,8 @@ export function Schedule({csrf,onError,onDirty}:{csrf:string;onError:(error:unkn
  return <section className="calendar">
   <div className="notice"><strong>Plan your evenings.</strong> Calendar saves and previews do not control the lights yet. The calendar has not taken over controller scheduling.</div>
   {error&&<div role="alert" className="notice field-error">{error}</div>}{notice&&<div role="status" className="notice">{notice}</div>}
-  {(conflict||remoteRevision>saved.revision)&&<div className="conflict" role="status"><strong>A newer calendar is saved on another device.</strong><p>Your draft has been kept. Download it before loading the latest version if you want to keep your edits.</p><div className="action-row"><button className="button secondary" onClick={exportDraft}>Download draft</button><button className="button secondary" onClick={()=>{if(!dirty||window.confirm('Discard your calendar draft and load the latest saved version?')){setSelected(null);setPreview(null);void load(true)}}}>Discard draft and load latest</button></div></div>}
-  <div className="editor-toolbar"><span className="muted">Revision {saved.revision} · {dirty?'Unsaved changes':'Saved calendar'}</span><button className="button secondary" disabled={busy} onClick={()=>void showHistory()}>History</button><button className="button primary" disabled={busy||!dirty} onClick={()=>void save()}>{busy?'Working…':'Save calendar'}</button></div>
+  {(conflict||remoteRevision>saved.revision)&&<div className="conflict" role="status"><strong>A newer calendar is saved on another device.</strong><p>Your draft has been kept. Download it before loading the latest version if you want to keep your edits.</p><div className="action-row"><button className="button secondary" onClick={exportDraft}>Download draft</button><button className="button secondary" disabled={busy} onClick={()=>{if(!dirty||window.confirm('Discard your calendar draft and load the latest saved version?')){setSelected(null);setPreview(null);void load(true)}}}>Discard draft and load latest</button></div></div>}
+  <div className="editor-toolbar"><span className="muted">Revision {saved.revision} · {dirty?'Unsaved changes':'Saved calendar'}</span><button className="button secondary" disabled={busy} onClick={exportDraft}>Export calendar</button><label className="button secondary house-upload">Import calendar<input type="file" accept="application/json,.json" disabled={busy} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void importDraft(file)}}/></label><button className="button secondary" disabled={busy} onClick={()=>void showHistory()}>History</button><button className="button primary" disabled={busy||!dirty} onClick={()=>void save()}>{busy?'Working…':'Save calendar'}</button></div>
   <fieldset disabled={busy} className="calendar-fields">
   <details className="panel calendar-settings"><summary>Timezone &amp; sunset location</summary><div className="calendar-grid"><label className="field">Household timezone<input value={draft.timezone} placeholder="America/New_York" onChange={e=>update({timezone:e.target.value})}/></label><label className="check-label"><input type="checkbox" checked={!!draft.location} onChange={e=>update({location:e.target.checked?{latitude:0,longitude:0}:undefined})}/>Use sunrise and sunset</label>{draft.location&&<><label className="field">Latitude<input type="number" min="-90" max="90" step="any" value={draft.location.latitude} onChange={e=>update({location:{...draft.location!,latitude:Number(e.target.value)}})}/></label><label className="field">Longitude<input type="number" min="-180" max="180" step="any" value={draft.location.longitude} onChange={e=>update({location:{...draft.location!,longitude:Number(e.target.value)}})}/></label><p className="footnote">Enter your home’s coordinates. Zero is a real location, not an automatic lookup. Solar calculations stay on the server.</p></>}</div></details>
   <div className="section-heading"><h2>Your rules</h2><button className="button primary" disabled={draft.rules.length>=100} onClick={addRule}>+ Add rule</button></div>

@@ -138,7 +138,7 @@ skipped civil dates and inverted windows generate visible issues.
 Precedence is override > exception > seasonal > weekly > default off; numeric
 priority breaks ties within each category. Equal-ranked different actions produce
 a visible conflict and proposed off. The timeline names winning and shadowed rules.
-The mobile calendar supports edits, history, draft downloads, conflict recovery,
+The mobile calendar supports edits, history, validated draft import/export, conflict recovery,
 solar settings, override expiry and local-date timeline previews. All-day rules
 use midnight to next-day midnight. Previews are marked stale when the draft changes.
 

@@ -134,3 +134,65 @@ func TestSchemaThreeUpgradePreservesPatternsAndSessions(t *testing.T) {
 		t.Fatal(paths, err)
 	}
 }
+
+func TestCalendarImportValidationRetainsReferencesWithoutWriting(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	p, err := s.CreatePattern(ctx, design(), "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := calendar(p)
+	plan.Location = &schedule.Location{Latitude: 40, Longitude: -75}
+	plan.Override = &schedule.Override{ID: "temporary", Action: plan.Rules[0].Action, StartsAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), ExpiresAt: time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)}
+	if err = s.ValidateSchedule(ctx, 1, plan); err != nil {
+		t.Fatal(err)
+	}
+	history, err := s.ScheduleHistory(ctx)
+	if err != nil || len(history) != 1 {
+		t.Fatal("validation wrote history", err)
+	}
+	refs, err := s.PatternScheduleReferences(ctx, p.ID)
+	if err != nil || len(refs) != 0 {
+		t.Fatal("validation wrote references", err)
+	}
+	if _, err = s.SaveSchedule(ctx, 1, plan, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.ValidateSchedule(ctx, 1, plan); !errors.Is(err, ErrScheduleConflict) {
+		t.Fatal("stale base accepted", err)
+	}
+	if _, err = s.ArchivePattern(ctx, p.ID, 1, true, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.ValidateSchedule(ctx, 2, plan); err != nil {
+		t.Fatal("retained archived reference rejected", err)
+	}
+	duplicate := calendar(p)
+	duplicate.Rules[0].ID = "new-rule"
+	if err = s.ValidateSchedule(ctx, 2, duplicate); !errors.Is(err, ErrScheduleReference) {
+		t.Fatal("new archived reference accepted", err)
+	}
+	missing := calendar(p)
+	missing.Rules[0].Action.Revision = 999
+	if err = s.ValidateSchedule(ctx, 2, missing); !errors.Is(err, ErrScheduleReference) {
+		t.Fatal("missing pinned revision accepted", err)
+	}
+	if _, err = s.SaveSchedule(ctx, 2, schedule.Default(), "owner"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.SaveSchedule(ctx, 2, plan, "owner"); !errors.Is(err, ErrScheduleConflict) {
+		t.Fatal("save after intervening change accepted", err)
+	}
+	if err = s.ValidateSchedule(ctx, 3, plan); !errors.Is(err, ErrScheduleReference) {
+		t.Fatal("removed archived references accepted", err)
+	}
+	history, err = s.ScheduleHistory(ctx)
+	if err != nil || len(history) != 3 || !history[1].Plan.Override.ExpiresAt.Equal(plan.Override.ExpiresAt) {
+		t.Fatal("history or override expiry changed", err)
+	}
+}

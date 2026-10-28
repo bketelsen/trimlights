@@ -22,6 +22,42 @@ func registerSchedules(mux *http.ServeMux, store *storage.Store) {
 		}
 		scheduleResponse(w, saved)
 	})
+	mux.HandleFunc("POST /api/v1/schedule/validate", func(w http.ResponseWriter, r *http.Request) {
+		expected, ok := revision(w, r)
+		if !ok {
+			return
+		}
+		var p schedule.Plan
+		if !readJSONLimit(w, r, &p, 128<<10) {
+			return
+		}
+		if err := p.Validate(); err != nil {
+			jsonError(w, 400, err.Error())
+			return
+		}
+		if err := store.ValidateSchedule(r.Context(), expected, p); err != nil {
+			switch {
+			case errors.Is(err, storage.ErrScheduleConflict):
+				jsonError(w, 409, err.Error())
+			case errors.Is(err, storage.ErrScheduleReference):
+				jsonError(w, 400, err.Error()+"; restore the matching household backup or choose an available pattern before importing")
+			default:
+				jsonError(w, 500, "cannot validate calendar")
+			}
+			return
+		}
+		// JSON null arrays are valid empty collections in Go. Return arrays that
+		// the browser can render, including exceptions without weekdays.
+		if p.Rules == nil {
+			p.Rules = []schedule.Rule{}
+		}
+		for i := range p.Rules {
+			if p.Rules[i].Weekdays == nil {
+				p.Rules[i].Weekdays = []int{}
+			}
+		}
+		jsonResponse(w, 200, map[string]any{"plan": p, "execution_enabled": false})
+	})
 	mux.HandleFunc("PUT /api/v1/schedule", func(w http.ResponseWriter, r *http.Request) {
 		expected, ok := revision(w, r)
 		if !ok {

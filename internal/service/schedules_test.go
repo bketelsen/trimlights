@@ -70,3 +70,60 @@ func TestCalendarAPIValidationAndPreview(t *testing.T) {
 		}
 	}
 }
+
+func TestCalendarImportAPI(t *testing.T) {
+	store, worker := setup(t, nil)
+	handler := Handler(store, worker, strings.Repeat("x", 32))
+	call := func(raw, rev string, authorized bool) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "/api/v1/schedule/validate", strings.NewReader(raw))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("If-Match", rev)
+		if authorized {
+			r.Header.Set("Authorization", "Bearer "+strings.Repeat("x", 32))
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w
+	}
+	raw := `{"schema":1,"timezone":"America/New_York","rules":null}`
+	for _, tc := range []struct {
+		body, rev string
+		auth      bool
+		status    int
+	}{
+		{raw, `"1"`, false, 401}, {raw, "", true, 428}, {raw, `"2"`, true, 409},
+		{"null", `"1"`, true, 400}, {"{", `"1"`, true, 400},
+		{`{"schema":1,"timezone":"Invalid/Zone","rules":[]}`, `"1"`, true, 400},
+		{`{"schema":1,"timezone":"UTC","rules":[],"execution_enabled":true}`, `"1"`, true, 400},
+		{raw + " {}", `"1"`, true, 400}, {strings.Repeat(" ", 128<<10) + raw, `"1"`, true, 400},
+	} {
+		if r := call(tc.body, tc.rev, tc.auth); r.Code != tc.status {
+			t.Fatalf("got %d want %d: %s", r.Code, tc.status, r.Body.String())
+		}
+	}
+	r := call(raw, `"1"`, true)
+	if r.Code != 200 || !strings.Contains(r.Body.String(), `"rules":[]`) || !strings.Contains(r.Body.String(), `"execution_enabled":false`) {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	plan := schedule.Default()
+	plan.Rules = []schedule.Rule{{ID: "exception", Name: "One evening", Enabled: true, Kind: "exception", From: "2026-12-31", Through: "2026-12-31", Start: schedule.Boundary{Kind: "clock", Time: "19:00"}, End: schedule.Boundary{Kind: "clock", Time: "22:00"}, Action: schedule.Action{Kind: "off"}}}
+	encoded, _ := json.Marshal(plan)
+	r = call(string(encoded), `"1"`, true)
+	if r.Code != 200 || !strings.Contains(r.Body.String(), `"weekdays":[]`) {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	plan.Rules[0].Action = schedule.Action{Kind: "pattern", PatternID: "missing", Revision: 1}
+	encoded, _ = json.Marshal(plan)
+	r = call(string(encoded), `"1"`, true)
+	if r.Code != 400 || !strings.Contains(r.Body.String(), "matching household backup") {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	history, err := store.ScheduleHistory(context.Background())
+	if err != nil || len(history) != 1 {
+		t.Fatal("validation persisted", err)
+	}
+	ops, err := store.Operations(context.Background())
+	if err != nil || len(ops) != 0 || worker.Status().Queued != 0 {
+		t.Fatal("validation invoked worker", err)
+	}
+}

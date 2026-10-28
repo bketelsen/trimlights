@@ -24,6 +24,8 @@ Trimlight application or a general-purpose controller driver.
 - Calendar planning: weekly routines, seasonal ranges, one-day exceptions, solar
   offsets, overnight windows, expiring override drafts and precedence explanations.
 - Pinned pattern revisions with visible calendar references before edits/archives.
+- Calendar draft import/export with reference validation, review before saving,
+  and preservation of timezone, solar location and override expiry.
 - Private house photos, oriented and stripped of metadata; roofline drawing,
   physical addresses, mirrors, individual bulb adjustments, undo/redo and revisions.
 - House previews in Library and Calendar, including the calendar’s pinned pattern

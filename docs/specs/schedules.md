@@ -28,6 +28,11 @@ bounds. Timezones are embedded in the Go binary for scratch-container deployment
   An untouched calendar is revision 1, America/New_York, empty rules, preview only.
 - `PUT /api/v1/schedule` accepts a plan with `If-Match: "N"`; missing precondition
   is 428, stale revision 409, invalid plan/reference 400. Body limit is 128 KiB.
+- `POST /api/v1/schedule/validate` validates an imported schema-1 plan against
+  quoted `If-Match: "N"` using the same revision and pattern-reference rules as
+  saving. Body limit is 128 KiB; unknown fields and malformed documents are rejected.
+  Returns `{plan, execution_enabled: false}` with empty collections serialized as
+  arrays. It writes no revisions/reference indexes and never contacts a controller.
 - `GET /api/v1/schedule/revisions` returns retained revisions, newest first.
 - `POST /api/v1/schedule/preview` accepts `{plan, from, until}`; range is positive
   and at most 31 elapsed days. Alternatively `{plan, from_date, days}` accepts a
@@ -64,6 +69,15 @@ bounds. Timezones are embedded in the Go binary for scratch-container deployment
 8. Persist override expiry as an absolute instant. Clearing the override resumes
    the calendar in preview. Runtime execution, ownership handoff and delivery
    verification remain separate outstanding requirements.
+
+9. Export MUST download the current draft, including unsaved edits, timezone,
+   optional location and absolute override timestamps. Pattern bodies are excluded.
+   Import MUST validate before replacing a draft, ask before replacing unsaved
+   edits, preserve the draft on error/cancel, and require a separate save. Pinned
+   references MUST NOT be silently remapped to newer or similarly named patterns.
+   Missing references require a matching household backup or an edited import.
+   Imported overrides retain their original expiry; import never restarts them.
+   Saving MUST recheck references and the revision after import validation.
 
 ## Derived artifacts
 
