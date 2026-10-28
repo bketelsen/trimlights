@@ -408,3 +408,12 @@ loaded as drafts for preview and explicit save. Invalid imports and canceled
 replacement retain current edits. Original override expiries remain unchanged.
 The [calendar contract](../specs/schedules.md) defines these rules. This feature
 uses no controller access; physical verification remains deferred.
+
+
+### Pattern draft protection — 2026-10-28
+
+Pattern editing now reports unsaved state to navigation and warns on browser
+reload, editor exit and revision replacement. Save responses preserve newer edits
+made during the request and advance the saved baseline for a subsequent save.
+The [pattern contract](../specs/patterns.md) records these data-loss protections.
+Live controller tests remain deferred until the owner is ready.

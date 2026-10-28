@@ -53,6 +53,13 @@ and capture timestamp. A native design has no simulated color output.
 - Export/import MUST use only the design schema, excluding IDs and credentials.
 - List views SHOULD refresh shared state while visible. An active editor MUST
   retain unsaved changes when a newer server revision arrives and report conflicts.
+- Unsaved new, copied, imported and edited patterns MUST warn before tab navigation,
+  editor exit, revision replacement or reload. Browser reload/close uses its native
+  unsaved-changes warning. Canceling a warning MUST retain the draft.
+- A successful save MUST update the saved baseline without replacing edits made
+  after submission. Those newer edits remain visibly unsaved and the next save
+  uses the returned revision. A response to an editor that has been closed MUST
+  NOT reopen it. Failed saves MUST retain the draft.
 - Preview MUST never call the controller or claim physical playback is verified.
   Native effects MUST show an unsupported-preview explanation.
 - Preview RGB channel scaling is integer `(channel * brightness + 50) / 100`,

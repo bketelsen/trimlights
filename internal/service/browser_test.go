@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -54,6 +55,16 @@ func TestBrowserPreview(t *testing.T) {
 		if r.URL.Path == "/api/v1/me" {
 			jsonResponse(w, 200, storage.Session{Subject: "browser-test", Name: "Browser test fixture", CSRF: csrf, Expires: time.Now().Add(time.Hour)})
 			return
+		}
+		// Opt-in latency for checking edits made while a pattern save is pending.
+		// This handler exists only in the isolated manual test, never production.
+		if os.Getenv("TRIMLIGHT_BROWSER_SLOW_SAVE") == "1" &&
+			(r.Method == "POST" || r.Method == "PUT") && strings.HasPrefix(r.URL.Path, "/api/v1/patterns") {
+			select {
+			case <-time.After(2 * time.Second):
+			case <-r.Context().Done():
+				return
+			}
 		}
 		r.Header.Set("Authorization", "Bearer "+token)
 		base.ServeHTTP(w, r)
