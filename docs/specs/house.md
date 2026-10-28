@@ -12,6 +12,7 @@ previews. Hardware calibration and playback remain separate acceptance work.
 | `/api/v1/photos/{id}/image` | GET | Authenticated full JPEG |
 | `/api/v1/photos/{id}/thumbnail` | GET | Authenticated thumbnail JPEG |
 | `/api/v1/house` | GET, PUT | Current house layout; PUT requires quoted If-Match revision |
+| `/api/v1/house/validate` | POST | Validate an imported layout and existing photo references without saving |
 | `/api/v1/house/revisions` | GET | Immutable saved layouts |
 
 Layout schema 1 contains `runs` and `views`. Each run has a stable `id`, `name`,
@@ -42,6 +43,10 @@ Layout schema 1 contains `runs` and `views`. Each run has a stable `id`, `name`,
   If-Match returns 428. An editor MUST retain its conflicted draft.
 - Software previews MUST use the canonical pattern renderer and never contact the
   controller. Opaque native effects MUST display an unavailable-preview explanation.
+- Layout JSON imports MUST be bounded to 512 KiB and validated by the service before
+  rendering. Import MUST preserve the current draft on validation failure, require
+  explicit replacement of unsaved edits, and load a reviewable draft without saving.
+  Photos are excluded; missing photo IDs require restoring the matching full backup.
 - Upload originals MUST NOT be retained or copied into the public repository.
   Physical calibration MUST NOT be inferred from uploaded photos or user geometry.
 

@@ -27,6 +27,20 @@ export function House({csrf,onError,onDirty}:{csrf:string;onError:(e:unknown)=>v
  function addRun(){if(!draft)return;const id=crypto.randomUUID();const nextStart=draft.runs.filter(r=>r.output==='output-1').reduce((v,r)=>Math.max(v,r.start+r.count),1);change(l=>l.runs.push({id,name:`Roofline ${l.runs.length+1}`,output:'output-1',start:nextStart,count:20}));setRunID(id);setMode('draw');setPointIndex(0);}
  function updateRun(fields:Partial<Run>){change(l=>{const r=l.runs.find(r=>r.id===runID);if(r)Object.assign(r,fields)});}
  async function upload(file:File){setBusy(true);setMessage('');try{if(file.size>12*1024*1024)throw new Error('Photo exceeds 12 MiB. Export a smaller JPEG.');const response=await fetch('/api/v1/photos',{method:'POST',credentials:'same-origin',headers:{'Content-Type':file.type||'application/octet-stream','X-CSRF-Token':csrf},body:file});if(response.status===401)throw new SignedOut();const result=await response.json();if(!response.ok)throw new Error(result.error||'Photo upload failed');const p=result as Photo;setPhotos(old=>[...old,p]);setPhotoID(p.id);setMode('pan');setMessage('Photo uploaded. Add a roofline, then draw its corners.');}catch(e){if(e instanceof SignedOut)onError(e);else setMessage(e instanceof Error?e.message:'Upload failed.')}finally{setBusy(false)}}
+ async function importLayout(file:File){
+  setBusy(true);setMessage('');loadSequence.current++;
+  try{
+   if(file.size>512*1024)throw new Error('Layout files must be no larger than 512 KiB.');
+   const input:unknown=JSON.parse(await file.text());
+   const validated=await request<{layout:Layout}>('/api/v1/house/validate',csrf,input);
+   if(!mounted.current)return;
+   if(dirtyRef.current&&!window.confirm('Replace the current unsaved layout with this imported draft? You can undo this change.'))return;
+   change(l=>{Object.assign(l,validated.layout)});
+   setPhotoID(validated.layout.views[0]?.photo_id??photos[0]?.id??'');
+   setRunID(validated.layout.runs[0]?.id??'');setPointIndex(0);setMode('pan');
+   setMessage('Layout imported as a draft. Review the photo alignment, then save to share it. Photos are not included in layout files.');
+  }catch(e){if(e instanceof SignedOut)onError(e);else setMessage(e instanceof Error?e.message:'Could not import this layout.');}finally{if(mounted.current)setBusy(false)}
+ }
  async function save(){if(!draft||!saved)return;const submitted=JSON.stringify(draft);loadSequence.current++;setBusy(true);try{const result=await request<SavedHouse>('/api/v1/house',csrf,draft,{method:'PUT',revision:saved.revision});if(!mounted.current)return;setSaved(result);if(JSON.stringify(draftRef.current)===submitted){setDraft(result.layout);dirtyRef.current=false;past.current=[];future.current=[];setUndoCount(0);setRedoCount(0);}setConflict(false);setMessage('House mapping saved.');}catch(e){if(e instanceof SignedOut)onError(e);else{setConflict(e instanceof APIError&&e.status===409);setMessage(e instanceof Error?e.message:'Save failed.')}}finally{setBusy(false)}}
  if(!draft)return <p>Opening house photos…</p>;
  return <>
@@ -58,7 +72,7 @@ export function House({csrf,onError,onDirty}:{csrf:string;onError:(e:unknown)=>v
     <label>Preview pattern<select value={patternID} onChange={e=>setPatternID(e.target.value)}><option value="">Mapping only</option>{patterns.map(p=><option key={p.id} value={p.id}>{p.design.name} · revision {p.revision}{p.design.effect==='native'?' (preview unavailable)':''}</option>)}</select></label>
    </section>
   </div>:<section className="panel empty"><h2>Your house, in lights</h2><p>Start with a straight-on photo of the roofline. Add another view for the side of the house; both can use the same physical bulbs.</p></section>}
-  <div className="house-toolbar house-save"><button className="button primary" disabled={!dirty||busy} onClick={()=>void save()}>Save house mapping</button><span className="muted">{dirty?'Unsaved changes':`Saved revision ${saved?.revision}`} · All runs uncalibrated</span><button className="button secondary" onClick={()=>download(draft)}>Export layout</button><button className="button secondary" onClick={()=>request<{revisions:SavedHouse[]}>('/api/v1/house/revisions').then(r=>setHistory(r.revisions)).catch(onError)}>History</button></div>
+  <div className="house-toolbar house-save"><button className="button primary" disabled={!dirty||busy} onClick={()=>void save()}>Save house mapping</button><span className="muted">{dirty?'Unsaved changes':`Saved revision ${saved?.revision}`} · All runs uncalibrated</span><button className="button secondary" onClick={()=>download(draft)}>Export layout</button><label className="button secondary house-upload">Import layout<input type="file" accept="application/json,.json" disabled={busy} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void importLayout(file)}}/></label><button className="button secondary" onClick={()=>request<{revisions:SavedHouse[]}>('/api/v1/house/revisions').then(r=>setHistory(r.revisions)).catch(onError)}>History</button></div>
   {!!history.length&&<section className="panel house-history"><h2>Saved revisions</h2>{history.map(h=><div className="row" key={h.revision}><span>Revision {h.revision} · {new Date(h.updated).toLocaleString()}</span><button className="button secondary" onClick={()=>{if(!dirty||window.confirm('Replace your draft with this saved revision?'))change(l=>Object.assign(l,clone(h.layout)))}}>Use as draft</button></div>)}</section>}
  </>;
 }

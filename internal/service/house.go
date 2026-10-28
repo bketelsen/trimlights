@@ -90,6 +90,21 @@ func registerHouse(mux *http.ServeMux, store *storage.Store) {
 		}
 		houseResponse(w, h)
 	})
+	mux.HandleFunc("POST /api/v1/house/validate", func(w http.ResponseWriter, r *http.Request) {
+		var l house.Layout
+		if !readJSONLimit(w, r, &l, 512<<10) {
+			return
+		}
+		if err := l.Validate(); err != nil {
+			jsonError(w, 400, err.Error())
+			return
+		}
+		if err := store.ValidateHouse(r.Context(), l); err != nil {
+			houseError(w, err)
+			return
+		}
+		jsonResponse(w, 200, map[string]any{"layout": l})
+	})
 	mux.HandleFunc("PUT /api/v1/house", func(w http.ResponseWriter, r *http.Request) {
 		v, ok := revision(w, r)
 		if !ok {

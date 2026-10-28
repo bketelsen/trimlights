@@ -383,3 +383,18 @@ restored controller access remains disabled despite a configured host.
 A homelab recovery drill and its runtime checks are required before counting the
 operational acceptance item complete. In-app backup controls, automated retention
 and off-host replication remain outside this implemented CLI checkpoint.
+
+
+### Recovery drill and layout draft import — 2026-10-28
+
+The homelab recovery drill passed: a live private backup restored into a separate
+network-disabled container, validated its OIDC settings, and rejected controller
+refresh despite a configured host. The temporary container was removed. The actual
+household backup had no photos or patterns yet; populated recovery remains covered
+by synthetic tests and must be repeated after household data is added.
+
+House now imports exported layout JSON as a validated draft, preserves current
+edits on failure, and requires review/save before changing shared state. Missing
+photo references require restoring the matching full backup; layout files contain
+geometry only. The owner has deferred live controller testing. Physical command
+verification and calibration remain pending while software development continues.

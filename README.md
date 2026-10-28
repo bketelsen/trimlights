@@ -116,8 +116,9 @@ Save the layout to preview it in Library or while selecting a calendar scene.
 
 All mappings are uncalibrated. Preview colors come from the software pattern model;
 opaque native effects cannot be previewed. Actual wiring and real-light comparison
-still need verification. Photo deletion and layout-file import are not implemented;
-exported layout drafts can currently be retained for manual recovery only.
+still need verification. Photo deletion is not implemented. Export/import layout JSON to recover drafts;
+imports are validated and loaded for review before saving. Layout JSON does not
+include photos: restore a full backup to recover images and matching photo IDs.
 
 ## Calendar and preview
 

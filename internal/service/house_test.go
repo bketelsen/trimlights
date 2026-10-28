@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"image"
 	"image/png"
@@ -54,6 +55,33 @@ func TestPhotoAPIRequiresAuthAndSanitizesBeforePersistence(t *testing.T) {
 	l := house.Default()
 	l.Views = []house.View{{PhotoID: p.ID, Mappings: []house.Mapping{}}}
 	raw, _ := json.Marshal(l)
+	for _, body := range [][]byte{[]byte(`null`), []byte(`{"schema":1,"runs":[],"views":[],"calibrated":true}`), []byte(`{"schema":1,"runs":[],"views":[{"photo_id":"missing","turns":0,"mappings":[]}]}`), []byte(strings.Repeat(" ", 512<<10) + "{}")} {
+		response := call("POST", "/api/v1/house/validate", body, true, "")
+		if response.Code != 400 {
+			t.Fatal("invalid import accepted", response.Code, response.Body.String())
+		}
+	}
+	if response := call("POST", "/api/v1/house/validate", raw, false, ""); response.Code != 401 {
+		t.Fatal(response.Code)
+	}
+	response := call("POST", "/api/v1/house/validate", raw, true, "")
+	if response.Code != 200 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	var validated struct {
+		Layout house.Layout `json:"layout"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &validated); err != nil || validated.Layout.Views[0].PhotoID != p.ID {
+		t.Fatal("invalid validated layout", err)
+	}
+	before, err := store.HouseHistory(context.Background())
+	if err != nil || len(before) != 1 {
+		t.Fatal("validation mutated revisions", err)
+	}
+	operations, err := store.Operations(context.Background())
+	if err != nil || len(operations) != 0 {
+		t.Fatal("validation contacted controller", err)
+	}
 	for _, v := range []struct {
 		version string
 		code    int

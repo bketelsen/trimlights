@@ -12,7 +12,7 @@ import (
 
 var ErrHouseConflict = errors.New("house mapping changed on another device; keep your draft or reload before saving")
 var ErrPhotoLimit = errors.New("household photo limit reached (20)")
-var ErrPhotoReference = errors.New("layout references a photo that does not exist")
+var ErrPhotoReference = errors.New("layout references a photo that does not exist in this household; restore the matching full backup first")
 
 type Photo struct {
 	ID      string    `json:"id"`
@@ -130,14 +130,8 @@ func (s *Store) SaveHouse(ctx context.Context, expected int, l house.Layout, act
 	if current != expected {
 		return SavedHouse{}, ErrHouseConflict
 	}
-	for _, v := range l.Views {
-		var exists bool
-		if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM photos WHERE id=?)", v.PhotoID).Scan(&exists); err != nil {
-			return SavedHouse{}, err
-		}
-		if !exists {
-			return SavedHouse{}, ErrPhotoReference
-		}
+	if err = checkHousePhotos(ctx, tx, l); err != nil {
+		return SavedHouse{}, err
 	}
 	h := SavedHouse{expected + 1, l, actor, time.Now().UTC()}
 	if err = insertHouse(ctx, tx, h); err != nil {
@@ -156,6 +150,31 @@ func insertHouse(ctx context.Context, tx *sql.Tx, h SavedHouse) error {
 	for _, v := range h.Layout.Views {
 		if _, err = tx.ExecContext(ctx, "INSERT INTO house_photo_refs VALUES(?,?)", h.Revision, v.PhotoID); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// ValidateHouse verifies an imported draft without creating any revision.
+func (s *Store) ValidateHouse(ctx context.Context, l house.Layout) error {
+	if err := l.Validate(); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	return checkHousePhotos(ctx, tx, l)
+}
+func checkHousePhotos(ctx context.Context, tx *sql.Tx, l house.Layout) error {
+	for _, v := range l.Views {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM photos WHERE id=?)", v.PhotoID).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
+			return ErrPhotoReference
 		}
 	}
 	return nil
