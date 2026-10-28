@@ -352,3 +352,12 @@ The owner confirmed real Pocket ID desktop sign-in. Actual iPhone uploads, phone
 passkeys, the second household identity, physical calibration and real-light
 comparison remain open. Photo deletion and layout-file import are not implemented.
 This checkpoint does not enable controller writes or server-owned scheduling.
+
+
+### Phone authentication acceptance — 2026-10-28
+
+The owner confirmed phone access with a passkey after the desktop sign-in check.
+This verifies real mobile authentication for the owner. It does not yet establish
+second-user sign-in, home-screen behavior, ordinary iPhone photo upload, roofline
+editing or cross-phone synchronization; those remain in the
+[v1 acceptance contract](../specs/v1-acceptance.md).

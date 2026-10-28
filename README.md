@@ -15,8 +15,9 @@ Trimlight application or a general-purpose controller driver.
 
 - Pocket ID authorization-code login with PKCE, subject allowlisting, sessions and
   CSRF protection; simulated-provider tests pass. The initial TrueNAS/Caddy deployment
-  passes readiness and login-redirect checks; the owner has signed in on desktop.
-  Both phones and the second household account remain acceptance work.
+  passes readiness and login-redirect checks; the owner has confirmed desktop
+  sign-in and phone passkey access. The second household account and mobile
+  task workflows remain acceptance work.
 - Shared pattern library: static/chase software previews, color runs, brightness,
   favorites, duplication, JSON import/export, revision history and stale-edit detection.
 - Import opaque native patterns from a cached snapshot without guessing their effect.

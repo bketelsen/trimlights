@@ -5,7 +5,8 @@ exist. OIDC login and the initial read-only mobile UI are implemented and tested
 locally. An initial TrueNAS/Caddy deployment passes HTTPS, readiness and login-redirect
 checks with controller access disabled. The shared pattern editor now supports
 revisions, conflict detection, favorites, import/export and software previews.
-Desktop Pocket ID sign-in is confirmed. Both-phone acceptance, hardware
+Desktop Pocket ID sign-in and owner phone passkey access are confirmed.
+Second-user and mobile workflow acceptance, hardware
 controls, schedule execution and physical calibration remain in progress. House
 photo uploads, manual mapping and software previews are implemented. Calendar editing,
 versioned saves and deterministic intent preview are implemented.

@@ -20,7 +20,8 @@ in SQLite, serializes explicit refresh requests, and requires a private API toke
 Alternatively, household mode uses Pocket ID OIDC and serves the embedded React
 UI. Initial screens show cached controller patterns, daily schedules and refresh
 history. Authentication has simulated-provider coverage and confirmed desktop
-Pocket ID sign-in; both-phone acceptance remains open. The initial TrueNAS app and public Caddy HTTPS route
+Pocket ID sign-in and owner-confirmed phone passkey access. Second-user sign-in
+and mobile task workflows remain open. The initial TrueNAS app and public Caddy HTTPS route
 are deployed with controller access disabled; readiness, API authentication gates
 and the OIDC redirect have passed integration checks.
 Shared pattern editing, software strip previews, calendar editing and calendar
