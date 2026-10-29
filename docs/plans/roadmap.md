@@ -637,3 +637,9 @@ save/preview, house color preview, refresh-dialog cancellation and Settings acti
 were exercised. Layouts were inspected at 1200 px and 390 px, with Home/Calendar
 also checked at 320 px without horizontal overflow. No household controller
 commands or test-data writes were made to production.
+
+The image from commit `56824b5` is deployed after a private backup. CI and both
+architecture builds passed. The app is RUNNING with healthy HTTPS endpoints;
+served JavaScript/CSS match the checked build byte-for-byte. Household record
+counts, sessions, last controller operation and disabled Calendar ownership are
+unchanged. The updated sign-in page was also verified in the live browser.
