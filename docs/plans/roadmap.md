@@ -518,3 +518,19 @@ or storage mutations from preparation; the checked build is deployed. Sunday
 clock encoding and timer-boundary behavior still require protocol evidence, then
 runtime delivery/reconciliation and a real scheduled evening. Preparation does
 not satisfy Phase 4 execution acceptance.
+
+
+Validation/deployment: `make check` passes with 17 frontend tests, Go race tests
+and 261 checked documentation links. Synthetic tests cover historical pinned
+revisions, changed slots, disabled/expired references, conflicts, missing/errored
+snapshots, unsupported native entries, API validation and no preparation writes.
+Browser automation could not open a tab because its access host was unavailable;
+visual/mobile acceptance of this panel remains outstanding.
+
+Image `sha-d7c362582b5e8398b7171f6854e5ef3b4fbae2b8` passed CI and is running on
+TrueNAS. A fresh private backup preceded the image-only update. HTTPS health and
+readiness return 200, both preparation endpoints reject anonymous requests with
+401, and the new UI asset is served. Schema 6, sessions, pattern/calendar revision
+counts and operation history were unchanged; startup created no controller
+operation. This preparation checkpoint is complete; automatic execution remains
+unimplemented and disabled.
