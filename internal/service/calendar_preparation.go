@@ -89,7 +89,7 @@ func prepareReadiness(plan schedule.Plan, input storage.CalendarInputs, now time
 	out := readinessReport{Timezone: plan.Timezone, CheckedAt: now, Until: until, Revision: input.Revision, Source: sourceOf(input.Observation.Snapshot), Bindings: []calendarBinding{}, Issues: preview.Issues, Current: preview.Segments[0], Blockers: []preparationBlocker{
 		{Code: "sunday_clock_unverified", Message: "Sunday controller clock encoding still needs verification before seven-day scheduling."},
 		{Code: "timer_handoff_unverified", Message: "Native timer boundaries still need testing in MANUAL/OFF before Calendar can own the lights."},
-		{Code: "runtime_unavailable", Message: "Automatic Calendar delivery is not implemented. Saving or checking this plan does not enable it."},
+		{Code: "runtime_unavailable", Message: "Automatic scheduling cannot be enabled yet; controller protocol and handoff verification are still required."},
 	}}
 	if len(preview.Segments) > 1 {
 		out.Next = &preview.Segments[1]

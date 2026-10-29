@@ -1,7 +1,9 @@
 # Spec: Authenticated native controls
 
 The hosted application exposes verified native controller operations through one
-worker. This contract excludes custom effect writes and server calendar execution.
+worker. This contract excludes custom effect writes. The dormant
+[Calendar runner](calendar-runtime.md) reuses delivery with additional ownership
+and revision guards; production Calendar activation remains unavailable.
 
 ## Interface
 
@@ -47,11 +49,13 @@ or persistence error is outstanding. Unknown/missing snapshots require refresh.
   block further controls until restart; refresh alone cannot clear that block.
 - Schema 6 adds `control_audits(id,body)` referencing operations with cascading
   retention. Existing schemas MUST be backed up before migration. Backups/restores
-  MUST support schemas 5 and 6 and retain control audits; restoration remains guarded.
+  MUST support schemas 5–7 and retain control audits; restoration remains guarded.
 - The UI MUST disable duplicate submissions, preserve errors across cached polls,
   distinguish reported OFF/MANUAL/TIMER, and label native slots separately from
   software Library designs. It MUST explain that manual/OFF lasts until another
   command and TIMER returns to controller scheduling, not the app Calendar.
+- Schema 7 ordinary controls MUST pause active Calendar ownership in their pending
+  audit transaction before delivery, as specified by the [runtime contract](calendar-runtime.md).
 - Authentication, origin checks, CSRF and restore-guard behavior MUST apply to this
   endpoint. The client MUST never retry a failed mutation automatically.
 

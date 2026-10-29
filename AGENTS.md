@@ -80,6 +80,12 @@ implementation. Use absolute dates in documentation.
   cached snapshot through `storage.CalendarInputs`, re-parses wire bytes, and
   matches pinned native designs by original slot and parameters. Copy only reviewed
   timer proposals into drafts; preparation must never invoke the controller worker.
+- Calendar execution is implemented but dormant. Keep production activation absent
+  until protocol/handoff verification; `service.Run` suspends persisted ownership.
+  The runner must use the existing worker, journal pending intent atomically through
+  storage, honor interval deadlines and pause on external changes or uncertainty.
+  Never replay interrupted deliveries or turn a restored checkpoint into permission
+  to control hardware. See [runtime contract](docs/specs/calendar-runtime.md).
 
 - House photos are normalized in `internal/house` before storage. Keep byte/pixel
   limits, EXIF transforms and metadata removal intact; never serve upload originals.

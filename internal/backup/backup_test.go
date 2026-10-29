@@ -89,7 +89,7 @@ func TestSchemaFiveBackupStillRestoresAndMigrates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = db.Exec("DROP TABLE control_audits; PRAGMA user_version=5")
+	_, err = db.Exec("DROP TABLE calendar_runtime; DROP TABLE control_audits; PRAGMA user_version=5")
 	db.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -309,5 +309,91 @@ func TestBackupMissingSourceAndCancellationLeaveNoOutput(t *testing.T) {
 	}
 	if _, err := os.Stat(dest); !os.IsNotExist(err) {
 		t.Fatal(err)
+	}
+}
+
+func TestSchemaSixBackupMigratesAndRuntimeRestorePauses(t *testing.T) {
+	for _, old := range []bool{true, false} {
+		t.Run(map[bool]string{true: "schema-six", false: "schema-seven"}[old], func(t *testing.T) {
+			source, dir := fixture(t)
+			ctx := context.Background()
+			db, err := openDB(filepath.Join(dir, "trimlights.db"), false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if old {
+				_, err = db.Exec("DROP TABLE calendar_runtime; PRAGMA user_version=6")
+			} else {
+				_, err = db.Exec(`UPDATE calendar_runtime SET body='{"version":4,"status":"active","actor":"fixture","owned_sha256":"fixture","pending_operation":"interrupted","last_operation":"interrupted"}'`)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			db.Close()
+			if !old {
+				// Keep immutable audit provenance independently of the reset ownership state.
+				now := time.Now().UTC()
+				if err = source.Record(ctx, storage.Observation{Source: "fixture"}, storage.Operation{ID: "calendar-history", Actor: "calendar", Started: now, Finished: now, Control: &storage.ControlAudit{Outcome: "verified", Calendar: &storage.CalendarDelivery{Version: 2, Revision: 2, Action: schedule.Action{Kind: "off"}, From: now, Until: now.Add(time.Hour)}}}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			archive := filepath.Join(t.TempDir(), "runtime.zip")
+			report, err := Create(ctx, dir, archive, configuration(), "fixture")
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := 7
+			if old {
+				want = 6
+			}
+			if report.Schema != want {
+				t.Fatal(report)
+			}
+			output := filepath.Join(t.TempDir(), "restored")
+			if _, err = Restore(ctx, archive, output); err != nil {
+				t.Fatal(err)
+			}
+			restored, err := storage.Open(filepath.Join(output, "data"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer restored.Close()
+			state, err := restored.CalendarRuntime(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if old {
+				if state.Status != "disabled" {
+					t.Fatal(state)
+				}
+			} else {
+				if state.Status != "paused" || state.PendingID != "" || state.LastOperation != "interrupted" || state.Version != 5 {
+					t.Fatal(state)
+				}
+				original, err := source.CalendarRuntime(ctx)
+				if err != nil || original.Status != "active" || original.PendingID != "interrupted" {
+					t.Fatal("backup changed source", original, err)
+				}
+				ops, err := restored.Operations(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, op := range ops {
+					if op.ID == "calendar-history" {
+						found = true
+						if op.Control.Calendar == nil || op.Control.Calendar.Revision != 2 {
+							t.Fatal(op)
+						}
+					}
+				}
+				if !found {
+					t.Fatal("calendar provenance lost")
+				}
+			}
+			if _, err = os.Stat(filepath.Join(output, "data/controller-disabled")); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }

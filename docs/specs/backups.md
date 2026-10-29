@@ -15,7 +15,7 @@ output path. Backup requires existing data and OIDC configuration. Restore emits
 `data/trimlights.db`, `config/oidc.json`, `config/pocket-id.secret` and
 `data/controller-disabled`. The app reads its OIDC configuration from that directory.
 
-The archive includes `manifest.json` with `format: 1`, `schema: 5` or `6`, `created`,
+The archive includes `manifest.json` with `format: 1`, `schema: 5`, `6` or `7`, `created`,
 `version`, and `files` entries (`name`, `size`, `sha256`) for exactly the three data
 and config files. All restored files are private (0600), directories 0700.
 
@@ -31,10 +31,11 @@ and config files. All restored files are private (0600), directories 0700.
 - Restore MUST reject unsupported formats/schemas, duplicate/unexpected entries,
   symlinks, path traversal, missing files, size/hash mismatches and invalid databases.
   Database limit is 1 GiB, OIDC config 64 KiB, secret 4096 bytes, manifest 16 KiB.
-- Manifest schema MUST match the extracted database schema. Schema 5 backups remain
-  supported; opening their restored database migrates to schema 6 with a backup.
+- Manifest schema MUST match the extracted database schema. Schema 5 and 6 backups remain
+  supported; opening their restored database migrates to schema 7 with a backup.
 - Restore MUST validate SQLite integrity and foreign keys and require the known
-  application tables. It MUST clear login flows and sessions before publishing.
+  application tables. It MUST clear login flows and sessions before publishing. Schema 7 ownership
+  MUST be paused with no pending operation; historical delivery audits are retained.
 - Restore MUST write the controller-disabled marker. Service startup MUST honor it
   regardless of the host environment/flag. Restoring MUST never start a service.
 - A dry-run MUST create no files or directories and open no database or network
@@ -52,6 +53,8 @@ backups remain separate and do not replace a full bundle with private configurat
 - Rationale: [ADR-0009](../adr/0009-consistent-portable-backups.md).
 - Schema 6 rationale: [ADR-0011](../adr/0011-audited-household-native-controls.md),
   [native control audit](native-controls.md).
+- Schema 7 rationale: [ADR-0013](../adr/0013-journal-calendar-execution.md),
+  [calendar runtime](calendar-runtime.md).
 - Context: [application design](../design/application.md),
   [backup operations](../design/backup-operations.md).
 - Delivery: [roadmap](../plans/roadmap.md).

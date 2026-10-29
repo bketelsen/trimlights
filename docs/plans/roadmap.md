@@ -110,7 +110,9 @@ Implements [household authentication](../design/application.md#household-state-a
 Implements [scheduling ownership](../design/application.md#scheduling-and-control-ownership)
 and [schedule acceptance](../specs/v1-acceptance.md#rules). Cached migration and
 preflight follow [ADR-0012](../adr/0012-prepare-native-calendar-handoff.md) and the
-[preparation contract](../specs/calendar-preparation.md).
+[preparation contract](../specs/calendar-preparation.md). Delivery machinery follows
+[ADR-0013](../adr/0013-journal-calendar-execution.md) and the
+[dormant runtime contract](../specs/calendar-runtime.md).
 
 - Specify and test weekly/date-range rules, one-off exceptions, sunset/sunrise
   offsets, overnight windows, timezone/DST behavior, priorities and conflicts.
@@ -534,3 +536,23 @@ readiness return 200, both preparation endpoints reject anonymous requests with
 counts and operation history were unchanged; startup created no controller
 operation. This preparation checkpoint is complete; automatic execution remains
 unimplemented and disabled.
+
+
+### Dormant calendar execution worker — 2026-10-28
+
+[ADR-0013](../adr/0013-journal-calendar-execution.md) and the
+[runtime contract](../specs/calendar-runtime.md) implement the next part of the
+[scheduling design](../design/application.md#scheduling-and-control-ownership).
+The engine runs through the existing serialized worker, resolves pinned native
+slots, checks current intent after fresh reads and rejects expired or superseded
+queued actions. Schema 7 journals ownership and pending delivery with its audit;
+completion commits the verified checkpoint. Reconnect skips missed events,
+manual controls yield ownership, and uncertain/interrupted operations pause.
+
+**Done when:** synthetic tests prove current-intent recovery, expiring overrides,
+DST intervals, external-change handling, stale queued requests, durable audit
+boundaries and no ambiguous retries; migrations/backups preserve household data
+and restore cannot activate execution. Production activation is explicitly outside
+this checkpoint: no enable flag/endpoint or runner is started by the service.
+Sunday encoding, native timer-boundary tests, the activation/handoff workflow and
+a real scheduled evening remain required for Phase 4 acceptance.

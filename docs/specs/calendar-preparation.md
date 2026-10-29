@@ -36,8 +36,8 @@ controller operations.
   reported for the stated horizon only. The default intent is explicitly off.
 - Missing, unsupported, errored, undated, future-dated or older-than-five-minute
   cached observations are blockers. A readiness request MUST NOT refresh them.
-- Unverified Sunday clock encoding, native timer handoff and unavailable runtime
-  execution are explicit blockers regardless of pattern matches. A report can
+- Unverified Sunday clock encoding, native timer handoff and unavailable production
+  activation are explicit blockers regardless of pattern matches. A report can
   never authorize a physical command. Future execution MUST recheck fresh state.
 - Native copy supports repetition 1 (every day) and 0 (today only at the chosen
   date), with start strictly before off. Equal/overnight or unknown repetition
@@ -65,6 +65,7 @@ controller operations.
 ## References
 
 - Rationale: [ADR-0012](../adr/0012-prepare-native-calendar-handoff.md).
+- Runtime machinery: [dormant worker](calendar-runtime.md); preparation does not start it.
 - Context: [application design](../design/application.md#scheduling-and-control-ownership).
 - Related: [calendar contract](schedules.md), [native controls](native-controls.md),
   [roadmap](../plans/roadmap.md#phase-4--full-scheduling-and-first-household-beta-l).

@@ -21,7 +21,11 @@ func (f controllerFunc) Snapshot(ctx context.Context, offset int) (*trimlight.Sn
 }
 func setup(t *testing.T, c Controller) (*storage.Store, *Worker) {
 	t.Helper()
-	s, err := storage.Open(t.TempDir())
+	return setupIn(t, c, t.TempDir())
+}
+func setupIn(t *testing.T, c Controller, dir string) (*storage.Store, *Worker) {
+	t.Helper()
+	s, err := storage.Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

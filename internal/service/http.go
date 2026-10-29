@@ -96,8 +96,13 @@ func apiHandler(store *storage.Store, worker *Worker) http.Handler {
 			seconds := time.Since(state.Snapshot.QueriedAt).Seconds()
 			age = &seconds
 		}
+		runtime, err := store.CalendarRuntime(r.Context())
+		if err != nil {
+			jsonError(w, 500, "cannot read calendar ownership")
+			return
+		}
 		controls, reason := worker.ControlAvailability(state)
-		jsonResponse(w, 200, map[string]any{"observation": state, "worker": worker.Status(), "snapshot_age_seconds": age, "capabilities": map[string]any{"snapshot": worker.controller != nil, "clock_sync_possible": true, "power": controls, "pattern_apply": controls, "native_controls": controls, "schedule_write": false, "reason": reason}})
+		jsonResponse(w, 200, map[string]any{"observation": state, "calendar_runtime": runtime, "worker": worker.Status(), "snapshot_age_seconds": age, "capabilities": map[string]any{"snapshot": worker.controller != nil, "clock_sync_possible": true, "power": controls, "pattern_apply": controls, "native_controls": controls, "schedule_write": false, "calendar_execution": false, "reason": reason}})
 	})
 	mux.HandleFunc("GET /api/v1/operations", func(w http.ResponseWriter, r *http.Request) {
 		ops, err := store.Operations(r.Context())
@@ -182,6 +187,10 @@ func Run(ctx context.Context, c Config) error {
 	}
 	defer store.Close()
 	if err := store.RecoverControlIntents(ctx); err != nil {
+		return err
+	}
+	// Hard gate: no flag or saved runtime state can enable unattended delivery.
+	if err := store.SuspendCalendar(ctx); err != nil {
 		return err
 	}
 	worker := NewWorker(store, c.Controller, c.ScheduleOffset)

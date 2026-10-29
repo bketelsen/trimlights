@@ -132,8 +132,8 @@ func inspect(ctx context.Context, path string) (Report, error) {
 	if err = db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&r.Schema); err != nil {
 		return r, err
 	}
-	if r.Schema != 5 && r.Schema != 6 {
-		return r, errors.New("backup requires supported database schema 5 or 6")
+	if r.Schema != 5 && r.Schema != 6 && r.Schema != 7 {
+		return r, errors.New("backup requires supported database schema 5, 6 or 7")
 	}
 	var integrity string
 	if err = db.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&integrity); err != nil || integrity != "ok" {
@@ -159,8 +159,15 @@ func inspect(ctx context.Context, path string) (Report, error) {
 		return r, errors.New("unexpected views or triggers in application database")
 	}
 	columns := map[string]string{"observation": "id,body", "operations": "id,started,finished,actor,error", "login_flows": "state_hash,browser_hash,nonce,verifier,expires", "sessions": "hash,subject,name,csrf,expires", "pattern_heads": "id,revision,archived", "pattern_revisions": "id,revision,body,actor,created,archived", "pattern_imports": "slot,pattern_id", "schedule_revisions": "revision,body,actor,created", "schedule_references": "schedule_revision,rule_id,name,enabled,pattern_id,pattern_revision", "photos": "id,name,width,height,created,actor,image,thumbnail", "house_revisions": "revision,body,actor,created", "house_photo_refs": "revision,photo_id"}
-	if r.Schema == 6 {
+	if r.Schema >= 6 {
 		columns["control_audits"] = "id,body"
+	}
+	if r.Schema >= 7 {
+		columns["calendar_runtime"] = "id,body"
+		var valid int
+		if err = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM calendar_runtime WHERE id=1 AND json_valid(body) AND json_type(body,'$.version')='integer' AND json_extract(body,'$.version')>=1 AND json_extract(body,'$.status') IN ('disabled','active','paused')`).Scan(&valid); err != nil || valid != 1 {
+			return r, errors.New("database has invalid calendar ownership state")
+		}
 	}
 	for table, fields := range columns {
 		rows, err = db.QueryContext(ctx, "SELECT "+fields+" FROM "+table+" LIMIT 0")
@@ -351,7 +358,7 @@ func Restore(ctx context.Context, input, output string) (Report, error) {
 	if err = strictJSON(raw, &manifest); err != nil {
 		return Report{}, err
 	}
-	if manifest.Format != 1 || (manifest.Schema != 5 && manifest.Schema != 6) || len(manifest.Files) != 3 || manifest.Created.IsZero() {
+	if manifest.Format != 1 || (manifest.Schema != 5 && manifest.Schema != 6 && manifest.Schema != 7) || len(manifest.Files) != 3 || manifest.Created.IsZero() {
 		return Report{}, errors.New("unsupported backup manifest")
 	}
 	seen := map[string]bool{}
@@ -407,7 +414,11 @@ func Restore(ctx context.Context, input, output string) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	_, err = db.ExecContext(ctx, "PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; BEGIN; DELETE FROM sessions; DELETE FROM login_flows; COMMIT;")
+	clear := "PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; BEGIN; DELETE FROM sessions; DELETE FROM login_flows;"
+	if report.Schema >= 7 {
+		clear += `UPDATE calendar_runtime SET body=json_set(body,'$.version',json_extract(body,'$.version')+1,'$.status','paused','$.pending_operation','','$.reason','Restored ownership is paused; review one controller owner before activation.');`
+	}
+	_, err = db.ExecContext(ctx, clear+"COMMIT;")
 	err = errors.Join(err, db.Close())
 	if err != nil {
 		return Report{}, err

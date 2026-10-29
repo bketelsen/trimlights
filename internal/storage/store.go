@@ -66,10 +66,10 @@ func (s *Store) init() error {
 	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 6 {
+	if version > 7 {
 		return fmt.Errorf("database schema %d is newer than this binary supports", version)
 	}
-	if version == 6 {
+	if version == 7 {
 		return nil
 	}
 	if version > 0 {
@@ -146,6 +146,12 @@ func (s *Store) init() error {
 			return err
 		}
 	}
+	if version < 7 {
+		if _, err = tx.Exec(`CREATE TABLE IF NOT EXISTS calendar_runtime(id INTEGER PRIMARY KEY CHECK(id=1),body BLOB NOT NULL);
+ INSERT OR IGNORE INTO calendar_runtime VALUES(1,'{"version":1,"status":"disabled"}'); PRAGMA user_version=7;`); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
 }
 func (s *Store) Close() error { return errors.Join(s.db.Close(), s.lock.Close()) }
@@ -173,6 +179,7 @@ type Operation struct {
 }
 
 type ControlAudit struct {
+	Calendar       *CalendarDelivery        `json:"calendar,omitempty"`
 	Request        trimlight.ControlRequest `json:"request"`
 	Outcome        string                   `json:"outcome"`
 	WriteAttempted bool                     `json:"write_attempted"`
@@ -203,6 +210,9 @@ func (s *Store) record(ctx context.Context, o Observation, op Operation, complet
 		return err
 	}
 	defer tx.Rollback()
+	if err = calendarControl(ctx, tx, o, op, complete); err != nil {
+		return err
+	}
 	if _, err = tx.ExecContext(ctx, "INSERT INTO observation VALUES(1,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body", b); err != nil {
 		return err
 	}
@@ -290,6 +300,16 @@ func (s *Store) RecoverControlIntents(ctx context.Context) error {
 			return err
 		}
 		if _, err = tx.ExecContext(ctx, `UPDATE observation SET body=json_set(body,'$.last_error',?) WHERE id=1`, message); err != nil {
+			return err
+		}
+	}
+	state, err := runtimeIn(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if state.PendingID != "" {
+		state.Status, state.Reason, state.PendingID = "paused", message, ""
+		if err = writeRuntime(ctx, tx, state); err != nil {
 			return err
 		}
 	}

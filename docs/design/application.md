@@ -200,10 +200,25 @@ for manual resolution. Preparation neither saves nor invokes the worker; ordinar
 compare-and-swap save remains separate. UI results are invalidated by draft or
 revision changes. Source timestamps remain visible because checks use cached state.
 
-Execution remains disabled. Future runtime reconciliation will use this evaluator
-at the current instant after restart/reconnect instead of replaying old events.
-Persisted override expiry is already absolute; actual command delivery, execution
-history and manual override/resume on hardware remain to be built and verified.
+Production execution remains disabled. Following
+[ADR-0013](../adr/0013-journal-calendar-execution.md), the dormant
+[runtime worker](../specs/calendar-runtime.md) now evaluates current intent after
+fresh reads and delivers through the existing queue/driver. SQLite schema 7 retains
+ownership version, last verified fingerprint and pending operation. Pending intent,
+audit and baseline commit together; completion and observation advance ownership
+atomically. Calendar revision and interval guards reject stale queued commands.
+Transport deadlines also bound delivery to the intent's remaining lifetime.
+
+Read failures back off; reconnect evaluates now. Resolved DST intervals and
+absolute override expiry use the existing evaluator. Unsupported references,
+current conflicts, skipped occurrences, external state and ambiguous writes pause
+execution. Ordinary household controls pause ownership before sending. Interrupted
+intents are never replayed. Backup restore pauses copied ownership and retains its
+controller-disabled guard. Service startup suspends active checkpoints and never
+starts the runner: there is no enable endpoint or runtime flag. Tests arm supported
+MANUAL/OFF snapshots with fake time and synthetic hardware. Physical handoff,
+activation/resume UI and a scheduled household evening remain unimplemented or
+unverified; a tested dormant engine is not an enabled household scheduler.
 
 Before taking over, preserve native schedules and validate manual/off/timer mode
 semantics. Native timers and the service must not compete. Unsupported native

@@ -69,8 +69,9 @@ bounds. Timezones are embedded in the Go binary for scratch-container deployment
 7. No pattern revision is deleted. Editing a referenced pattern does not alter the
    pinned plan. The pattern UI MUST explain references before edits/archives.
 8. Persist override expiry as an absolute instant. Clearing the override resumes
-   the calendar in preview. Runtime execution, ownership handoff and delivery
-   verification remain separate outstanding requirements.
+   the calendar in preview. Production activation and ownership handoff remain outstanding. The dormant
+   [runtime worker](calendar-runtime.md) has synthetic delivery/recovery coverage;
+   saving remains independent of execution.
 
 9. Export MUST download the current draft, including unsaved edits, timezone,
    optional location and absolute override timestamps. Pattern bodies are excluded.
