@@ -666,3 +666,9 @@ previews changed between captured frames, stayed identical while paused, and
 resumed without console errors. Zero-speed controls show the guidance and become
 available again when speed increases. Production pattern data was only read to
 reproduce the reported settings; no controller command was sent.
+
+Deployment: image `sha-02b31993f9009c5358d0059ddf11ffc8feb7cc44` passed CI and both
+architecture builds, and is running after a private pre-update backup. HTTPS
+health/readiness pass and served assets match the checked build. Schema 7,
+household record counts, last controller operation and disabled Calendar ownership
+are unchanged. Scheduling hardware observations remain pending.
