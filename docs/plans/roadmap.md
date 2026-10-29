@@ -108,7 +108,9 @@ Implements [household authentication](../design/application.md#household-state-a
 ## Phase 4 — Full scheduling and first household beta (L)
 
 Implements [scheduling ownership](../design/application.md#scheduling-and-control-ownership)
-and [schedule acceptance](../specs/v1-acceptance.md#rules).
+and [schedule acceptance](../specs/v1-acceptance.md#rules). Cached migration and
+preflight follow [ADR-0012](../adr/0012-prepare-native-calendar-handoff.md) and the
+[preparation contract](../specs/calendar-preparation.md).
 
 - Specify and test weekly/date-range rules, one-off exceptions, sunset/sunrise
   offsets, overnight windows, timezone/DST behavior, priorities and conflicts.
@@ -497,3 +499,22 @@ reported, and return to the original physical appearance with TIMER reported.
 The service audit independently records both controls verified without errors.
 This native-control deployment checkpoint is complete. Full mobile workflow/layout
 acceptance, the second household identity and the broader v1 remain open.
+
+
+### Calendar handoff preparation — 2026-10-28
+
+Following [ADR-0012](../adr/0012-prepare-native-calendar-handoff.md), Calendar now
+implements the [preparation contract](../specs/calendar-preparation.md) within the
+[scheduling design](../design/application.md#scheduling-and-control-ownership).
+The UI checks exact pinned revisions against cached original slot bytes and shows
+current/next intent, conflicts and execution blockers. It proposes daily and dated
+one-day rules from native timers, preserves disabled/unsupported entries, and adds
+only selected rules to the existing draft. No native schedule is changed. Saving
+and controller-pattern import remain separate explicit actions.
+
+**Done when:** synthetic checks prove revision/slot matching, preservation of
+existing drafts and disabled entries, visible unsupported cases, and no controller
+or storage mutations from preparation; the checked build is deployed. Sunday
+clock encoding and timer-boundary behavior still require protocol evidence, then
+runtime delivery/reconciliation and a real scheduled evening. Preparation does
+not satisfy Phase 4 execution acceptance.

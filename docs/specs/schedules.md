@@ -2,6 +2,8 @@
 
 This contract governs saved calendar plans and the pure Go evaluator. Hardware
 execution is unavailable: every preview and saved rule MUST identify this limit.
+The separate [preparation contract](calendar-preparation.md) governs cached native
+slot checks and proposals for copying native timers; neither enables execution.
 
 ## Interface
 

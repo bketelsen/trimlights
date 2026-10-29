@@ -17,3 +17,10 @@ dialog.modal{color:#eaf0f6;margin:auto}dialog.modal::backdrop{background:#080e18
 .native-ack { display: flex; align-items: flex-start; gap: 12px; margin: 20px 0; }
 .native-ack input { flex: 0 0 22px; width: 22px; height: 22px; margin-top: 2px; }
 .native-controls .card-actions { flex-wrap: wrap; }
+
+.calendar-preparation { overflow-wrap:anywhere; }
+.calendar-preparation h3 { margin-top:1.5rem; }
+.native-copy { margin-top:1.5rem; border-top:1px solid var(--line); padding-top:1rem; }
+.native-copy summary { cursor:pointer; font-weight:600; }
+.native-timer-entries { list-style:none; padding:0; display:grid; gap:1rem; }
+.native-timer-entries li { border-left:3px solid var(--line); padding-left:1rem; }

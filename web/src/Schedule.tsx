@@ -1,15 +1,17 @@
+import {appendNativeRules} from './calendarDraft';
+import {CalendarPreparation} from './CalendarPreparation';
 import {HousePreview} from './HousePreview';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {APIError,request,SignedOut} from './api';
 import type {SavedPattern} from './pattern';
 
-type Action={kind:'off'|'pattern';pattern_id?:string;revision?:number};
+export type Action={kind:'off'|'pattern';pattern_id?:string;revision?:number};
 type Boundary={kind:'clock'|'sunrise'|'sunset';time?:string;offset_minutes?:number};
-type Rule={id:string;name:string;enabled:boolean;kind:'weekly'|'seasonal'|'exception';priority:number;from?:string;through?:string;weekdays:number[];start:Boundary;end:Boundary;end_next_day:boolean;action:Action};
-type Plan={schema:1;timezone:string;location?:{latitude:number;longitude:number};rules:Rule[];override?:{id:string;action:Action;starts_at:string;expires_at:string}};
+export type Rule={id:string;name:string;enabled:boolean;kind:'weekly'|'seasonal'|'exception';priority:number;from?:string;through?:string;weekdays:number[];start:Boundary;end:Boundary;end_next_day:boolean;action:Action};
+export type Plan={schema:1;timezone:string;location?:{latitude:number;longitude:number};rules:Rule[];override?:{id:string;action:Action;starts_at:string;expires_at:string}};
 type Saved={revision:number;plan:Plan;actor:string;updated:string};
 type Candidate={id:string;name:string;kind:string;priority:number;action:Action};
-type Preview={execution_enabled:boolean;timezone:string;segments:{from:string;until:string;action:Action;conflict:boolean;reason:string;winners:Candidate[];shadowed:Candidate[]}[];issues:{rule_id:string;date:string;message:string}[]};
+export type Preview={execution_enabled:boolean;timezone:string;segments:{from:string;until:string;action:Action;conflict:boolean;reason:string;winners:Candidate[];shadowed:Candidate[]}[];issues:{rule_id:string;date:string;message:string}[]};
 const weekdays=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 function today(zone:string){try{return new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}catch{return new Date().toISOString().slice(0,10)}}
 function actionKey(action:Action){return action.kind==='off'?'off':`${action.pattern_id}:${action.revision}`}
@@ -89,6 +91,13 @@ export function Schedule({csrf,onError,onDirty}:{csrf:string;onError:(error:unkn
   {error&&<div role="alert" className="notice field-error">{error}</div>}{notice&&<div role="status" className="notice">{notice}</div>}
   {(conflict||remoteRevision>saved.revision)&&<div className="conflict" role="status"><strong>A newer calendar is saved on another device.</strong><p>Your draft has been kept. Download it before loading the latest version if you want to keep your edits.</p><div className="action-row"><button className="button secondary" onClick={exportDraft}>Download draft</button><button className="button secondary" disabled={busy} onClick={()=>{if(!dirty||window.confirm('Discard your calendar draft and load the latest saved version?')){setSelected(null);setPreview(null);void load(true)}}}>Discard draft and load latest</button></div></div>}
   <div className="editor-toolbar"><span className="muted">Revision {saved.revision} · {dirty?'Unsaved changes':'Saved calendar'}</span><button className="button secondary" disabled={busy} onClick={exportDraft}>Export calendar</button><label className="button secondary house-upload">Import calendar<input type="file" accept="application/json,.json" disabled={busy} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void importDraft(file)}}/></label><button className="button secondary" disabled={busy} onClick={()=>void showHistory()}>History</button><button className="button primary" disabled={busy||!dirty} onClick={()=>void save()}>{busy?'Working…':'Save calendar'}</button></div>
+  <CalendarPreparation plan={draft} revision={saved.revision} csrf={csrf} busy={busy} setBusy={setBusy} onError={report} describeAction={describeAction} onAppend={(rules,reviewed,reviewedRevision)=>{
+   const current=draftRef.current;if(!current)return;
+   try{
+    if(savedRef.current?.revision!==reviewedRevision)throw new Error('The saved calendar changed. Review controller timers again.');
+    const next=appendNativeRules(current,reviewed,rules);draftRef.current=next;setDraft(next);setSelected(rules[0]?.id??null);setError('');setNotice('Selected controller timers added to your draft. Review the combined timeline, then save. Native timers and lights are unchanged.');
+   }catch(e){report(e)}
+  }}/>
   <fieldset disabled={busy} className="calendar-fields">
   <details className="panel calendar-settings"><summary>Timezone &amp; sunset location</summary><div className="calendar-grid"><label className="field">Household timezone<input value={draft.timezone} placeholder="America/New_York" onChange={e=>update({timezone:e.target.value})}/></label><label className="check-label"><input type="checkbox" checked={!!draft.location} onChange={e=>update({location:e.target.checked?{latitude:0,longitude:0}:undefined})}/>Use sunrise and sunset</label>{draft.location&&<><label className="field">Latitude<input type="number" min="-90" max="90" step="any" value={draft.location.latitude} onChange={e=>update({location:{...draft.location!,latitude:Number(e.target.value)}})}/></label><label className="field">Longitude<input type="number" min="-180" max="180" step="any" value={draft.location.longitude} onChange={e=>update({location:{...draft.location!,longitude:Number(e.target.value)}})}/></label><p className="footnote">Enter your home’s coordinates. Zero is a real location, not an automatic lookup. Solar calculations stay on the server.</p></>}</div></details>
   <div className="section-heading"><h2>Your rules</h2><button className="button primary" disabled={draft.rules.length>=100} onClick={addRule}>+ Add rule</button></div>

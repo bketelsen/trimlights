@@ -76,7 +76,10 @@ implementation. Use absolute dates in documentation.
 - Keep calendar evaluation in `internal/schedule` free of storage/network effects.
   Resolve civil-time boundaries explicitly; never rely on Go's ambiguous DST
   choice. Calendar saves and reference indexes commit atomically, pin pattern
-  revisions, and require compare-and-swap. Preview must never enable execution.
+  revisions, and require compare-and-swap. Preview must never enable execution. Calendar preparation reads a consistent
+  cached snapshot through `storage.CalendarInputs`, re-parses wire bytes, and
+  matches pinned native designs by original slot and parameters. Copy only reviewed
+  timer proposals into drafts; preparation must never invoke the controller worker.
 
 - House photos are normalized in `internal/house` before storage. Keep byte/pixel
   limits, EXIF transforms and metadata removal intact; never serve upload originals.

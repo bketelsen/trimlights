@@ -188,6 +188,18 @@ The mobile calendar supports edits, history, validated draft import/export, conf
 solar settings, override expiry and local-date timeline previews. All-day rules
 use midnight to next-day midnight. Previews are marked stale when the draft changes.
 
+[ADR-0012](../adr/0012-prepare-native-calendar-handoff.md) adds read-only
+[Calendar preparation](../specs/calendar-preparation.md). One SQLite read transaction
+loads the saved revision, cached observation and exact pinned designs. The report
+re-parses canonical controller bytes, checks slot ID and parameters, shows current
+and next intent over seven elapsed days, and exposes protocol/runtime blockers.
+Native timer proposals preserve all entries, append selected supported rules to the
+existing draft, and require a chosen date for “today only.” Unknown repetitions,
+equal/overnight times, changed slots and ambiguous Library matches remain visible
+for manual resolution. Preparation neither saves nor invokes the worker; ordinary
+compare-and-swap save remains separate. UI results are invalidated by draft or
+revision changes. Source timestamps remain visible because checks use cached state.
+
 Execution remains disabled. Future runtime reconciliation will use this evaluator
 at the current instant after restart/reconnect instead of replaying old events.
 Persisted override expiry is already absolute; actual command delivery, execution

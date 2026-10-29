@@ -73,6 +73,7 @@ func apiHandler(store *storage.Store, worker *Worker) http.Handler {
 	mux := http.NewServeMux()
 	registerPatterns(mux, store)
 	registerSchedules(mux, store)
+	registerCalendarPreparation(mux, store)
 	registerHouse(mux, store)
 	registerControls(mux, worker)
 	mux.Handle("GET /", webui.Handler())

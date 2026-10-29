@@ -107,6 +107,24 @@ type Playback struct {
 	MatchingPatternIDs []int  `json:"matching_pattern_ids"`
 }
 
+// ValidatedNativeSnapshot re-derives fields from the known wire layout rather
+// than trusting independently persisted JSON fields. It performs no hardware IO.
+func ValidatedNativeSnapshot(s *Snapshot) (*Snapshot, error) {
+	if s == nil || len(s.RawHex) != 3492*2 {
+		return nil, ErrUnsupportedControl
+	}
+	raw, err := hex.DecodeString(s.RawHex)
+	if err != nil {
+		return nil, ErrUnsupportedControl
+	}
+	parsed, err := ParseSnapshot(raw, 3306)
+	if err != nil || parsed.StableSHA256 != s.StableSHA256 || !nativeControlLayout(parsed) {
+		return nil, ErrUnsupportedControl
+	}
+	parsed.QueriedAt, parsed.ClockSyncPossible = s.QueriedAt, s.ClockSyncPossible
+	return parsed, nil
+}
+
 // ParseSnapshot uses the captured pattern layout. ScheduleOffset must be explicit
 // because preceding variable-length records have not been mapped. -1 omits them.
 func ParseSnapshot(raw []byte, scheduleOffset int) (*Snapshot, error) {

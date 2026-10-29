@@ -2,7 +2,6 @@ package trimlight
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"time"
 )
@@ -19,15 +18,8 @@ type ControlRequest struct {
 // SupportsNativeControl also handles snapshots reloaded from JSON storage, whose
 // private raw field is absent. Never trust derived JSON fields as wire evidence.
 func SupportsNativeControl(s *Snapshot) bool {
-	if s == nil || len(s.RawHex) != 3492*2 {
-		return false
-	}
-	raw, err := hex.DecodeString(s.RawHex)
-	if err != nil {
-		return false
-	}
-	parsed, err := ParseSnapshot(raw, 3306)
-	return err == nil && parsed.StableSHA256 == s.StableSHA256 && nativeControlLayout(parsed)
+	_, err := ValidatedNativeSnapshot(s)
+	return err == nil
 }
 
 type ControlResult struct {
