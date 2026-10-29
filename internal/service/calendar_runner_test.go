@@ -397,7 +397,7 @@ func TestProductionStartupCannotActivatePersistedCalendar(t *testing.T) {
 	go func() {
 		done <- Run(ctx, Config{Listen: "127.0.0.1:0", DataDir: other, APIToken: "01234567890123456789012345678901", Controller: controller, ScheduleOffset: 3306})
 	}()
-	db, err = sql.Open("sqlite", "file:"+filepath.Join(other, "trimlights.db")+"?mode=ro")
+	db, err = sql.Open("sqlite", "file:"+filepath.Join(other, "trimlights.db")+"?mode=ro&_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -59,7 +59,7 @@ func Open(dir string) (*Store, error) {
 	return s, nil
 }
 func (s *Store) init() error {
-	if _, err := s.db.Exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA synchronous=FULL;`); err != nil {
+	if _, err := s.db.Exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;`); err != nil {
 		return err
 	}
 	var version int
