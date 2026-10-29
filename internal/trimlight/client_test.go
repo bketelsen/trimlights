@@ -18,9 +18,22 @@ type emulator struct {
 	writes         []byte
 	disconnectOnce bool
 	cancelOnWrite  context.CancelFunc
+	controlWrites  [][]byte
+	onControl      func(int, []byte) bool // called under mu; true disconnects
+	timerPatternID byte
+	connections    int
+	dialFailure    bool
+	editCount      int
 }
 
 func (e *emulator) dial(ctx context.Context, _, _ string) (net.Conn, error) {
+	e.mu.Lock()
+	e.connections++
+	fail := e.dialFailure
+	e.mu.Unlock()
+	if fail {
+		return nil, errors.New("simulated controller offline")
+	}
 	client, server := net.Pipe()
 	go e.serve(server)
 	return client, nil
@@ -63,6 +76,9 @@ func (e *emulator) serve(conn net.Conn) {
 			payload[i] = body[17+i] ^ body[16]
 		}
 		if header[6] == 11 {
+			e.mu.Lock()
+			e.editCount++
+			e.mu.Unlock()
 			if fragmented(conn, editReply) != nil {
 				return
 			}
@@ -72,6 +88,39 @@ func (e *emulator) serve(conn net.Conn) {
 			return
 		}
 		switch payload[0] {
+		case 2, 4:
+			if len(payload) != 4 || payload[1] != 0 || payload[2] != 1 {
+				return
+			}
+			e.mu.Lock()
+			e.controlWrites = append(e.controlWrites, bytes.Clone(payload))
+			id := payload[3]
+			if payload[0] == 2 {
+				if id != 0 && id != 2 {
+					e.mu.Unlock()
+					return
+				}
+				e.raw[3] = id
+				if id == 2 {
+					id = e.timerPatternID
+				} else {
+					id = 0
+				}
+			} else {
+				e.raw[3] = 1
+			}
+			if id >= 1 && id <= 18 {
+				start := 52 + (int(id)-1)*182
+				copy(e.raw[3320:3476], e.raw[start:start+156])
+			}
+			closeNow := false
+			if e.onControl != nil {
+				closeNow = e.onControl(len(e.controlWrites), e.raw)
+			}
+			e.mu.Unlock()
+			if closeNow {
+				return
+			}
 		case 0x15:
 			e.mu.Lock()
 			raw := bytes.Clone(e.raw)

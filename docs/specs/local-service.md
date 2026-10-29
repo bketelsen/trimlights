@@ -12,6 +12,7 @@ foundation, not the authenticated household web application in the v1 contract.
 | `refresh` | `--api-token-file`, `--acknowledge-clock-sync` | Serialized snapshot through the service |
 | `snapshot` | `--host` or `TRIMLIGHT_CONTROLLER_HOST` | Direct diagnostic; optional new `--output` file |
 | `probe-schedule2` | controller host, `--output`, `--baseline-sha256` | Direct bounded experiment with restoration and evidence |
+| `verify-playback` | controller host, `--output`, `--baseline-sha256`, `--pattern-id` | Separate bounded OFF/saved-slot/TIMER [verification](playback-verification.md) |
 
 The service defaults to `127.0.0.1:8787`. CLI API commands accept a literal loopback
 HTTP URL with `--url`. Tokens are read from a file, contain at least 32 characters,
@@ -70,6 +71,31 @@ Refresh accepts exactly one JSON object, with `Content-Type: application/json`:
   cookie authentication exists in this development mode. Use the separate
   [household OIDC mode](household-auth.md) through Caddy instead.
 
+## Observed playback state — 2026-10-28
+
+Snapshot JSON MAY include `playback` for the observed 3492-byte, 18-pattern
+layout, and MUST omit it unless the explicit schedule offset is 3306. This is
+reported controller state, not confirmation that physical lights are illuminated.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `mode_raw` | integer | Snapshot byte 3, retained even if unknown |
+| `mode` | string | `off` for 0, `manual` for 1, `timer` for 2; otherwise `unknown` |
+| `uninterpreted_parameters_hex` | string | 156 bytes at snapshot offsets 3320–3475, lowercase hex |
+| `matching_pattern_ids` | integer array | All saved slots with identical parameters, in snapshot order; empty if none |
+
+Parameter matches MUST NOT be presented as a uniquely identified selected slot
+when multiple slots match. OFF can retain effect parameters. TIMER can retain
+parameters while outside an active schedule. Neither a match nor mode alone
+establishes physical output. Old stored snapshots without this field remain valid.
+Unknown layout or mode MUST NOT confer a playback capability.
+
+OFF/TIMER and saved-pattern selection have been captured from the official app
+with owner observations. Independent Go playback and restoration are exercised
+only by the separately authorized [verification diagnostic](playback-verification.md),
+following [ADR-0010](../adr/0010-bounded-playback-verification.md). Hosted controls
+remain unavailable pending hardware verification and service integration.
+
 ## Derived artifacts
 
 | Artifact | Derivation |
@@ -90,5 +116,7 @@ Public deployment and fixture policy follows
 [ADR-0007](../adr/0007-public-repository-and-private-deployment.md).
 A snapshot returns `stable_sha256`, the SHA-256 of all bytes except its seven-byte
 clock suffix. A non-dry diagnostic probe MUST require that reviewed fingerprint,
-match it against a fresh snapshot, and check the supported disabled-slot shape
-before entering edit mode. A fingerprint mismatch MUST send no write.
+match it against a fresh snapshot, and check its supported shape before entering
+edit mode. `probe-schedule2` retains its disabled-slot restriction; the separate
+[playback verification](playback-verification.md) requires a restorable TIMER
+baseline. A fingerprint mismatch MUST send no write.

@@ -60,6 +60,12 @@ func (c *Client) withSession(ctx context.Context, fn func(*session) error) error
 		return ctx.Err()
 	}
 	defer func() { <-c.gate }()
+	return c.openSession(ctx, fn)
+}
+
+// openSession permits recovery connections while an operation retains the gate.
+// Call only from withSession or while its callback still owns the gate.
+func (c *Client) openSession(ctx context.Context, fn func(*session) error) error {
 	conn, err := c.dial(ctx, "tcp", c.address)
 	if err != nil {
 		return fmt.Errorf("connect: %w", err)

@@ -150,3 +150,40 @@ func TestProbeRequiresReviewedFingerprintBeforeConnecting(t *testing.T) {
 		t.Fatal(out, err)
 	}
 }
+
+func TestPlaybackVerificationCLI(t *testing.T) {
+	for _, mode := range []string{"dry-run", "missing-fingerprint", "bad-target", "existing-directory"} {
+		t.Run(mode, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "evidence")
+			args := []string{"verify-playback", "--host", "invalid.invalid", "--output", path, "--pattern-id", "9", "--json"}
+			switch mode {
+			case "dry-run":
+				args = append(args, "--dry-run")
+			case "bad-target":
+				args = append(args, "--pattern-id", "265")
+			case "existing-directory":
+				if err := os.Mkdir(path, 0700); err != nil {
+					t.Fatal(err)
+				}
+				args = append(args, "--baseline-sha256", strings.Repeat("a", 64))
+			}
+			out, _, err := execute(t, args...)
+			var got map[string]any
+			if json.Unmarshal([]byte(out), &got) != nil {
+				t.Fatal("expected one JSON document", out)
+			}
+			if mode == "dry-run" {
+				if err != nil || got["dry_run"] != true || got["baseline_verified"] != false {
+					t.Fatal(out, err)
+				}
+			} else if err == nil || got["error"] != true || strings.Contains(out, "lookup") {
+				t.Fatal("expected local validation failure before connecting", out, err)
+			}
+			if mode != "existing-directory" {
+				if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+					t.Fatal("created evidence directory without valid inputs or during dry-run")
+				}
+			}
+		})
+	}
+}

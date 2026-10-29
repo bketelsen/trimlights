@@ -90,10 +90,21 @@ type Snapshot struct {
 	ClockSyncPossible bool       `json:"clock_sync_may_have_occurred"`
 	Patterns          []Pattern  `json:"patterns"`
 	Schedules         []Schedule `json:"daily_schedules,omitempty"`
+	Playback          *Playback  `json:"playback,omitempty"`
 	LayoutNote        string     `json:"layout_note"`
 	StableSHA256      string     `json:"stable_sha256"`
 	RawHex            string     `json:"plain_hex"`
 	raw               []byte
+}
+
+// Playback describes reported state, not physical light output. Parameter matches
+// are candidates: multiple saved slots can contain the same effect, and OFF can
+// retain parameters without displaying them.
+type Playback struct {
+	ModeRaw            byte   `json:"mode_raw"`
+	Mode               string `json:"mode"`
+	ParametersHex      string `json:"uninterpreted_parameters_hex"`
+	MatchingPatternIDs []int  `json:"matching_pattern_ids"`
 }
 
 // ParseSnapshot uses the captured pattern layout. ScheduleOffset must be explicit
@@ -143,6 +154,30 @@ func ParseSnapshot(raw []byte, scheduleOffset int) (*Snapshot, error) {
 		}
 		s.Schedules = append(s.Schedules, Schedule{i + 1, r[0] == 1, r[1], names[r[1]], r[2], label, fmt.Sprintf("%02d:%02d", r[3], r[4]), fmt.Sprintf("%02d:%02d", r[5], r[6])})
 	}
+	// These offsets are supported only by the observed 18-record layout and an
+	// explicitly selected schedule offset. Do not extrapolate to other layouts.
+	if len(raw) == 3492 && count == 18 && scheduleOffset == 3306 {
+		mode := "unknown"
+		switch raw[3] {
+		case 0:
+			mode = "off"
+		case 1:
+			mode = "manual"
+		case 2:
+			mode = "timer"
+		}
+		playback := &Playback{
+			ModeRaw: raw[3], Mode: mode,
+			ParametersHex:      hex.EncodeToString(raw[3320:3476]),
+			MatchingPatternIDs: []int{},
+		}
+		for _, pattern := range s.Patterns {
+			if pattern.ParametersHex == playback.ParametersHex {
+				playback.MatchingPatternIDs = append(playback.MatchingPatternIDs, int(pattern.ID))
+			}
+		}
+		s.Playback = playback
+	}
 	return s, nil
 }
 
@@ -166,6 +201,57 @@ func validateProbeBaseline(s *Snapshot, expectedFingerprint string) error {
 	expected := []byte{0, 1, 0, 0, 2, 0, 3}
 	if len(s.raw) != 3492 || !bytes.Equal(s.raw[3313:3320], expected) || len(s.Patterns) != 18 || s.Patterns[0].ID != 1 || s.Patterns[17].ID != 18 {
 		return errors.New("controller differs from supported disabled-slot probe layout; no write permitted")
+	}
+	return nil
+}
+
+func playbackModePayload(mode byte) ([]byte, error) {
+	if mode != 0 && mode != 2 {
+		return nil, errors.New("only captured OFF and TIMER commands are supported")
+	}
+	return []byte{2, 0, 1, mode}, nil
+}
+
+func savedPlaybackPayload(id byte) ([]byte, error) {
+	if id < 1 || id > 18 {
+		return nil, errors.New("saved playback requires a supported slot ID")
+	}
+	return []byte{4, 0, 1, id}, nil
+}
+
+func validatePlaybackBaseline(s *Snapshot, fingerprint string, target byte) (byte, error) {
+	if !validFingerprint(fingerprint) || s.StableSHA256 != fingerprint {
+		return 0, errors.New("fresh controller state differs from the reviewed baseline fingerprint; no write permitted")
+	}
+	if len(s.raw) != 3492 || len(s.Patterns) != 18 || s.Playback == nil || s.Playback.Mode != "timer" || len(s.Playback.MatchingPatternIDs) != 1 {
+		return 0, errors.New("playback verification requires the reviewed TIMER layout and an unambiguous original effect")
+	}
+	for i, p := range s.Patterns {
+		if int(p.ID) != i+1 {
+			return 0, errors.New("playback verification requires the reviewed saved-slot order")
+		}
+	}
+	if target < 1 || target > 18 || s.Patterns[int(target)-1].ParametersHex == s.Playback.ParametersHex {
+		return 0, errors.New("select an existing target slot with parameters different from the original effect")
+	}
+	return byte(s.Playback.MatchingPatternIDs[0]), nil
+}
+
+// Only mode and current effect parameters may differ during the experiment.
+// All other bytes (including unknown fields) remain pinned to the baseline.
+func playbackInvariants(before, current *Snapshot) bool {
+	return before != nil && current != nil && len(before.raw) == 3492 && len(current.raw) == 3492 &&
+		bytes.Equal(before.raw[:3], current.raw[:3]) &&
+		bytes.Equal(before.raw[4:3320], current.raw[4:3320]) &&
+		bytes.Equal(before.raw[3476:3485], current.raw[3476:3485])
+}
+
+func verifyPlaybackState(before, current *Snapshot, mode byte, parameters []byte) error {
+	if !playbackInvariants(before, current) {
+		return errors.New("non-playback controller fields changed; no further control writes permitted")
+	}
+	if current.raw[3] != mode || !bytes.Equal(current.raw[3320:3476], parameters) {
+		return errors.New("playback readback differs from intended mode or effect parameters")
 	}
 	return nil
 }

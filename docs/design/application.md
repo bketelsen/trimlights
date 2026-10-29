@@ -29,8 +29,9 @@ are deployed with controller access disabled; readiness, API authentication gate
 and the OIDC redirect have passed integration checks.
 Shared pattern editing, software strip previews, calendar editing and calendar
 intent preview are implemented. House photo upload, manual mapping and software
-previews are implemented under the house contract. Schedule execution, physical
-calibration and verified hardware playback are not built.
+previews are implemented under the house contract. A bounded diagnostic now verifies
+OFF, saved-slot playback and TIMER restoration on the original controller. Hosted
+controls, schedule execution and physical calibration are not built.
 
 The following is the accepted target, not a description of shipped components:
 
@@ -71,8 +72,8 @@ flowchart LR
   `layout`, `backup`, and `restore`. Keep the current snapshot/probe commands as
   explicit diagnostic operations during migration.
 
-Implemented commands are `serve`, `status`, `refresh`, `snapshot` and
-`probe-schedule2`. The service does not query hardware on startup or poll in the
+Implemented commands include `serve`, `status`, `refresh`, `snapshot`,
+`probe-schedule2` and the separate `verify-playback` diagnostic. The service does not query hardware on startup or poll in the
 background. Explicit refresh acknowledges possible clock synchronization and
 uses a bounded queue, a 15-second operation deadline and one-second pacing between
 operations. Failed reads preserve the last successful snapshot and record the
@@ -121,6 +122,43 @@ Existing sessions do not call the provider on each request. App logout and expir
 work; provider back-channel logout is not implemented.
 
 ### Scheduling and control ownership
+
+#### Observed native playback — 2026-10-28
+
+The official-app capture and owner observations establish OFF and TIMER commands
+with inner opcode `02`, one-byte length, and values `00` and `02`. Saved-pattern
+selection uses inner opcode `04`, one-byte length, and the saved slot ID. Entering
+MANUAL replayed a saved slot; a standalone mode-1 command has not been captured.
+These commands use outer command `04` after the existing edit-session exchange.
+There was no distinct control acknowledgment; TCP delivery cannot establish success.
+
+The [snapshot contract](../specs/local-service.md#observed-playback-state--2026-10-28)
+now exposes observed mode and opaque parameter matches only for the reviewed
+layout. OFF retained the prior parameters; a later fresh TIMER snapshot matched
+the scheduled saved effect. Initial app connection replayed a saved slot, so the
+first captured snapshot is not a reliable baseline for the owner's original mode.
+The saved library and native schedules were unchanged after the capture sequence.
+
+Following [ADR-0010](../adr/0010-bounded-playback-verification.md), the separate
+`verify-playback` Go operation implements the [verification contract](../specs/playback-verification.md):
+review a fresh TIMER baseline fingerprint; persist evidence before writes; select
+OFF, play one explicitly selected existing slot, then restore the original saved
+effect and TIMER. Pace exchanges, read back every step, check all bytes other than
+mode/current parameters/clock remain unchanged, and use independent cancellation-
+safe cleanup plus a fresh connection to verify restoration. Allow time for physical
+observations. Refuse unknown layouts, ambiguous original parameter matches or a
+changed baseline. Record failures rather than claiming an uncertain restoration.
+Do not modify saved patterns, schedules, brightness or topology. The owner explicitly
+authorized this exception on 2026-10-28, recorded in the
+[agent instructions](../../AGENTS.md#repository-boundary). `probe-schedule2` remains
+unchanged. Synthetic tests cover successful readback, cancellation, disconnects,
+evidence errors, external changes and gated recovery. The 2026-10-28 hardware test
+passed OFF and target-slot readback, restoration, and independent verification
+of every non-clock baseline byte. The owner confirmed OFF → target effect →
+original appearance. The hosted worker remains disabled pending control integration;
+custom writes, brightness, Sunday clock semantics and scheduler handoff are unverified.
+
+This advances [roadmap Phase 2](../plans/roadmap.md#phase-2--reliable-controller-service-l-highest-uncertainty).
 
 The implemented calendar is an immutable, versioned SQLite document with timezone,
 optional location, weekly/seasonal/one-day rules and an optional expiring override.

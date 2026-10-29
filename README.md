@@ -6,7 +6,7 @@ React assets are embedded in one static binary; SQLite stores shared state.
 Caddy provides HTTPS and Pocket ID provides household sign-in.
 
 **Work in progress.** Shared pattern editing and calendar planning are implemented.
-House-photo mapping and software previews are implemented. Verified physical
+House-photo mapping and software previews are implemented. Hosted physical
 controls, calendar execution, hardware calibration and production acceptance remain
 unfinished. This is an independent project, not an official
 Trimlight application or a general-purpose controller driver.
@@ -32,6 +32,9 @@ Trimlight application or a general-purpose controller driver.
   revision; no simulated preview sends a hardware command.
 - Serialized controller snapshot requests, persisted observations and operation
   history, and a bounded diagnostic write/restore experiment behind a fingerprint guard.
+- Independently verified Go OFF, saved-slot playback and TIMER restoration on one
+  controller, with physical confirmation and unchanged saved state. These remain
+  diagnostic operations; hosted controls are not enabled yet.
 
 [Roadmap](docs/plans/roadmap.md) · [Architecture](docs/design/application.md) ·
 [Acceptance criteria](docs/specs/v1-acceptance.md) · [Documentation index](docs/README.md)
@@ -171,6 +174,25 @@ context and reconnect attempts, including after cancellation. A forced process
 kill or outage can still prevent restoration; inspect the report. The Go probe
 has simulated-controller coverage but still needs a controlled hardware pass.
 General write endpoints remain disabled.
+
+The separate `verify-playback` diagnostic starts from a reviewed TIMER snapshot
+with one unambiguous saved-effect match. It selects OFF, plays a different existing
+slot, then restores the original effect and TIMER. OFF and target playback each
+hold for ten seconds after verified readback. The entire operation, including
+recovery and independent verification, retains the client gate.
+
+```sh
+./build/trimlight verify-playback --timezone America/New_York \
+  --baseline-sha256 REVIEWED_STABLE_SHA256 --pattern-id 9 \
+  --output experiments/playback-001
+```
+
+Choose an existing slot with different parameters from the original effect; `9`
+is an example, not a known household pattern. This test passed on the original
+controller on 2026-10-28: the owner confirmed OFF, target playback and original
+appearance restored, and independent readback matched every non-clock baseline
+byte. It does not establish custom pattern uploads, brightness, Sunday clock
+semantics or scheduler handoff. See the [bounded contract](docs/specs/playback-verification.md).
 
 ## Local development API
 

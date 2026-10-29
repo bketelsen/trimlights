@@ -81,5 +81,34 @@
     "Disconnect; independent connection verifies persisted restored state."
   ],
   "timing_findings": "Earlier faster sequences timed out; a persistent connection with one-second pauses succeeded. Minimum timing and necessity of each session step are not isolated. Phone app was closed during successful test. Timeouts alone must not be interpreted as a successful or failed write.",
-  "test_evidence": "experiments/schedule-write-004/result.json"
+  "test_evidence": "experiments/schedule-write-004/result.json",
+  "native_playback_observed_2026_10_28": {
+    "source": "Official-app capture correlated with owner physical observations, followed by independent bounded Go verification with physical confirmation.",
+    "outer_command": 4,
+    "off_payload_hex": "02000100",
+    "timer_payload_hex": "02000102",
+    "play_saved_pattern_format": "04 00 01 <one-byte saved pattern ID>",
+    "manual_entry": "Official app replayed a saved slot. A standalone mode-1 command was not captured.",
+    "acknowledgment": "No distinct application acknowledgment observed. Require readback and physical verification.",
+    "snapshot_layout": {
+      "length": 3492,
+      "pattern_count": 18,
+      "explicit_schedule_offset": 3306,
+      "mode_offset": 3,
+      "mode_values": {
+        "0": "off",
+        "1": "manual",
+        "2": "timer"
+      },
+      "effect_parameters_offset": 3320,
+      "effect_parameters_length": 156
+    },
+    "readback": "OFF and MANUAL were observed in capture snapshots. Fresh Go readback after TIMER confirmed mode 2 and parameters matching the scheduled saved slot, with unchanged saved library and schedules.",
+    "limits": "Mode and parameter equality are reported state, not proof of emitted light or unique saved-slot identity. Other layouts, arbitrary effects, brightness and timer handoff remain unverified.",
+    "independent_go_verification": {
+      "result": "Passed bounded OFF, saved-slot playback, original effect/TIMER restoration and independent fresh-connection readback. Owner confirmed corresponding physical sequence and original appearance.",
+      "invariants": "All non-clock bytes matched the reviewed baseline after restoration, including saved patterns, schedules and unknown fields.",
+      "limitations": "Verified on one controller and the captured layout. No custom effect upload, brightness, calibration, Sunday clock encoding or server scheduler handoff verified."
+    }
+  }
 }

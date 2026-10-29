@@ -57,7 +57,9 @@ and [CLI acceptance](../specs/v1-acceptance.md#interface).
 ## Phase 2 — Reliable controller service (L, highest uncertainty)
 
 Implements [worker design](../design/application.md#application-boundaries) and
-[control rules](../specs/v1-acceptance.md#rules).
+[control rules](../specs/v1-acceptance.md#rules). The bounded playback integration
+test follows [ADR-0010](../adr/0010-bounded-playback-verification.md) and the
+[verification contract](../specs/playback-verification.md).
 
 - Replace hardcoded schedule offsets with bounded parsing of variable records;
   preserve unknown fields and fail visibly on unsupported firmware/layouts.
@@ -417,3 +419,44 @@ reload, editor exit and revision replacement. Save responses preserve newer edit
 made during the request and advance the saved baseline for a subsequent save.
 The [pattern contract](../specs/patterns.md) records these data-loss protections.
 Live controller tests remain deferred until the owner is ready.
+
+### Official-app control capture — 2026-10-28
+
+The owner resumed the live test and observed OFF extinguish the lights, MANUAL
+restore a saved effect, saved-pattern selection visibly change it, and TIMER
+restore the scheduled effect. Private capture decoding identified the corresponding
+commands, with valid encoded-frame checksums. A fresh Go snapshot confirmed TIMER,
+the scheduled effect's parameter match, and unchanged saved library and schedules.
+The owner reported no mention of packet drops; a zero-drop counter was not recorded.
+
+The [snapshot contract](../specs/local-service.md#observed-playback-state--2026-10-28)
+now describes bounded mode/parameter decoding with synthetic coverage for unknown
+layouts and ambiguous matches. The [control design](../design/application.md#observed-native-playback--2026-10-28)
+records observations and the separate owner-authorized Go verification. Physical Go
+control, native timer handoff, general layout decoding and Sunday semantics remain
+open. Hosted controller access remains disabled.
+
+**Done when:** a separately authorized Go verification demonstrates OFF, saved-slot
+playback and restoration to TIMER with physical observations and invariant readback;
+this capture alone does not satisfy that criterion.
+
+### Independent Go playback verification — 2026-10-28
+
+The owner authorized the separate bounded operation in
+[ADR-0010](../adr/0010-bounded-playback-verification.md), implemented under the
+[verification contract](../specs/playback-verification.md) and
+[control design](../design/application.md#observed-native-playback--2026-10-28).
+`make check` passes with synthetic success, cancellation, disconnect, disk-error,
+external-state and gated-recovery tests.
+
+The real Go operation passed OFF and saved-slot playback readback, restored the
+original saved effect and TIMER, and independently verified every non-clock byte
+against the reviewed baseline on a new connection. The owner confirmed the physical
+OFF → target effect → original appearance sequence. No saved patterns, schedules
+or topology were changed. The previous bounded-verification done criterion is met.
+
+Next: integrate these verified commands into the authenticated, audited controller
+worker and mobile controls, with stale-library checks and ambiguous-write
+reconciliation. Hosted controller access remains disabled. Custom pattern writes,
+brightness, native scheduler handoff, Sunday clock encoding and calibration still
+need separate work; Phase 2 and household v1 are not complete.

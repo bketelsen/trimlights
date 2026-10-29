@@ -33,7 +33,11 @@ selected public repository bketelsen/trimlights and requested scrubbing personal
 details. Keep actual addresses, domains and credentials in private configuration.
 Never bake the controller address into source or Compose. Use
 TRIMLIGHT_CONTROLLER_HOST or --host. Diagnostic writes require a reviewed baseline
-fingerprint and must not broaden the supported disabled-slot probe.
+fingerprint. Keep the supported disabled-slot probe unchanged. The owner authorized
+a separate bounded OFF/saved-slot/TIMER verification on 2026-10-28; follow
+[ADR-0010](docs/adr/0010-bounded-playback-verification.md) and its
+[contract](docs/specs/playback-verification.md). This exception does not authorize
+arbitrary mode, pattern, schedule, brightness or topology writes.
 
 ## Documentation rules
 

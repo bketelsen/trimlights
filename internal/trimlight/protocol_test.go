@@ -2,6 +2,7 @@ package trimlight
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -109,6 +110,73 @@ func TestClockAndSaveVectors(t *testing.T) {
 	}
 	if _, e = clockQuery(time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC)); e == nil {
 		t.Fatal("unverified Sunday accepted")
+	}
+}
+
+func TestPlaybackReportedState(t *testing.T) {
+	for value, mode := range map[byte]string{0: "off", 1: "manual", 2: "timer", 255: "unknown"} {
+		t.Run(mode, func(t *testing.T) {
+			raw := fixture(t)
+			raw[3] = value
+			// Entirely synthetic parameters from slot 7, including the retained
+			// parameters when OFF. This is not evidence of emitted light.
+			copy(raw[3320:3476], raw[26+6*182+26:26+7*182])
+			s, err := ParseSnapshot(raw, 3306)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p := s.Playback
+			if p == nil || p.ModeRaw != value || p.Mode != mode || p.ParametersHex != s.Patterns[6].ParametersHex || len(p.MatchingPatternIDs) != 1 || p.MatchingPatternIDs[0] != 7 {
+				t.Fatalf("incorrect playback: %+v", p)
+			}
+			encoded, err := json.Marshal(p)
+			if err != nil || !bytes.Contains(encoded, []byte(`"matching_pattern_ids":[7]`)) {
+				t.Fatalf("pattern IDs must be a JSON number array: %s %v", encoded, err)
+			}
+		})
+	}
+}
+
+func TestPlaybackMatchesDoNotInventSlotIdentity(t *testing.T) {
+	raw := fixture(t)
+	copy(raw[3320:3476], bytes.Repeat([]byte{0xfe}, 156))
+	s, err := ParseSnapshot(raw, 3306)
+	if err != nil || s.Playback == nil || s.Playback.MatchingPatternIDs == nil || len(s.Playback.MatchingPatternIDs) != 0 {
+		t.Fatalf("unmatched parameters: %+v %v", s, err)
+	}
+	// Two different slot names/IDs, identical parameters: return both candidates.
+	copy(raw[26+26:26+182], raw[3320:3476])
+	copy(raw[26+182+26:26+2*182], raw[3320:3476])
+	s, err = ParseSnapshot(raw, 3306)
+	if err != nil || s.Playback == nil || len(s.Playback.MatchingPatternIDs) != 2 || s.Playback.MatchingPatternIDs[0] != 1 || s.Playback.MatchingPatternIDs[1] != 2 {
+		t.Fatalf("ambiguous parameters: %+v %v", s, err)
+	}
+}
+
+func TestPlaybackRequiresReviewedLayout(t *testing.T) {
+	for _, change := range []struct {
+		name   string
+		offset int
+		mutate func([]byte) []byte
+	}{
+		{"no explicit offset", -1, func(b []byte) []byte { return b }},
+		{"different offset", 3307, func(b []byte) []byte { clear(b[3307:3321]); return b }},
+		{"different count", 3306, func(b []byte) []byte { b[25] = 17; return b }},
+		{"different length", 3306, func(b []byte) []byte {
+			b = append(b, 0)
+			binary.BigEndian.PutUint16(b[1:3], uint16(len(b)-3))
+			return b
+		}},
+	} {
+		t.Run(change.name, func(t *testing.T) {
+			s, err := ParseSnapshot(change.mutate(fixture(t)), change.offset)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if s.Playback != nil {
+				t.Fatal("inferred playback for an unreviewed layout")
+			}
+		})
 	}
 }
 
