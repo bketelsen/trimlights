@@ -612,3 +612,28 @@ the app is RUNNING; HTTPS health/readiness return 200 and unauthenticated status
 returns 401. Schema, household record counts, sessions, last controller operation
 and ownership version remain unchanged. Calendar remains disabled with no pending
 operation. No hardware access or new physical acceptance occurred during rollout.
+
+### Household UI cleanup — 2026-10-29
+
+The [application UI](../design/application.md) now leads with everyday lighting
+controls. Home replaces the large snapshot summary with a compact last-checked
+label and refresh action. Controls have consistent panel padding, styled fields,
+plain mode names and local-format timer times. Library removes revision badges
+and wire-language explanations. Calendar uses routines and one planning-only
+notice; imports, history, timezone setup and compatibility checks are disclosed
+when needed. House moves Add roofline beside the upload action and groups light
+setup and precise corner placement. Settings shows household activity without
+transport diagnostics. API error responses remain available to diagnostic clients.
+
+The [native-control contract](../specs/native-controls.md) retains clock consent,
+pending audits, fresh baselines and duplicate-submit guards. The
+[preparation contract](../specs/calendar-preparation.md) retains stale-review
+checks and append-only copying. No execution, protocol, authentication, storage or
+rendering semantics changed. Preview-only features remain labeled in plain language.
+
+`make check` passes. Browser review used isolated synthetic lights and a generated
+house illustration: native playback and timer return, library import, calendar
+save/preview, house color preview, refresh-dialog cancellation and Settings activity
+were exercised. Layouts were inspected at 1200 px and 390 px, with Home/Calendar
+also checked at 320 px without horizontal overflow. No household controller
+commands or test-data writes were made to production.

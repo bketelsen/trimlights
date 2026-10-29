@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {request} from './api';
+import {clockTime,repeatLabel} from './uiText';
 import type {Action,Plan,Rule,Preview} from './Schedule';
 
 type Source={snapshot_at:string;baseline_sha256?:string};
@@ -36,40 +37,39 @@ export function CalendarPreparation({plan,revision,latestRevision,csrf,busy,setB
   }catch(e){if(mounted.current)onError(e)}finally{sending.current=false;if(mounted.current){setWorking(false);setBusy(false)}}
  };
  const format=(instant:string,zone=plan.timezone)=>{try{return new Date(instant).toLocaleString(undefined,{timeZone:zone,dateStyle:'medium',timeStyle:'short'})}catch{return instant}};
- const sourceLabel=(source:Source,zone:string)=>source.baseline_sha256&&source.snapshot_at&&!source.snapshot_at.startsWith('0001-')?`Cached controller state from ${format(source.snapshot_at,zone)}. Checks do not refresh the controller.`:'No dated controller snapshot is available. Refresh on Home first.';
+ const sourceLabel=(source:Source,zone:string)=>source.baseline_sha256&&source.snapshot_at&&!source.snapshot_at.startsWith('0001-')?`Last checked ${format(source.snapshot_at,zone)}.`:'Refresh your lights on Home first.';
+ const checkLabel=(code:string)=>({custom_effect:'Choose a pattern already saved on your lights.',changed_slot:'This pattern has changed on your lights. Add it to your library again.',unverified:'Refresh your lights on Home, then check again.',matched:'Saved on your lights.',off:'Lights off.',unsupported_snapshot:'Refresh your lights on Home first.',stale_snapshot:'Refresh your lights on Home for an up-to-date check.',observation_error:'Refresh your lights on Home, then check again.',calendar_conflict:'Some routines overlap. Review your week ahead and choose which should play.',calendar_adjustments:'Some times need attention. Review your week ahead.'}[code]??'Review this routine before using it.');
+ const timerHelp=(reason:string)=>reason.startsWith('No current')?'Add this pattern from your lights in Library first.':reason.startsWith('Multiple')?'Choose a pattern for this timer in a new routine.':reason.includes('already in')||reason.includes('already used')?'Already included in your plan.':reason.includes('maximum')?'Your calendar has reached 100 routines.':'Add this timer by hand after checking its times in the Trimlight phone app.';
  const selectedRules=(native?.entries.flatMap(e=>e.rule&&chosen.includes(e.rule.id)?[e.rule]:[])??[]);
- return <section className="panel calendar-settings calendar-preparation">
-  <div className="section-heading"><h2>Prepare Calendar control</h2><span className="status-pill">Not running</span></div>
-  <p>Check whether this draft can use the patterns already saved on your controller. These checks and copies leave the lights and controller timers unchanged.</p>
-  <button className="button secondary" disabled={busy} onClick={()=>void run('readiness')}>{working?'Checking…':'Check this draft'}</button>
-  {readiness&&<div aria-live="polite">
-   {staleReadiness&&<p className="notice">This report is out of date. Check again after your changes.</p>}
-   <p className="footnote">{sourceLabel(readiness.source,readiness.timezone)}</p>
-   <h3>Before automatic scheduling</h3>
-   <ul className="calendar-issues">{readiness.blockers.map((b,i)=><li key={`${b.code}:${i}`}>{b.message}</li>)}</ul>
-   <p><strong>Current proposed intent:</strong> {describeAction(readiness.current.action)}. {readiness.current.reason}</p>
-   <p><strong>Next timeline interval:</strong> {readiness.next?`${format(readiness.next.from,readiness.timezone)} · ${describeAction(readiness.next.action)}`:'No change in the checked interval.'}</p>
-   <p className="footnote">Timeline checked from {format(readiness.checked_at,readiness.timezone)} through {format(readiness.until,readiness.timezone)} ({readiness.timezone}). Later conflicts may still exist. A server outage can leave the controller in its last state; no automatic fallback is verified.</p>
-   <details><summary>Pattern checks ({readiness.bindings.length})</summary><ul className="calendar-issues">{readiness.bindings.map((b,i)=><li key={`${b.id}:${i}`}><strong>{b.name}</strong>{b.required?'':' · disabled or expired'}{b.slot?` · controller slot ${b.slot}`:''}<br/>{b.message}</li>)}</ul>{!readiness.bindings.length&&<p>No rules or overrides. The proposed intent is OFF.</p>}</details>
-   {readiness.issues.length>0&&<details><summary>Skipped or adjusted times</summary><ul className="calendar-issues">{readiness.issues.map((issue,i)=><li key={i}>{issue.date} · {plan.rules.find(r=>r.id===issue.rule_id)?.name??issue.rule_id}: {issue.message}</li>)}</ul></details>}
-  </div>}
-  <details className="native-copy"><summary>Copy controller timers into this draft</summary>
-   <p>First import the saved controller patterns in Library. Then review the two cached timers here and choose which rules to append. Your existing draft stays intact. Clock times are copied as shown and will use this calendar’s timezone.</p>
-   <label className="field">Date to assign to “today only” entries<input type="date" min="1970-01-01" max="2199-12-31" value={date} disabled={busy} onChange={e=>{setDate(e.target.value);setChosen([])}}/><small>Use a date in {plan.timezone}. The controller snapshot does not tell us the original date.</small></label>
-   <button className="button secondary" disabled={busy||!date} onClick={()=>void run('native-draft')}>Review controller timers</button>
-   {native&&<>
-    <p className="footnote">{sourceLabel(native.source,native.timezone)} Copying does not disable native timers.</p>
-    {staleNative&&<p role="status" className="notice">The draft, saved revision or date changed. Review controller timers again before adding rules.</p>}
-    <ul className="native-timer-entries">{native.entries.map(e=><li key={e.native.slot}>
-     <strong>Timer {e.native.slot} · {e.native.enabled?'Enabled':'Disabled'}</strong>
-     <p>{e.native.pattern_name||'Unknown slot'} · {e.native.start_time}–{e.native.off_time} · {e.native.repetition_interpretation}</p>
-     <p>{e.reason}</p>
-     {e.rule&&<label className="check-label"><input type="checkbox" disabled={busy||staleNative} checked={chosen.includes(e.rule.id)} onChange={event=>setChosen(old=>event.target.checked?[...old,e.rule!.id]:old.filter(id=>id!==e.rule!.id))}/>Add {e.rule.name}{e.rule.kind==='exception'?` on ${e.rule.from}`:' every day'}{e.rule.enabled?'':' (disabled)'}</label>}
-    </li>)}</ul>
-    <button className="button primary" disabled={busy||staleNative||!selectedRules.length||plan.rules.length+selectedRules.length>100} onClick={()=>{if(staleNative)return;onAppend(selectedRules,plan,revision);setChosen([])}}>Add selected rules to draft</button>
-    {plan.rules.length+selectedRules.length>100&&<p role="alert">A calendar supports at most 100 rules.</p>}
-    <p className="footnote">Review the combined timeline and priorities, then Save calendar. Saving still does not enable execution.</p>
-   </>}
+ return <details className="panel calendar-settings calendar-preparation">
+  <summary>Bring over your light timers</summary>
+  <p>Add the patterns from your lights in Library first, then choose the timers you’d like in your plan.</p>
+  <label className="field">Date for one-day timers<input type="date" min="1970-01-01" max="2199-12-31" value={date} disabled={busy} onChange={e=>{setDate(e.target.value);setChosen([])}}/><small>Choose the date you want in {plan.timezone}.</small></label>
+  <button className="button secondary" disabled={busy||!date} onClick={()=>void run('native-draft')}>{working?'Checking…':'Find my timers'}</button>
+  {native&&<>
+   <p className="footnote">{sourceLabel(native.source,native.timezone)}</p>
+   {staleNative&&<p role="status" className="notice">Your plan or date changed. Find your timers again to continue.</p>}
+   <ul className="native-timer-entries">{native.entries.map(e=><li key={e.native.slot}>
+    <strong>Timer {e.native.slot} · {e.native.enabled?'On':'Off'}</strong>
+    <p>{e.native.pattern_name||'Saved pattern'} · {clockTime(e.native.start_time)}–{clockTime(e.native.off_time)} · {repeatLabel(e.native.repetition_interpretation)}</p>
+    {e.rule?<label className="check-label"><input type="checkbox" disabled={busy||staleNative} checked={chosen.includes(e.rule.id)} onChange={event=>setChosen(old=>event.target.checked?[...old,e.rule!.id]:old.filter(id=>id!==e.rule!.id))}/>Add timer {e.native.slot}{e.rule.kind==='exception'?` on ${e.rule.from}`:' every day'}{e.rule.enabled?'':' (paused)'}</label>:<p>{timerHelp(e.reason)}</p>}
+   </li>)}</ul>
+   <button className="button primary" disabled={busy||staleNative||!selectedRules.length||plan.rules.length+selectedRules.length>100} onClick={()=>{if(staleNative)return;onAppend(selectedRules,plan,revision);setChosen([])}}>Add to my plan</button>
+   {plan.rules.length+selectedRules.length>100&&<p role="alert">A calendar can have up to 100 routines.</p>}
+   <p className="footnote">Review your week ahead, then save your calendar.</p>
+  </>}
+  <details className="native-copy"><summary>Check planned patterns</summary>
+   <p>See which patterns in your plan are already saved on your lights.</p>
+   <button className="button secondary" disabled={busy} onClick={()=>void run('readiness')}>{working?'Checking…':'Check patterns'}</button>
+   {readiness&&<div aria-live="polite">
+    {staleReadiness&&<p className="notice">Your plan changed. Check again to include your latest edits.</p>}
+    <p className="footnote">{sourceLabel(readiness.source,readiness.timezone)}</p>
+    <ul className="calendar-issues">{readiness.blockers.filter(b=>!['sunday_clock_unverified','timer_handoff_unverified','runtime_unavailable'].includes(b.code)).map((b,i)=><li key={`${b.code}:${i}`}>{checkLabel(b.code)}</li>)}</ul>
+    <p><strong>Planned now:</strong> {describeAction(readiness.current.action)}</p>
+    <p><strong>Up next:</strong> {readiness.next?`${format(readiness.next.from,readiness.timezone)} · ${describeAction(readiness.next.action)}`:'No change this week.'}</p>
+    <ul className="pattern-checks">{readiness.bindings.map((b,i)=><li key={`${b.id}:${i}`}><strong>{b.name}</strong>{b.required?'':' · paused'}<br/>{checkLabel(b.status)}</li>)}</ul>
+    {!readiness.bindings.length&&<p>Add a routine to plan your first evening.</p>}
+   </div>}
   </details>
- </section>
+ </details>
 }

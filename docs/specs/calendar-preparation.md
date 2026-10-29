@@ -55,6 +55,12 @@ controller operations.
   edits. Appending remains unsaved until the ordinary Calendar save succeeds.
 - The native schedules MUST remain unchanged. No “enable” control is exposed.
 
+The household UI places timer copying under “Bring over your light timers” and
+pattern checks in a nested disclosure. It translates diagnostic codes into actions
+such as refreshing lights or choosing a saved pattern. The Calendar's planning-only
+notice represents the execution blockers; raw protocol/research messages remain in
+the API report. Review invalidation and append-only draft behavior are unchanged.
+
 ## Derived artifacts
 
 | Artifact | Derivation |
@@ -63,6 +69,7 @@ controller operations.
 | Native rule proposals | Supported native entries and unambiguous Library matches |
 
 ## References
+
 
 - Rationale: [ADR-0012](../adr/0012-prepare-native-calendar-handoff.md).
 - Runtime machinery: [dormant worker](calendar-runtime.md); preparation does not start it.

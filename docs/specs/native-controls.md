@@ -54,6 +54,9 @@ or persistence error is outstanding. Unknown/missing snapshots require refresh.
   distinguish reported OFF/MANUAL/TIMER, and label native slots separately from
   software Library designs. It MUST explain that manual/OFF lasts until another
   command and TIMER returns to controller scheduling, not the app Calendar.
+  Household labels are “Turned off,” “Playing a pattern,” and “Following timers.”
+  “Last checked” retains observation age; clock-update acknowledgement remains
+  explicit. Failure messages give a refresh/recovery action without wire details.
 - Schema 7 ordinary controls MUST pause active Calendar ownership in their pending
   audit transaction before delivery, as specified by the [runtime contract](calendar-runtime.md).
 - Authentication, origin checks, CSRF and restore-guard behavior MUST apply to this

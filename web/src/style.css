@@ -24,3 +24,124 @@ dialog.modal{color:#eaf0f6;margin:auto}dialog.modal::backdrop{background:#080e18
 .native-copy summary { cursor:pointer; font-weight:600; }
 .native-timer-entries { list-style:none; padding:0; display:grid; gap:1rem; }
 .native-timer-entries li { border-left:3px solid var(--line); padding-left:1rem; }
+
+/* Household layout: clear controls, comfortable spacing, quiet supporting text. */
+:root { color-scheme: dark; }
+body { line-height: 1.5; }
+button, input, select, textarea { font: inherit; }
+select { color: inherit; background: #141e29; border: 1px solid #566270; border-radius: 8px; padding: 10px 12px; }
+input[type=checkbox] { accent-color: var(--accent); }
+main { padding-top: 32px; }
+.page-heading { margin-bottom: 24px; }
+h1 { font-size: clamp(30px, 4vw, 40px); }
+h2 { line-height: 1.25; }
+.button { font-size: 14px; gap: 10px; }
+.eyebrow { line-height: 1.7; }
+.row { gap: 16px; }
+.home-update { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+.native-controls { margin: 0 0 32px; padding: 28px; }
+.native-controls h2 { font-size: 28px; margin: 6px 0 0; }
+.native-controls .row { align-items: center; margin-bottom: 24px; }
+.native-controls .status-pill { padding: 9px 14px; font-size: 13px; }
+.native-controls .now-playing { font-size: 20px; margin-top: -8px; color: var(--accent); }
+.native-play { margin: 0 0 20px; gap: 16px; }
+.native-play .field { font-size: 14px; }
+.native-play .button { min-height: 48px; }
+.native-ack { font-size: 13px; color: var(--muted); line-height: 1.6; margin: 20px 0; padding: 16px; background: #141e29; border-radius: 10px; }
+.native-controls .card-actions { gap: 12px; margin-top: 20px; }
+.native-controls .footnote { border-top: 1px solid var(--line); padding-top: 20px; margin-bottom: 0; }
+.schedule-card { padding: 24px 28px; }
+.schedule-card h3 { margin-top: 20px; }
+.schedule-time { font-size: clamp(20px, 2.5vw, 27px); white-space: nowrap; }
+.schedule-time span { margin: 0 3px; }
+.notice { background: #24343b; border-color: #435963; }
+.error-banner, .notice.field-error { background: #443729; border-color: #786147; }
+.info-notice { margin: 0 0 24px; }
+.library-notice { margin: 0 0 24px; background: #263b2f; border-color: #426348; }
+.library-toolbar { margin-bottom: 24px; }
+.library .section-heading { margin-top: 0; }
+.saved-pattern { padding: 24px; display: flex; flex-direction: column; }
+.saved-pattern .row { align-items: flex-start; }
+.saved-pattern .eyebrow { padding-top: 12px; }
+.saved-pattern .card-actions { margin-top: auto; padding-top: 24px; }
+.saved-pattern h2 { margin: 14px 0 20px; }
+.editor-panel > .field { margin-bottom: 14px; }
+.editor-panel > .notice { margin: 0 0 24px; }
+.editor-toolbar { gap: 12px; margin-bottom: 24px; }
+.editor-footer { gap: 12px; }
+.native-preview { padding: 24px; }
+.calendar-settings, .calendar-editor { padding: 28px; margin: 24px 0; }
+.calendar-settings > .section-heading { margin-top: 0; }
+.calendar-settings > p { margin-top: 12px; }
+.calendar-settings > .field { max-width: 480px; margin: 16px 0; }
+.calendar-settings > .button { margin-top: 8px; }
+.calendar-preparation > summary { color: #d4dee8; }
+.native-copy > p { margin: 16px 0; }
+.native-copy summary { min-height: 44px; display: flex; align-items: center; }
+.native-timer-entries li { padding: 12px 16px; background: #141e29; border-radius: 8px; }
+.native-timer-entries li > p { margin: 8px 0; }
+.pattern-checks { list-style: none; padding: 0; }
+.pattern-checks li { padding: 14px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.routine-priority { padding: 10px 0; }
+.routine-priority summary { cursor: pointer; min-height: 44px; font-size: 14px; }
+.routine-priority .field { margin-top: 12px; }
+.calendar .action-row { gap: 12px; }
+.calendar .editor-toolbar > .muted { margin-right: auto; }
+.calendar .editor-toolbar > .primary { margin-left: 0; }
+.calendar-issues:empty { display: none; }
+.house-toolbar { gap: 12px; margin: 20px 0; }
+.house-controls, .house-stage, .house-history { padding: 24px; }
+.roofline-setup, .corner-details { margin: 20px 0; padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.roofline-setup summary, .corner-details summary { font-size: 14px; cursor: pointer; min-height: 28px; }
+.roofline-setup p { font-size: 12px; margin-top: 16px; }
+.house-controls .button { margin: 8px 0; }
+.house-controls label { line-height: 1.6; }
+.house-save { gap: 16px; }
+.settings dl { line-height: 1.6; }
+.settings .button { margin-top: 8px; }
+.footnote { line-height: 1.6; }
+summary { cursor: pointer; }
+@media(max-width:780px) {
+ .app { padding: 0 20px; }
+ main { padding-top: 28px; }
+ .pattern-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+ .native-controls, .schedule-card, .settings, .editor-panel, .calendar-settings, .calendar-editor { padding: 24px; }
+ .page-heading { margin-bottom: 20px; }
+ .native-play .button { flex: 1 1 150px; }
+ .settings-grid { gap: 20px; }
+}
+@media(max-width:480px) {
+ .app { padding: 0 16px; }
+ header { height: 76px; }
+ nav { gap: 4px; justify-content: space-between; }
+ nav button { flex: 1; min-width: 0; padding: 12px 4px; font-size: 12px; }
+ nav button span { display: block; }
+ main { padding: 28px 0 40px; }
+ .eyebrow { font-size: 10px; letter-spacing: 1.4px; }
+ .native-controls, .schedule-card, .settings, .editor-panel, .calendar-settings, .calendar-editor, .house-stage, .house-controls { padding: 20px; }
+ .native-controls .row { align-items: flex-start; gap: 16px; }
+ .native-controls .status-pill { padding: 7px 10px; font-size: 12px; }
+ .native-controls h2 { font-size: 25px; }
+ .native-play { display: grid; grid-template-columns: minmax(0,1fr); }
+ .native-ack { padding: 12px; }
+ .native-controls .card-actions .button { flex: 1; }
+ .native-controls .card-actions [role=status] { width: 100%; }
+ .schedule-time { font-size: 25px; }
+ .library .pattern-grid { grid-template-columns: minmax(0,1fr); }
+ .library-toolbar, .calendar .editor-toolbar { gap: 10px; }
+ .calendar .editor-toolbar > .muted { flex-basis: 100%; }
+ .calendar .editor-toolbar .button { flex: 1 1 auto; }
+ .calendar .section-heading { flex-wrap: wrap; align-items: center; gap: 14px; }
+ .color-runs { margin-top: 20px; }
+ .color-runs li { flex-wrap: wrap; gap: 8px; }
+ .run-count { width: 64px; }
+ .house-toolbar { gap: 10px; }
+ .house-toolbar .button { font-size: 13px; }
+ .house-save > .muted { width: 100%; }
+ .error-banner { flex-wrap: wrap; }
+ .modal { width: calc(100% - 32px); padding: 24px; }
+}
+.house-photos button { flex-basis: 96px; }
+.house-photos img { width: 82px; height: 54px; }
+.house-photos span { padding: 6px; font-size: 12px; }
+.house-stage > .house-toolbar:first-child { margin-top: 0; }

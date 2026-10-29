@@ -86,6 +86,19 @@ The UI polls cached status every five seconds while visible; this does not poll
 hardware. CLI status/refresh currently support only local bearer mode; household
 CLI login remains to be implemented.
 
+The household UI leads with everyday actions: play a pattern, turn off, follow
+light timers, plan routines and preview a roofline. As of 2026-10-29, Home puts
+controls first and shows observation age as “Last checked.” Saved timer times use
+the browser's local display format. The UI translates mode and operation names
+into household language; raw snapshots, wire parameters, revision numbers and
+transport errors remain in the service/API contracts rather than ordinary screens.
+Calendar has one plain planning-only notice, with timer imports, file management,
+history and setup behind disclosures. House keeps wiring and precise corner fields
+behind setup controls. Preview labels state what the image is; research caveats
+belong in this documentation. Clock-update acknowledgement, duplicate-submission
+guards, stale-edit protection, authentication and production activation gates stay
+in place. Panels use consistent inner spacing and controls wrap at phone widths.
+
 Use clix's reserved `--json`, `--verbose/-v`, `--dry-run/-n`, and `--silent/-s`
 without redefining them. `--dry-run` must not call the current snapshot request,
 because that request can synchronize the controller clock. Use cached state for
