@@ -605,3 +605,10 @@ an internal server-created value; a future household UI must bind it to its acto
 Sunday encoding and native timer-boundary observations remain prerequisites for
 that production workflow and a real scheduled-evening acceptance test. This
 checkpoint changes no household schedule or controller setting.
+
+The checked image from commit `1aba1fc` is deployed after a private schema 7 backup.
+GitHub checks and both architecture builds passed. TrueNAS update completed and
+the app is RUNNING; HTTPS health/readiness return 200 and unauthenticated status
+returns 401. Schema, household record counts, sessions, last controller operation
+and ownership version remain unchanged. Calendar remains disabled with no pending
+operation. No hardware access or new physical acceptance occurred during rollout.
