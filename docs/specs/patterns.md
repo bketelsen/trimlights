@@ -66,6 +66,11 @@ and capture timestamp. A native design has no simulated color output.
   rounded down. Palette runs repeat over logical addresses 0–2047. Reverse maps
   address i to `paletteLength - 1 - i`. Chase shifts that index backwards by
   `floor(tickMS * speed / 10000)`; speed 0 freezes motion. Negative indices wrap.
+- Preview playback MUST start its clock from a delivered animation frame, never
+  subtract effect-setup time from an earlier frame timestamp. Pause MUST retain
+  the current frame; resume and visibility changes MUST exclude time away.
+  Both strip and house previews share this browser clock. Speed zero MUST show
+  an instruction to increase speed and disable the playback button.
 - Preview ticks are integer milliseconds in 0–86,400,000. Rendering the same
   design/count/tick in Go and TypeScript MUST match the shared golden vectors.
 

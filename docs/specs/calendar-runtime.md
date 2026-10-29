@@ -67,3 +67,6 @@ re-evaluates the current instant; elapsed transitions are not queued.
 - Context: [application design](../design/application.md#scheduling-and-control-ownership).
 - Related: [calendar](schedules.md), [native controls](native-controls.md),
   [backups](backups.md), [roadmap](../plans/roadmap.md).
+
+Hardware prerequisites are sequenced in the
+[scheduling controller test plan](../plans/scheduling-controller-test.md).

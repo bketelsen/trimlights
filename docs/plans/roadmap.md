@@ -643,3 +643,26 @@ architecture builds passed. The app is RUNNING with healthy HTTPS endpoints;
 served JavaScript/CSS match the checked build byte-for-byte. Household record
 counts, sessions, last controller operation and disabled Calendar ownership are
 unchanged. The updated sign-in page was also verified in the live browser.
+
+### Scheduling test preparation and animation repair — 2026-10-29
+
+The [controller test plan](scheduling-controller-test.md) is prepared: three mode
+trials cover both start/stop boundaries, with a TIMER positive control, captured
+baseline, quiet observation windows and explicit restoration. It offers unchanged
+existing timers or an owner-operated temporary disabled-slot test outside existing
+windows. Sunday collection uses the real date, followed by evidence-based encoding
+fixtures and a separately reviewed Go check. No hardware test ran during preparation.
+
+Both browser previews now use a shared frame clock under the
+[pattern contract](../specs/patterns.md). An initial animation-frame timestamp can
+precede effect setup; the previous subtraction could produce a negative tick and
+stop rendering. The clock starts with the first frame, preserves paused progress
+and excludes time away. The [house preview](../specs/house.md) also honors explicit
+Play when reduced motion has suppressed autoplay. Zero speed has an actionable hint.
+
+Validation: `make check` passes, including 20 frontend tests, Go race tests,
+vet, build and 347 documentation links. In the isolated browser fixture, both
+previews changed between captured frames, stayed identical while paused, and
+resumed without console errors. Zero-speed controls show the guidance and become
+available again when speed increases. Production pattern data was only read to
+reproduce the reported settings; no controller command was sent.

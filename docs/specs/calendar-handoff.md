@@ -55,3 +55,6 @@ and review validity interval. A control audit cannot be both delivery and handof
 - Context: [application design](../design/application.md#scheduling-and-control-ownership).
 - Related: [runtime](calendar-runtime.md), [native controls](native-controls.md),
   [backups](backups.md), [roadmap](../plans/roadmap.md).
+
+Hardware prerequisites are sequenced in the
+[scheduling controller test plan](../plans/scheduling-controller-test.md).

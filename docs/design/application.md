@@ -213,6 +213,11 @@ for manual resolution. Preparation neither saves nor invokes the worker; ordinar
 compare-and-swap save remains separate. UI results are invalidated by draft or
 revision changes. Source timestamps remain visible because checks use cached state.
 
+The [prepared controller test](../plans/scheduling-controller-test.md) sequences
+native start/stop observations in TIMER, MANUAL and OFF, restoration checks and a
+real-Sunday official-app capture before production activation. Preparation does
+not contact the controller or enable calendar execution.
+
 Production execution remains disabled. Following
 [ADR-0013](../adr/0013-journal-calendar-execution.md), the dormant
 [runtime worker](../specs/calendar-runtime.md) now evaluates current intent after

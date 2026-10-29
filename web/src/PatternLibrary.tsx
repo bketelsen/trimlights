@@ -3,28 +3,30 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {APIError,request,SignedOut,userMessage} from './api';
 import {exportDesign,newDesign,renderPattern,validateDesign} from './pattern';
 import type {Design,SavedPattern} from './pattern';
+import {PreviewClock} from './previewClock';
 
 export function StripPreview({design}:{design:Design}){
  const canvas=useRef<HTMLCanvasElement>(null);
  const [playing,setPlaying]=useState(false);
+ const clock=useRef(new PreviewClock());
  const invalid=validateDesign(design);
  useEffect(()=>{
   if(invalid||design.effect==='native')return;
   const ctx=canvas.current?.getContext('2d');if(!ctx)return;
-  let handle=0;const start=performance.now();
+  let handle=0;clock.current.restart();
   const frame=(now:number)=>{
-   const tick=playing&&design.effect==='chase'?Math.floor(now-start)%86400000:0;
+   const tick=clock.current.tick(now,playing&&design.effect==='chase'&&!document.hidden);
    const colors=renderPattern(design,48,tick);
    ctx.clearRect(0,0,960,120);ctx.strokeStyle='#34404d';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(10,60);ctx.lineTo(950,60);ctx.stroke();
    colors.forEach((color,i)=>{const x=10+i*20;ctx.shadowBlur=12;ctx.shadowColor=color;ctx.fillStyle=color;ctx.beginPath();ctx.arc(x,60,6,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.strokeStyle='#637080';ctx.lineWidth=.5;ctx.stroke();});
-   if(playing&&!document.hidden)handle=requestAnimationFrame(frame);
+   if(playing&&design.effect==='chase'&&design.speed>0&&!document.hidden)handle=requestAnimationFrame(frame);
   };
-  const resume=()=>{cancelAnimationFrame(handle);handle=requestAnimationFrame(frame)};
+  const resume=()=>{cancelAnimationFrame(handle);clock.current.restart();handle=requestAnimationFrame(frame)};
   handle=requestAnimationFrame(frame);document.addEventListener('visibilitychange',resume);
   return()=>{cancelAnimationFrame(handle);document.removeEventListener('visibilitychange',resume)};
  },[design,playing,invalid]);
  if(design.effect==='native')return <div className="native-preview"><strong>Saved on your lights</strong><p>Choose this pattern on Home to play it. A preview isn’t available yet.</p></div>;
- return <div className="strip-preview"><canvas ref={canvas} width="960" height="120" role="img" aria-label={`Preview of ${design.name}, 48 bulbs`}/><div className="preview-caption"><span>Design preview</span>{design.effect==='chase'&&<button type="button" className="button secondary" disabled={!!invalid} onClick={()=>setPlaying(!playing)}>{playing?'Pause animation':'Play animation'}</button>}</div>{invalid&&<p className="field-error">{invalid}</p>}</div>;
+ return <div className="strip-preview"><canvas ref={canvas} width="960" height="120" role="img" aria-label={`Preview of ${design.name}, 48 bulbs`}/><div className="preview-caption"><span>Design preview</span>{design.effect==='chase'&&<button type="button" className="button secondary" disabled={!!invalid||design.speed===0} onClick={()=>setPlaying(!playing)}>{playing&&design.speed>0?'Pause animation':'Play animation'}</button>}</div>{design.effect==='chase'&&design.speed===0&&<p className="muted">Increase the speed to see your colors move.</p>}{invalid&&<p className="field-error">{invalid}</p>}</div>;
 }
 
 function download(design:Design){

@@ -43,6 +43,9 @@ Layout schema 1 contains `runs` and `views`. Each run has a stable `id`, `name`,
   If-Match returns 428. An editor MUST retain its conflicted draft.
 - Software previews MUST use the canonical pattern renderer and never contact the
   controller. Opaque native effects MUST display an unavailable-preview explanation.
+- Reduced-motion preference MUST prevent automatic house animation, while an
+  explicit Play animation action MUST work. Pause/resume uses the shared
+  [preview clock contract](patterns.md#rules).
 - Layout JSON imports MUST be bounded to 512 KiB and validated by the service before
   rendering. Import MUST preserve the current draft on validation failure, require
   explicit replacement of unsaved edits, and load a reviewable draft without saving.
