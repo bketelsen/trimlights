@@ -483,3 +483,13 @@ phone layout and signed-in control acceptance remain pending.
 explicit refresh succeeds through the authenticated app, and the owner can use the
 native controls. Deployment/acceptance evidence follows below; calendar ownership,
 custom effects and Sunday semantics are not included in this checkpoint.
+
+Deployment evidence: image `sha-e6ddff9d26d26687cef8cb6a37b76a58a10322ff` passed
+CI and is running on TrueNAS with the controller configured. HTTPS health/readiness
+return 200; anonymous status and control requests return 401. The new control UI
+asset is served. Schema 6 migration preserved existing sessions and the uploaded
+photo, with a pre-migration database backup. A pre-upgrade full bundle restored
+with byte-identical photo/thumbnail content; a new schema 6 bundle also restored
+in isolation with its controller guard. A container on TrueNAS read the controller
+before the hosted worker was enabled. Startup performed no controller operations.
+Signed-in app refresh/control and phone layout acceptance still await owner testing.
