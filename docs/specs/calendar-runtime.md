@@ -19,8 +19,10 @@ re-evaluates the current instant; elapsed transitions are not queued.
 
 ## Rules
 
-- Arming internal test ownership requires a supported, error-free, recent cached
-  MANUAL/OFF snapshot and an exact fingerprint; TIMER takeover is not implemented.
+- Directly arming internal test ownership requires a supported, error-free, recent
+  cached MANUAL/OFF snapshot and an exact fingerprint. The separate dormant
+  [handoff coordinator](calendar-handoff.md) tests reviewed TIMER takeover through
+  the worker; neither path is exposed in production.
 - Before delivery, a fresh worker read MUST match the persisted owned fingerprint.
   A different mode, library, native schedule or other non-clock byte pauses the
   runner without trying to restore or overwrite it.
@@ -46,8 +48,9 @@ re-evaluates the current instant; elapsed transitions are not queued.
 - Backups support schemas 5–7. Migration backs up schema 6; backup/restore tests
   retain calendar audit provenance and clear active/pending ownership on restore.
 - The engine does not alter native timers, upload effects or guess Sunday encoding.
-  Enable/disable handoff, owner-reviewed activation and physical acceptance remain
-  required before production execution.
+  The internal handoff coordinator is implemented and synthetically tested.
+  Owner-facing activation and physical acceptance remain required before
+  production execution.
 
 ## Derived artifacts
 
@@ -60,6 +63,7 @@ re-evaluates the current instant; elapsed transitions are not queued.
 ## References
 
 - Rationale: [ADR-0013](../adr/0013-journal-calendar-execution.md).
+- Internal transfer rationale: [ADR-0014](../adr/0014-review-calendar-ownership-transfers.md).
 - Context: [application design](../design/application.md#scheduling-and-control-ownership).
 - Related: [calendar](schedules.md), [native controls](native-controls.md),
   [backups](backups.md), [roadmap](../plans/roadmap.md).

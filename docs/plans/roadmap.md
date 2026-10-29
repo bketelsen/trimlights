@@ -112,7 +112,9 @@ and [schedule acceptance](../specs/v1-acceptance.md#rules). Cached migration and
 preflight follow [ADR-0012](../adr/0012-prepare-native-calendar-handoff.md) and the
 [preparation contract](../specs/calendar-preparation.md). Delivery machinery follows
 [ADR-0013](../adr/0013-journal-calendar-execution.md) and the
-[dormant runtime contract](../specs/calendar-runtime.md).
+[dormant runtime contract](../specs/calendar-runtime.md). Internal ownership transfer
+follows [ADR-0014](../adr/0014-review-calendar-ownership-transfers.md) and the
+[handoff contract](../specs/calendar-handoff.md).
 
 - Specify and test weekly/date-range rules, one-off exceptions, sunset/sunrise
   offsets, overnight windows, timezone/DST behavior, priorities and conflicts.
@@ -579,3 +581,27 @@ paused ownership, no pending delivery, cleared sessions, byte-identical photo an
 thumbnail blobs, and the controller-disabled guard. Production remained disabled
 for Calendar. This dormant-engine checkpoint is complete. No new physical command,
 Sunday encoding, timer-boundary or production-activation acceptance is claimed.
+
+### Reviewed ownership transfer engine — 2026-10-28
+
+Following [ADR-0014](../adr/0014-review-calendar-ownership-transfers.md) and the
+[handoff contract](../specs/calendar-handoff.md), the internal coordinator now
+reviews the saved calendar's immediate action, current controller fingerprint,
+ownership version and native timers. Reviews expire within one minute or at the
+current intent boundary. Takeover and return-to-TIMER use the existing worker;
+pending audit and paused ownership commit before delivery. Verified completion
+activates Calendar or disables it for TIMER return. A concurrent pause wins.
+
+Synthetic tests cover TIMER-to-pattern and TIMER-to-OFF takeover, continued runner
+delivery after override expiry, return to native TIMER, unchanged library/timers,
+stale reviews and external edits, competing calendar/ownership changes, transport
+expiry, cancellation, uncertainty, pending/completion storage failures, interrupted
+transfer recovery and preservation of handoff history through backup restore.
+`make check` passes, including Go race tests, frontend tests, vet, documentation
+links and the build. No schema migration or frontend change is needed.
+
+There is still no HTTP/CLI activation entry point or startup runner. The review is
+an internal server-created value; a future household UI must bind it to its actor.
+Sunday encoding and native timer-boundary observations remain prerequisites for
+that production workflow and a real scheduled-evening acceptance test. This
+checkpoint changes no household schedule or controller setting.

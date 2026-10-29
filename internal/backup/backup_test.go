@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -336,6 +337,9 @@ func TestSchemaSixBackupMigratesAndRuntimeRestorePauses(t *testing.T) {
 				if err = source.Record(ctx, storage.Observation{Source: "fixture"}, storage.Operation{ID: "calendar-history", Actor: "calendar", Started: now, Finished: now, Control: &storage.ControlAudit{Outcome: "verified", Calendar: &storage.CalendarDelivery{Version: 2, Revision: 2, Action: schedule.Action{Kind: "off"}, From: now, Until: now.Add(time.Hour)}}}); err != nil {
 					t.Fatal(err)
 				}
+				if err = source.Record(ctx, storage.Observation{Source: "fixture"}, storage.Operation{ID: "handoff-history", Actor: "owner", Started: now, Finished: now, Control: &storage.ControlAudit{Outcome: "verified", Request: trimlight.ControlRequest{Action: "timer", BaselineSHA256: strings.Repeat("a", 64)}, Handoff: &storage.CalendarHandoff{Direction: "timer", Version: 2, From: now, Until: now.Add(time.Minute)}}}); err != nil {
+					t.Fatal(err)
+				}
 			}
 			archive := filepath.Join(t.TempDir(), "runtime.zip")
 			report, err := Create(ctx, dir, archive, configuration(), "fixture")
@@ -378,8 +382,14 @@ func TestSchemaSixBackupMigratesAndRuntimeRestorePauses(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				found := false
+				found, handoffFound := false, false
 				for _, op := range ops {
+					if op.ID == "handoff-history" {
+						handoffFound = true
+						if op.Control.Handoff == nil || op.Control.Handoff.Direction != "timer" || op.Control.Handoff.Version != 2 || op.Actor != "owner" || op.Control.Outcome != "verified" {
+							t.Fatal(op)
+						}
+					}
 					if op.ID == "calendar-history" {
 						found = true
 						if op.Control.Calendar == nil || op.Control.Calendar.Revision != 2 {
@@ -387,8 +397,8 @@ func TestSchemaSixBackupMigratesAndRuntimeRestorePauses(t *testing.T) {
 						}
 					}
 				}
-				if !found {
-					t.Fatal("calendar provenance lost")
+				if !found || !handoffFound {
+					t.Fatal("calendar or handoff provenance lost")
 				}
 			}
 			if _, err = os.Stat(filepath.Join(output, "data/controller-disabled")); err != nil {

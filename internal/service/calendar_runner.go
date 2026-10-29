@@ -215,7 +215,7 @@ func (r *calendarRunner) Step(ctx context.Context) (time.Duration, error) {
 	}
 	deliveryCtx, cancelDelivery := context.WithTimeout(ctx, remaining)
 	defer cancelDelivery()
-	_, done, err = r.worker.enqueue(deliveryCtx, "calendar", &command, delivery, guard)
+	_, done, err = r.worker.enqueue(deliveryCtx, "calendar", &command, delivery, nil, guard)
 	if err == nil {
 		err = awaitCalendar(ctx, done)
 	}

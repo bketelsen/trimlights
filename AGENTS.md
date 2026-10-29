@@ -86,6 +86,10 @@ implementation. Use absolute dates in documentation.
   storage, honor interval deadlines and pause on external changes or uncertainty.
   Never replay interrupted deliveries or turn a restored checkpoint into permission
   to control hardware. See [runtime contract](docs/specs/calendar-runtime.md).
+- Ownership transfers use the dormant [handoff coordinator](docs/specs/calendar-handoff.md).
+  Bind reviews to expiry, exact controller state and ownership/calendar versions;
+  journal the paused pending transfer before sending. A concurrent pause wins over
+  successful completion. Keep HTTP/CLI activation absent until physical verification.
 
 - House photos are normalized in `internal/house` before storage. Keep byte/pixel
   limits, EXIF transforms and metadata removal intact; never serve upload originals.

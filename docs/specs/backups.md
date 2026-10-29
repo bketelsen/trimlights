@@ -35,7 +35,8 @@ and config files. All restored files are private (0600), directories 0700.
   supported; opening their restored database migrates to schema 7 with a backup.
 - Restore MUST validate SQLite integrity and foreign keys and require the known
   application tables. It MUST clear login flows and sessions before publishing. Schema 7 ownership
-  MUST be paused with no pending operation; historical delivery audits are retained.
+  MUST be paused with no pending operation; historical delivery and handoff audits
+  are retained.
 - Restore MUST write the controller-disabled marker. Service startup MUST honor it
   regardless of the host environment/flag. Restoring MUST never start a service.
 - A dry-run MUST create no files or directories and open no database or network
@@ -55,6 +56,8 @@ backups remain separate and do not replace a full bundle with private configurat
   [native control audit](native-controls.md).
 - Schema 7 rationale: [ADR-0013](../adr/0013-journal-calendar-execution.md),
   [calendar runtime](calendar-runtime.md).
+- Transfer provenance: [ADR-0014](../adr/0014-review-calendar-ownership-transfers.md),
+  [calendar handoff](calendar-handoff.md).
 - Context: [application design](../design/application.md),
   [backup operations](../design/backup-operations.md).
 - Delivery: [roadmap](../plans/roadmap.md).

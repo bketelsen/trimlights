@@ -136,6 +136,9 @@ func calendarControl(ctx context.Context, tx *sql.Tx, o Observation, op Operatio
 	if op.Control == nil {
 		return nil
 	}
+	if op.Control.Handoff != nil {
+		return calendarHandoffControl(ctx, tx, o, op, complete)
+	}
 	state, err := runtimeIn(ctx, tx)
 	if err != nil {
 		return err

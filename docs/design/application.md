@@ -216,9 +216,21 @@ execution. Ordinary household controls pause ownership before sending. Interrupt
 intents are never replayed. Backup restore pauses copied ownership and retains its
 controller-disabled guard. Service startup suspends active checkpoints and never
 starts the runner: there is no enable endpoint or runtime flag. Tests arm supported
-MANUAL/OFF snapshots with fake time and synthetic hardware. Physical handoff,
-activation/resume UI and a scheduled household evening remain unimplemented or
-unverified; a tested dormant engine is not an enabled household scheduler.
+MANUAL/OFF snapshots with fake time and synthetic hardware.
+
+[ADR-0014](../adr/0014-review-calendar-ownership-transfers.md) adds an internal
+[handoff coordinator](../specs/calendar-handoff.md). A cached review binds the
+ownership version, controller fingerprint, saved calendar revision, immediate
+action and native timers. It expires within one minute or at the next intent
+boundary. Apply revalidates the review before queueing and at the pre-write boundary;
+the pending transaction checks ownership and calendar revisions again. Both takeover
+and TIMER return pause ownership before sending. Verified completion activates
+Calendar or disables it for TIMER return, unless a competing pause changed ownership.
+Interrupted or ambiguous transfers remain paused; no compensating command is sent.
+Native timers are preserved. The coordinator has no HTTP/CLI entry point and cannot
+bypass the production gate. Physical handoff, activation/resume UI and a scheduled
+household evening remain unimplemented or unverified; a tested dormant engine is
+not an enabled household scheduler.
 
 Before taking over, preserve native schedules and validate manual/off/timer mode
 semantics. Native timers and the service must not compete. Unsupported native

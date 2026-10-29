@@ -27,6 +27,7 @@ type request struct {
 	done      chan error
 	control   *trimlight.ControlRequest
 	calendar  *storage.CalendarDelivery
+	handoff   *storage.CalendarHandoff
 	guard     func(context.Context, *trimlight.Snapshot) error
 }
 type Worker struct {
@@ -45,7 +46,7 @@ func NewWorker(store *storage.Store, controller Controller, offset int) *Worker 
 	return &Worker{store: store, controller: controller, offset: offset, queue: make(chan request, 8), pace: time.Second}
 }
 func (w *Worker) Enqueue(ctx context.Context, actor string) (string, <-chan error, error) {
-	return w.enqueue(ctx, actor, nil, nil, nil)
+	return w.enqueue(ctx, actor, nil, nil, nil, nil)
 }
 
 func (w *Worker) ControlAvailability(state storage.Observation) (bool, string) {
@@ -81,17 +82,17 @@ func (w *Worker) EnqueueControl(ctx context.Context, actor string, input trimlig
 	if state.Snapshot.StableSHA256 != input.BaselineSHA256 {
 		return "", nil, trimlight.ErrStaleBaseline
 	}
-	return w.enqueue(ctx, actor, &input, nil, nil)
+	return w.enqueue(ctx, actor, &input, nil, nil, nil)
 }
 
-func (w *Worker) enqueue(ctx context.Context, actor string, control *trimlight.ControlRequest, calendar *storage.CalendarDelivery, guard func(context.Context, *trimlight.Snapshot) error) (string, <-chan error, error) {
+func (w *Worker) enqueue(ctx context.Context, actor string, control *trimlight.ControlRequest, calendar *storage.CalendarDelivery, handoff *storage.CalendarHandoff, guard func(context.Context, *trimlight.Snapshot) error) (string, <-chan error, error) {
 	if w.controller == nil {
 		return "", nil, ErrDisabled
 	}
 	if err := ctx.Err(); err != nil {
 		return "", nil, err
 	}
-	r := request{id: rand.Text(), actor: actor, ctx: ctx, done: make(chan error, 1), control: control, calendar: calendar, guard: guard}
+	r := request{id: rand.Text(), actor: actor, ctx: ctx, done: make(chan error, 1), control: control, calendar: calendar, handoff: handoff, guard: guard}
 	select {
 	case w.queue <- r:
 		return r.id, r.done, nil
@@ -157,7 +158,7 @@ func (w *Worker) Run(ctx context.Context) {
 			if r.control == nil {
 				snap, readErr = w.controller.Snapshot(opCtx, w.offset)
 			} else {
-				op.Control = &storage.ControlAudit{Request: *r.control, Outcome: "rejected", Calendar: r.calendar}
+				op.Control = &storage.ControlAudit{Request: *r.control, Outcome: "rejected", Calendar: r.calendar, Handoff: r.handoff}
 				state, err := w.store.Observation(opCtx)
 				readErr = err
 				if readErr == nil {

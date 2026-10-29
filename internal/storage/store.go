@@ -180,6 +180,7 @@ type Operation struct {
 
 type ControlAudit struct {
 	Calendar       *CalendarDelivery        `json:"calendar,omitempty"`
+	Handoff        *CalendarHandoff         `json:"handoff,omitempty"`
 	Request        trimlight.ControlRequest `json:"request"`
 	Outcome        string                   `json:"outcome"`
 	WriteAttempted bool                     `json:"write_attempted"`
