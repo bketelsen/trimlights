@@ -38,6 +38,10 @@ a separate bounded OFF/saved-slot/TIMER verification on 2026-10-28; follow
 [ADR-0010](docs/adr/0010-bounded-playback-verification.md) and its
 [contract](docs/specs/playback-verification.md). This exception does not authorize
 arbitrary mode, pattern, schedule, brightness or topology writes.
+Verified ordinary OFF/saved-slot/TIMER actions are separately authorized through
+the household worker under [ADR-0011](docs/adr/0011-audited-household-native-controls.md).
+Keep fresh baseline checks, durable pending audit and read-only reconciliation;
+never retry an ambiguous control write or replay an interrupted intent on startup.
 
 ## Documentation rules
 

@@ -42,7 +42,15 @@ func TestBrowserPreview(t *testing.T) {
 	}
 	token := rand.Text() + rand.Text()
 	csrf := rand.Text()
-	base := Handler(store, NewWorker(store, nil, -1), token)
+	worker := NewWorker(store, nil, -1)
+	if os.Getenv("TRIMLIGHT_BROWSER_NATIVE") == "1" {
+		worker = NewWorker(store, newNativeStub(t), 3306)
+	}
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	workerDone := make(chan struct{})
+	go func() { defer close(workerDone); worker.Run(workerCtx) }()
+	defer func() { workerCancel(); <-workerDone }()
+	base := Handler(store, worker, token)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Host != "127.0.0.1:8789" {
 			http.Error(w, "Unexpected host", 421)
@@ -77,7 +85,7 @@ func TestBrowserPreview(t *testing.T) {
 	defer server.Close()
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
-	t.Log("Isolated fixture UI: http://127.0.0.1:8789 — controller access disabled")
+	t.Log("Isolated fixture UI: http://127.0.0.1:8789 — no physical controller; optional native controls use in-memory synthetic state")
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	select {

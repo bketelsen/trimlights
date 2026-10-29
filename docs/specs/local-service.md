@@ -26,6 +26,7 @@ must run with the service stopped and the phone app closed.
 | `GET /api/v1/status` | Bearer token | Observation, snapshot age, worker queue, capability limits |
 | `GET /api/v1/operations` | Bearer token | Last 100 completed refresh results |
 | `POST /api/v1/controller/refresh` | Bearer token | One verified snapshot result or error, with operation ID |
+| `POST /api/v1/controller/control` | Bearer token | Verified [native control](native-controls.md) through the same worker |
 
 Refresh accepts exactly one JSON object, with `Content-Type: application/json`:
 
@@ -50,12 +51,13 @@ Refresh accepts exactly one JSON object, with `Content-Type: application/json`:
 - A failed read MUST preserve the previous successful snapshot and its timestamp.
   Snapshot age, last attempt and last error MUST remain distinguishable.
 - Observation and operation audit writes MUST commit atomically. Storage keeps the
-  most recent 100 completed operations. Pending requests are not persisted or replayed.
+  most recent 100 completed operations. Queued requests are not replayed. Native controls persist pending intent before
+  sending and mark interrupted operations uncertain on startup; see [native controls](native-controls.md).
 - The store MUST reject a second process using the same local data directory and
   reject a schema newer than this binary understands. Schema version 1 creates
   observation and operation tables; version 2 adds auth state, version 3 adds
   the [pattern library](patterns.md), version 4 adds the [calendar](schedules.md), and version 5 adds
-  [photos and layout history](house.md). Upgrades back up
+  [photos and layout history](house.md). Schema 6 adds [native control audits](native-controls.md). Upgrades back up
   the existing database with VACUUM INTO before a transactional migration.
   SQLite uses WAL and FULL sync.
 - A process lock does not protect against another machine or another data directory
@@ -65,8 +67,8 @@ Refresh accepts exactly one JSON object, with `Content-Type: application/json`:
 - Controller access MUST remain disabled when neither a host flag nor
   `TRIMLIGHT_CONTROLLER_HOST` supplies a value. An explicit `--host=` disables
   environment-provided access. Service
-  startup MUST NOT refresh automatically. Power, scene apply and schedule writes
-  remain unavailable until their semantics and read-back are verified.
+  startup MUST NOT refresh automatically. Only [verified native controls](native-controls.md) are available with supported
+  state; custom scene uploads and schedule writes remain unavailable.
 - All API responses MUST use `Cache-Control: no-store`. No credentialed CORS or
   cookie authentication exists in this development mode. Use the separate
   [household OIDC mode](household-auth.md) through Caddy instead.
@@ -93,8 +95,8 @@ Unknown layout or mode MUST NOT confer a playback capability.
 OFF/TIMER and saved-pattern selection have been captured from the official app
 with owner observations. Independent Go playback and restoration are exercised
 only by the separately authorized [verification diagnostic](playback-verification.md),
-following [ADR-0010](../adr/0010-bounded-playback-verification.md). Hosted controls
-remain unavailable pending hardware verification and service integration.
+following [ADR-0010](../adr/0010-bounded-playback-verification.md). Hosted controls follow the separate [native control contract](native-controls.md)
+and [ADR-0011](../adr/0011-audited-household-native-controls.md).
 
 ## Derived artifacts
 

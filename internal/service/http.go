@@ -74,6 +74,7 @@ func apiHandler(store *storage.Store, worker *Worker) http.Handler {
 	registerPatterns(mux, store)
 	registerSchedules(mux, store)
 	registerHouse(mux, store)
+	registerControls(mux, worker)
 	mux.Handle("GET /", webui.Handler())
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { jsonResponse(w, 200, map[string]string{"status": "ok"}) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
@@ -94,7 +95,8 @@ func apiHandler(store *storage.Store, worker *Worker) http.Handler {
 			seconds := time.Since(state.Snapshot.QueriedAt).Seconds()
 			age = &seconds
 		}
-		jsonResponse(w, 200, map[string]any{"observation": state, "worker": worker.Status(), "snapshot_age_seconds": age, "capabilities": map[string]any{"snapshot": worker.controller != nil, "clock_sync_possible": true, "power": false, "pattern_apply": false, "schedule_write": false, "reason": "Control commands and mode transitions require hardware verification."}})
+		controls, reason := worker.ControlAvailability(state)
+		jsonResponse(w, 200, map[string]any{"observation": state, "worker": worker.Status(), "snapshot_age_seconds": age, "capabilities": map[string]any{"snapshot": worker.controller != nil, "clock_sync_possible": true, "power": controls, "pattern_apply": controls, "native_controls": controls, "schedule_write": false, "reason": reason}})
 	})
 	mux.HandleFunc("GET /api/v1/operations", func(w http.ResponseWriter, r *http.Request) {
 		ops, err := store.Operations(r.Context())
@@ -178,6 +180,9 @@ func Run(ctx context.Context, c Config) error {
 		return err
 	}
 	defer store.Close()
+	if err := store.RecoverControlIntents(ctx); err != nil {
+		return err
+	}
 	worker := NewWorker(store, c.Controller, c.ScheduleOffset)
 	var handler http.Handler = Handler(store, worker, c.APIToken)
 	if c.OIDC != nil {

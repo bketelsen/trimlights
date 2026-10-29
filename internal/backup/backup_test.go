@@ -68,7 +68,7 @@ func fixture(t *testing.T) (*storage.Store, string) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	if err = s.Record(ctx, storage.Observation{Snapshot: &trimlight.Snapshot{QueriedAt: now}, Source: "fixture"}, storage.Operation{ID: "fixture", Started: now, Finished: now, Actor: "one"}); err != nil {
+	if err = s.Record(ctx, storage.Observation{Snapshot: &trimlight.Snapshot{QueriedAt: now}, Source: "fixture"}, storage.Operation{ID: "fixture", Started: now, Finished: now, Actor: "one", Control: &storage.ControlAudit{Request: trimlight.ControlRequest{Action: "off"}, Outcome: "verified", WriteAttempted: true}}); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.SaveSession(ctx, storage.Session{Hash: "old-session", Subject: "one", CSRF: "fixture", Expires: now.Add(time.Hour)}); err != nil {
@@ -78,6 +78,40 @@ func fixture(t *testing.T) (*storage.Store, string) {
 		t.Fatal(err)
 	}
 	return s, dir
+}
+
+func TestSchemaFiveBackupStillRestoresAndMigrates(t *testing.T) {
+	source, dir := fixture(t)
+	if err := source.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := openDB(filepath.Join(dir, "trimlights.db"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec("DROP TABLE control_audits; PRAGMA user_version=5")
+	db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(t.TempDir(), "schema-five.zip")
+	r, err := Create(context.Background(), dir, archive, configuration(), "test")
+	if err != nil || r.Schema != 5 {
+		t.Fatal(r, err)
+	}
+	output := filepath.Join(t.TempDir(), "restored")
+	r, err = Restore(context.Background(), archive, output)
+	if err != nil || r.Schema != 5 {
+		t.Fatal(r, err)
+	}
+	s, err := storage.Open(filepath.Join(output, "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err = s.Operations(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 }
 func TestLiveBackupRestoresAllHouseholdStateAndClearsAuthentication(t *testing.T) {
 	source, dir := fixture(t)

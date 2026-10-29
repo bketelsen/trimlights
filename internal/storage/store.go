@@ -66,10 +66,10 @@ func (s *Store) init() error {
 	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 5 {
+	if version > 6 {
 		return fmt.Errorf("database schema %d is newer than this binary supports", version)
 	}
-	if version == 5 {
+	if version == 6 {
 		return nil
 	}
 	if version > 0 {
@@ -141,6 +141,11 @@ func (s *Store) init() error {
 			}
 		}
 	}
+	if version < 6 {
+		if _, err = tx.Exec(`CREATE TABLE IF NOT EXISTS control_audits(id TEXT PRIMARY KEY REFERENCES operations(id) ON DELETE CASCADE,body BLOB NOT NULL); PRAGMA user_version=6;`); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
 }
 func (s *Store) Close() error { return errors.Join(s.db.Close(), s.lock.Close()) }
@@ -159,16 +164,36 @@ func (s *Store) Observation(ctx context.Context) (Observation, error) {
 }
 
 type Operation struct {
-	ID       string    `json:"id"`
-	Started  time.Time `json:"started"`
-	Finished time.Time `json:"finished"`
-	Actor    string    `json:"actor"`
-	Error    string    `json:"error,omitempty"`
+	ID       string        `json:"id"`
+	Started  time.Time     `json:"started"`
+	Finished time.Time     `json:"finished"`
+	Actor    string        `json:"actor"`
+	Error    string        `json:"error,omitempty"`
+	Control  *ControlAudit `json:"control,omitempty"`
+}
+
+type ControlAudit struct {
+	Request        trimlight.ControlRequest `json:"request"`
+	Outcome        string                   `json:"outcome"`
+	WriteAttempted bool                     `json:"write_attempted"`
+	TransportError string                   `json:"transport_error,omitempty"`
 }
 
 // Record atomically publishes state and its audit result. Failed reads preserve
 // the last successful snapshot, whose timestamp remains explicitly stale.
 func (s *Store) Record(ctx context.Context, o Observation, op Operation) error {
+	return s.record(ctx, o, op, false)
+}
+
+// CompleteControl updates only an existing pending intent, atomically with state.
+func (s *Store) CompleteControl(ctx context.Context, o Observation, op Operation) error {
+	if op.Control == nil || op.Control.Outcome == "pending" {
+		return errors.New("a completed control result is required")
+	}
+	return s.record(ctx, o, op, true)
+}
+
+func (s *Store) record(ctx context.Context, o Observation, op Operation, complete bool) error {
 	b, err := json.Marshal(o)
 	if err != nil {
 		return err
@@ -181,16 +206,39 @@ func (s *Store) Record(ctx context.Context, o Observation, op Operation) error {
 	if _, err = tx.ExecContext(ctx, "INSERT INTO observation VALUES(1,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body", b); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO operations VALUES(?,?,?,?,?)", op.ID, op.Started.UTC().Format("2006-01-02T15:04:05.000000000Z"), op.Finished.UTC().Format("2006-01-02T15:04:05.000000000Z"), op.Actor, op.Error); err != nil {
+	stamp := "2006-01-02T15:04:05.000000000Z"
+	if complete {
+		var result sql.Result
+		result, err = tx.ExecContext(ctx, `UPDATE operations SET finished=?,error=? WHERE id=? AND actor=? AND id IN (SELECT id FROM control_audits WHERE json_extract(body,'$.outcome')='pending')`, op.Finished.UTC().Format(stamp), op.Error, op.ID, op.Actor)
+		if err == nil {
+			var count int64
+			count, err = result.RowsAffected()
+			if err == nil && count != 1 {
+				err = errors.New("control intent is missing or already completed")
+			}
+		}
+	} else {
+		_, err = tx.ExecContext(ctx, "INSERT INTO operations VALUES(?,?,?,?,?)", op.ID, op.Started.UTC().Format(stamp), op.Finished.UTC().Format(stamp), op.Actor, op.Error)
+	}
+	if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, "DELETE FROM operations WHERE id NOT IN (SELECT id FROM operations ORDER BY finished DESC LIMIT 100)"); err != nil {
+	if op.Control != nil {
+		body, e := json.Marshal(op.Control)
+		if e != nil {
+			return e
+		}
+		if _, err = tx.ExecContext(ctx, "INSERT INTO control_audits VALUES(?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body", op.ID, body); err != nil {
+			return err
+		}
+	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM operations WHERE id NOT IN (SELECT id FROM operations ORDER BY finished DESC LIMIT 100) AND id NOT IN (SELECT id FROM control_audits WHERE json_extract(body,'$.outcome')='pending')"); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 func (s *Store) Operations(ctx context.Context) ([]Operation, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id,started,finished,actor,error FROM operations ORDER BY finished DESC LIMIT 100")
+	rows, err := s.db.QueryContext(ctx, "SELECT o.id,o.started,o.finished,o.actor,o.error,c.body FROM operations o LEFT JOIN control_audits c ON c.id=o.id ORDER BY o.finished DESC LIMIT 100")
 	if err != nil {
 		return nil, err
 	}
@@ -199,8 +247,14 @@ func (s *Store) Operations(ctx context.Context) ([]Operation, error) {
 	for rows.Next() {
 		var op Operation
 		var start, end string
-		if err = rows.Scan(&op.ID, &start, &end, &op.Actor, &op.Error); err != nil {
+		var body []byte
+		if err = rows.Scan(&op.ID, &start, &end, &op.Actor, &op.Error, &body); err != nil {
 			return nil, err
+		}
+		if len(body) != 0 {
+			if err = json.Unmarshal(body, &op.Control); err != nil {
+				return nil, err
+			}
 		}
 		op.Started, err = time.Parse(time.RFC3339Nano, start)
 		if err != nil {
@@ -213,4 +267,31 @@ func (s *Store) Operations(ctx context.Context) ([]Operation, error) {
 		out = append(out, op)
 	}
 	return out, rows.Err()
+}
+
+// RecoverControlIntents records uncertainty after process loss, without hardware IO.
+func (s *Store) RecoverControlIntents(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	message := "A controller operation was interrupted; its outcome is uncertain. Refresh before another command."
+	result, err := tx.ExecContext(ctx, `UPDATE operations SET error=?,finished=? WHERE id IN (SELECT id FROM control_audits WHERE json_extract(body,'$.outcome')='pending')`, message, time.Now().UTC().Format("2006-01-02T15:04:05.000000000Z"))
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		if _, err = tx.ExecContext(ctx, `UPDATE control_audits SET body=json_set(body,'$.outcome','uncertain') WHERE json_extract(body,'$.outcome')='pending'`); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE observation SET body=json_set(body,'$.last_error',?) WHERE id=1`, message); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }

@@ -59,7 +59,9 @@ and [CLI acceptance](../specs/v1-acceptance.md#interface).
 Implements [worker design](../design/application.md#application-boundaries) and
 [control rules](../specs/v1-acceptance.md#rules). The bounded playback integration
 test follows [ADR-0010](../adr/0010-bounded-playback-verification.md) and the
-[verification contract](../specs/playback-verification.md).
+[verification contract](../specs/playback-verification.md). Ordinary control integration
+follows [ADR-0011](../adr/0011-audited-household-native-controls.md) and the
+[native control contract](../specs/native-controls.md).
 
 - Replace hardcoded schedule offsets with bounded parsing of variable records;
   preserve unknown fields and fail visibly on unsupported firmware/layouts.
@@ -460,3 +462,24 @@ worker and mobile controls, with stale-library checks and ambiguous-write
 reconciliation. Hosted controller access remains disabled. Custom pattern writes,
 brightness, native scheduler handoff, Sunday clock encoding and calibration still
 need separate work; Phase 2 and household v1 are not complete.
+
+### Authenticated native controls — 2026-10-28
+
+Following [ADR-0011](../adr/0011-audited-household-native-controls.md), the
+[native control contract](../specs/native-controls.md) is implemented through the
+[existing worker](../design/application.md#application-boundaries). Home offers
+OFF, saved-controller-pattern playback and return to native TIMER. These actions
+remain separate from software Library edits and Calendar execution.
+
+Fresh baseline checks, durable pending audit, cancellation and single-read
+reconciliation protect each operation. Schema 6 backs up existing databases and
+retains control audit metadata; schema 5 and 6 backup round trips are supported.
+Tests cover stale requests, authentication/CSRF, actor attribution, audit failure,
+interrupted intents, readback failure and no automatic write retries. The frontend
+build passes. Visual browser automation was unavailable in this session; actual
+phone layout and signed-in control acceptance remain pending.
+
+**Done when:** the new build is deployed with one configured controller owner, an
+explicit refresh succeeds through the authenticated app, and the owner can use the
+native controls. Deployment/acceptance evidence follows below; calendar ownership,
+custom effects and Sunday semantics are not included in this checkpoint.

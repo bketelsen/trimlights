@@ -132,8 +132,8 @@ func inspect(ctx context.Context, path string) (Report, error) {
 	if err = db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&r.Schema); err != nil {
 		return r, err
 	}
-	if r.Schema != 5 {
-		return r, errors.New("backup requires supported database schema 5")
+	if r.Schema != 5 && r.Schema != 6 {
+		return r, errors.New("backup requires supported database schema 5 or 6")
 	}
 	var integrity string
 	if err = db.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&integrity); err != nil || integrity != "ok" {
@@ -159,6 +159,9 @@ func inspect(ctx context.Context, path string) (Report, error) {
 		return r, errors.New("unexpected views or triggers in application database")
 	}
 	columns := map[string]string{"observation": "id,body", "operations": "id,started,finished,actor,error", "login_flows": "state_hash,browser_hash,nonce,verifier,expires", "sessions": "hash,subject,name,csrf,expires", "pattern_heads": "id,revision,archived", "pattern_revisions": "id,revision,body,actor,created,archived", "pattern_imports": "slot,pattern_id", "schedule_revisions": "revision,body,actor,created", "schedule_references": "schedule_revision,rule_id,name,enabled,pattern_id,pattern_revision", "photos": "id,name,width,height,created,actor,image,thumbnail", "house_revisions": "revision,body,actor,created", "house_photo_refs": "revision,photo_id"}
+	if r.Schema == 6 {
+		columns["control_audits"] = "id,body"
+	}
 	for table, fields := range columns {
 		rows, err = db.QueryContext(ctx, "SELECT "+fields+" FROM "+table+" LIMIT 0")
 		if err != nil {
@@ -259,7 +262,7 @@ func Create(ctx context.Context, dataDir, output string, config auth.Config, ver
 		return Report{}, err
 	}
 	z := zip.NewWriter(f)
-	manifest := Manifest{Format: 1, Schema: 5, Created: time.Now().UTC(), Version: version, Files: []File{}}
+	manifest := Manifest{Format: 1, Schema: report.Schema, Created: time.Now().UTC(), Version: version, Files: []File{}}
 	for _, name := range entries {
 		if err = ctx.Err(); err != nil {
 			break
@@ -348,7 +351,7 @@ func Restore(ctx context.Context, input, output string) (Report, error) {
 	if err = strictJSON(raw, &manifest); err != nil {
 		return Report{}, err
 	}
-	if manifest.Format != 1 || manifest.Schema != 5 || len(manifest.Files) != 3 || manifest.Created.IsZero() {
+	if manifest.Format != 1 || (manifest.Schema != 5 && manifest.Schema != 6) || len(manifest.Files) != 3 || manifest.Created.IsZero() {
 		return Report{}, errors.New("unsupported backup manifest")
 	}
 	seen := map[string]bool{}
@@ -396,6 +399,9 @@ func Restore(ctx context.Context, input, output string) (Report, error) {
 	report, err := inspect(ctx, database)
 	if err != nil {
 		return Report{}, err
+	}
+	if report.Schema != manifest.Schema {
+		return Report{}, errors.New("manifest and database schema differ")
 	}
 	db, err := openDB(database, false)
 	if err != nil {

@@ -219,6 +219,20 @@ func savedPlaybackPayload(id byte) ([]byte, error) {
 	return []byte{4, 0, 1, id}, nil
 }
 
+func nativeControlPayload(input ControlRequest) ([]byte, error) {
+	if err := input.Validate(); err != nil {
+		return nil, err
+	}
+	switch input.Action {
+	case "off":
+		return playbackModePayload(0)
+	case "timer":
+		return playbackModePayload(2)
+	default:
+		return savedPlaybackPayload(input.PatternID)
+	}
+}
+
 func validatePlaybackBaseline(s *Snapshot, fingerprint string, target byte) (byte, error) {
 	if !validFingerprint(fingerprint) || s.StableSHA256 != fingerprint {
 		return 0, errors.New("fresh controller state differs from the reviewed baseline fingerprint; no write permitted")
@@ -254,4 +268,51 @@ func verifyPlaybackState(before, current *Snapshot, mode byte, parameters []byte
 		return errors.New("playback readback differs from intended mode or effect parameters")
 	}
 	return nil
+}
+
+func (r ControlRequest) Validate() error {
+	if !validFingerprint(r.BaselineSHA256) {
+		return errors.New("a valid baseline_sha256 is required")
+	}
+	switch r.Action {
+	case "off", "timer":
+		if r.PatternID != 0 {
+			return errors.New("pattern_id is only valid for play")
+		}
+	case "play":
+		if r.PatternID < 1 || r.PatternID > 18 {
+			return errors.New("play requires a saved pattern_id from 1 to 18")
+		}
+	default:
+		return errors.New("action must be off, play or timer")
+	}
+	return nil
+}
+
+func nativeControlLayout(s *Snapshot) bool {
+	if s == nil || len(s.raw) != 3492 || len(s.Patterns) != 18 || s.Playback == nil || s.raw[3] > 2 {
+		return false
+	}
+	for i, p := range s.Patterns {
+		if int(p.ID) != i+1 {
+			return false
+		}
+	}
+	return true
+}
+
+func nativeControlMatches(before, after *Snapshot, input ControlRequest) bool {
+	if !playbackInvariants(before, after) {
+		return false
+	}
+	switch input.Action {
+	case "off":
+		return after.raw[3] == 0 && bytes.Equal(after.raw[3320:3476], before.raw[3320:3476])
+	case "timer":
+		return after.raw[3] == 2
+	case "play":
+		start := 52 + (int(input.PatternID)-1)*182
+		return after.raw[3] == 1 && bytes.Equal(after.raw[3320:3476], before.raw[start:start+156])
+	}
+	return false
 }

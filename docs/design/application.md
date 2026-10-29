@@ -30,8 +30,10 @@ and the OIDC redirect have passed integration checks.
 Shared pattern editing, software strip previews, calendar editing and calendar
 intent preview are implemented. House photo upload, manual mapping and software
 previews are implemented under the house contract. A bounded diagnostic now verifies
-OFF, saved-slot playback and TIMER restoration on the original controller. Hosted
-controls, schedule execution and physical calibration are not built.
+OFF, saved-slot playback and TIMER restoration on the original controller. Authenticated native controls now use the existing worker, under
+[ADR-0011](../adr/0011-audited-household-native-controls.md) and the
+[native control contract](../specs/native-controls.md). Schedule execution and
+physical calibration are not built.
 
 The following is the accepted target, not a description of shipped components:
 
@@ -77,7 +79,7 @@ Implemented commands include `serve`, `status`, `refresh`, `snapshot`,
 background. Explicit refresh acknowledges possible clock synchronization and
 uses a bounded queue, a 15-second operation deadline and one-second pacing between
 operations. Failed reads preserve the last successful snapshot and record the
-error. `status` reads cached storage only. Unverified hardware writes are disabled.
+error. `status` reads cached storage only. Only verified native OFF/saved-slot/TIMER writes are available; other writes remain disabled.
 Bearer-token development mode is loopback-only. OIDC mode supports container
 binding with a fixed external HTTPS origin. These modes cannot be combined.
 The UI polls cached status every five seconds while visible; this does not poll
@@ -155,8 +157,14 @@ unchanged. Synthetic tests cover successful readback, cancellation, disconnects,
 evidence errors, external changes and gated recovery. The 2026-10-28 hardware test
 passed OFF and target-slot readback, restoration, and independent verification
 of every non-clock baseline byte. The owner confirmed OFF → target effect →
-original appearance. The hosted worker remains disabled pending control integration;
-custom writes, brightness, Sunday clock semantics and scheduler handoff are unverified.
+original appearance. The authenticated worker now integrates these commands under
+[ADR-0011](../adr/0011-audited-household-native-controls.md). Fresh snapshot fingerprints
+protect against stale actions; schema 6 records pending intents before writes and
+commits completion with observations. Ambiguous sends get one independent read,
+never an automatic repeat or restoration. Interrupted intents become uncertain on
+startup without contacting hardware. Native controls do not enable Calendar
+execution. Custom writes, brightness, Sunday clock semantics and scheduler handoff
+remain unverified.
 
 This advances [roadmap Phase 2](../plans/roadmap.md#phase-2--reliable-controller-service-l-highest-uncertainty).
 
