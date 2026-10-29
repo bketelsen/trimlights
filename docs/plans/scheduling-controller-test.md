@@ -6,6 +6,10 @@ activation: native timer behavior during MANUAL/OFF and the official app's Sunda
 clock encoding. Preparation performs no controller operations. Execution requires
 the owner present and ready for the selected session. Calendar stays disabled.
 
+The [pattern decoding test](pattern-decoding-test.md) can follow the timer trials
+in the same session. Complete timer restoration first, start a separate capture,
+and keep the two timer-test patterns out of the pattern-editing experiment.
+
 ## Phase 1 — Capture and restoration setup
 
 Implements the verification prerequisites in the

@@ -672,3 +672,24 @@ architecture builds, and is running after a private pre-update backup. HTTPS
 health/readiness pass and served assets match the checked build. Schema 7,
 household record counts, last controller operation and disabled Calendar ownership
 are unchanged. Scheduling hardware observations remain pending.
+
+### Pattern decoding test preparation — 2026-10-29
+
+The [pattern capture plan](pattern-decoding-test.md) is prepared alongside the
+[scheduling test](scheduling-controller-test.md), following the
+[pattern design](../design/application.md#pattern-library-and-photo-mapping) and
+[contract](../specs/patterns.md). It separates live editing from saved-library
+updates, changes one setting at a time, records reconnection/readback and restores
+an owner-approved recoverable entry. Core rows cover colors, run counts/order,
+brightness, effect, speed, direction, naming and repeated observations. Optional
+rows cover blackout semantics, larger counts and later sequence spaces.
+
+No controller operation, application deployment or pattern change is part of this
+preparation. The next session must identify a suitable entry; an application
+backup alone does not provide a device restore path. Decoder/schema changes and
+physical write verification follow captured evidence in separate checkpoints.
+
+Validation: `make check` passes, including frontend tests, Go race tests, vet,
+build and 376 documentation links. The private session worksheet and evidence
+metadata are prepared in ignored storage; public documentation contains no
+household addresses, pattern names, captures or credentials.

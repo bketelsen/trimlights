@@ -269,9 +269,16 @@ chase software preview, duplicate, JSON import/export and revision history.
 Captured native patterns import atomically from the cached snapshot, retaining raw
 parameters and capture time. Reimport skips previously imported slots. Their
 palette controls and previews remain unavailable until decoding is verified.
-Go and TypeScript render the same shared golden logical-pixel vectors; hardware
-playback is still disabled. Scheduling pins retained revisions and shows reference impacts before changes.
-Photos are not implemented yet.
+Go and TypeScript render the same shared golden logical-pixel vectors. Custom
+pattern writes remain unavailable; verified saved-slot playback uses the household
+worker. Scheduling pins retained revisions and shows reference impacts before changes.
+Photo uploads, roofline editing and software previews are implemented under the
+[house contract](../specs/house.md).
+
+The [pattern decoding test](../plans/pattern-decoding-test.md) prepares isolated
+official-app edits to one owner-approved recoverable entry, distinguishing live
+changes from saved parameters. It requires restoration and independent comparisons
+before read-only decoding or a later write adapter can be implemented.
 
 Use stable application scene IDs and preserve controller IDs separately. Editing
 a scene referenced by a schedule creates a revision with explicit impact. Support

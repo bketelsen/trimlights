@@ -94,3 +94,7 @@ archive dialog list current references and their pinned versions; both wait for
 that lookup before enabling the save/archive action. Existing scheduled revisions
 remain retained after archival. See the [calendar contract](schedules.md) and
 [ADR-0006](../adr/0006-explicit-calendar-intent.md).
+
+The [pattern decoding capture plan](../plans/pattern-decoding-test.md) prepares
+evidence for future native views and editing. It does not alter this contract's
+opaque imports or authorize pattern writes.
