@@ -12,7 +12,8 @@ photo uploads, manual mapping and software previews are implemented. Calendar ed
 versioned saves and deterministic intent preview are implemented.
 Bounded Go OFF/saved-slot/TIMER verification passed with owner physical confirmation
 and exact non-clock restoration on 2026-10-28. Authenticated native controls are implemented under the native control contract;
-production enablement and signed-in acceptance are recorded in the roadmap.
+production enablement and owner-confirmed signed-in playback/TIMER acceptance
+are recorded in the roadmap.
 
 This directory starts the four-question taxonomy from
 [agentic-template](https://github.com/bketelsen/agentic-template). Its category

@@ -492,4 +492,8 @@ photo, with a pre-migration database backup. A pre-upgrade full bundle restored
 with byte-identical photo/thumbnail content; a new schema 6 bundle also restored
 in isolation with its controller guard. A container on TrueNAS read the controller
 before the hosted worker was enabled. Startup performed no controller operations.
-Signed-in app refresh/control and phone layout acceptance still await owner testing.
+The owner then confirmed signed-in refresh, saved-pattern playback with MANUAL
+reported, and return to the original physical appearance with TIMER reported.
+The service audit independently records both controls verified without errors.
+This native-control deployment checkpoint is complete. Full mobile workflow/layout
+acceptance, the second household identity and the broader v1 remain open.
