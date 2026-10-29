@@ -556,3 +556,26 @@ and restore cannot activate execution. Production activation is explicitly outsi
 this checkpoint: no enable flag/endpoint or runner is started by the service.
 Sunday encoding, native timer-boundary tests, the activation/handoff workflow and
 a real scheduled evening remain required for Phase 4 acceptance.
+
+
+Validation/deployment: `make check` passes, including Go race tests, 17 frontend
+tests and 290 documentation links. Runtime cases cover clean restart/reconnect,
+missed transitions, override expiry, repeated DST boundaries, external/manual
+ownership changes, stale queued revisions, interval deadlines, pending/completion
+storage failures and cancellation. A production-startup test verifies that even
+persisted active ownership cannot query hardware. CI exposed a SQLite startup
+lock race; setting its timeout before journal initialization resolved it, and the
+startup test passed 100 consecutive race-enabled runs before the full gate and CI.
+
+Image `sha-4393e2449af66140d24fee9b2b0bb394cb726161` passed CI and is running on
+TrueNAS. A fresh full backup preceded the image-only configuration change. Schema
+7 migration made a schema 6 backup and preserved sessions, patterns, photos,
+calendar/layout revision counts and controller operation history. The persisted
+runtime is disabled; startup produced no controller operation. HTTPS health and
+readiness return 200; anonymous status, controls and preparation return 401.
+
+A new schema 7 bundle restored in an isolated network-disabled container with
+paused ownership, no pending delivery, cleared sessions, byte-identical photo and
+thumbnail blobs, and the controller-disabled guard. Production remained disabled
+for Calendar. This dormant-engine checkpoint is complete. No new physical command,
+Sunday encoding, timer-boundary or production-activation acceptance is claimed.
