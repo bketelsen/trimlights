@@ -7,7 +7,7 @@ type Blocker={code:string;message:string;reference_id?:string};
 type Readiness={execution_enabled:false;timezone:string;checked_at:string;until:string;schedule_revision:number;source:Source;blockers:Blocker[];bindings:{id:string;name:string;required:boolean;action:Action;status:string;message:string;slot?:number}[];current:Preview['segments'][number];next:Preview['segments'][number]|null;issues:Preview['issues']};
 type NativeReport={execution_enabled:false;timezone:string;schedule_revision:number;source:Source;entries:{native:{slot:number;enabled:boolean;pattern_name:string;repetition_interpretation:string;start_time:string;off_time:string};reason:string;rule?:Rule}[]};
 
-export function CalendarPreparation({plan,revision,csrf,busy,setBusy,onError,onAppend,describeAction}:{plan:Plan;revision:number;csrf:string;busy:boolean;setBusy:(value:boolean)=>void;onError:(e:unknown)=>void;onAppend:(rules:Rule[],reviewed:Plan,reviewedRevision:number)=>void;describeAction:(a:Action)=>string}) {
+export function CalendarPreparation({plan,revision,latestRevision,csrf,busy,setBusy,onError,onAppend,describeAction}:{plan:Plan;revision:number;latestRevision:number;csrf:string;busy:boolean;setBusy:(value:boolean)=>void;onError:(e:unknown)=>void;onAppend:(rules:Rule[],reviewed:Plan,reviewedRevision:number)=>void;describeAction:(a:Action)=>string}) {
  const [readiness,setReadiness]=useState<Readiness|null>(null);
  const [readinessBase,setReadinessBase]=useState('');
  const [native,setNative]=useState<NativeReport|null>(null);
@@ -19,8 +19,8 @@ export function CalendarPreparation({plan,revision,csrf,busy,setBusy,onError,onA
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
  const base=JSON.stringify({plan,revision});
  const copyBase=JSON.stringify({plan,revision,date});
- const staleReadiness=readinessBase!==base;
- const staleNative=nativeBase!==copyBase;
+ const staleReadiness=readinessBase!==base||latestRevision!==revision;
+ const staleNative=nativeBase!==copyBase||latestRevision!==revision;
  const run=async(kind:'readiness'|'native-draft')=>{
   if(sending.current||busy)return;
   sending.current=true;setWorking(true);setBusy(true);
