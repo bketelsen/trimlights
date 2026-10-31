@@ -28,6 +28,27 @@ Layout schema 1 contains `runs` and `views`. Each run has a stable `id`, `name`,
 - Uploads MUST be at most 12 MiB, 50 million decoded pixels and 16384 pixels on
   either edge. The service MUST inspect dimensions before decoding and serialize
   decoding; a concurrent upload receives 429. At most 20 photos may be stored.
+- Before decoding, the service MUST estimate decoder memory from the headers
+  (color model, JPEG sampling factors, components and progressive coding) and
+  refuse an estimate above 128 MiB with export advice. A PNG is budgeted from
+  its IHDR bit depth, color type and interlacing; a non-paletted PNG counts as
+  NRGBA (4 bytes per pixel) or NRGBA64 (8 bytes per pixel, 16-bit), because a
+  later tRNS chunk can select those. The first PNG chunk MUST be a 13-byte IHDR
+  with the dimensions that DecodeConfig reports; otherwise the upload is refused
+  as an unsupported format before decoding. A WebP is budgeted from its actual image
+  chunk (VP8 or VP8L) and ALPH compression, not from the VP8X header. Lossless
+  data (VP8L, or ALPH compression 1) adds the worst-case Huffman storage of
+  golang.org/x/image/vp8l: up to 2600 groups, about 206 MiB. In effect, only
+  lossless WebP images up to about 144 by 144 pixels fit; larger ones are refused
+  with advice to save the photo as JPEG or PNG. A three-component JPEG reserves
+  a converted RGBA image (4 bytes per pixel) when its component IDs are R, G, B
+  or any Adobe APP14 segment in the file has transform 0, because the decoder
+  reads such markers after the point where its configuration stops. A 16-bit
+  PNG or a large progressive JPEG can be refused below the pixel limit; a
+  baseline 4:2:0 JPEG at 48 million pixels (72 MB) and a progressive 4:2:0 JPEG
+  at 12 million pixels (90 MB) are accepted. Scaling MUST read the decoded image directly and apply EXIF orientation to the working
+  image, so one upload peaks near 210 MiB (12 MiB input, 128 MiB decode, 64 MiB
+  working image).
 - JPEG, PNG and WebP MUST be decoded and re-encoded without original metadata;
   EXIF orientation 1–8 MUST be applied. Unsupported HEIC MUST return conversion
   advice. Full images have maximum edge 4096; thumbnails have maximum edge 512.

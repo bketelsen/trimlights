@@ -29,10 +29,11 @@ test('responses without service text keep the general messages',()=>{
  assert.equal(userMessage(new APIError('Request failed (502)',502),fallback),fallback);
  assert.equal(userMessage(new APIError('database is locked',500,true),fallback),fallback);
 });
-test('conflict, access and Sunday messages stay fixed',()=>{
+test('conflict, access, Sunday and native-copy messages stay fixed',()=>{
  assert.match(userMessage(new APIError('house mapping changed on another device',409,true),fallback),/^Someone else saved a change/);
  assert.equal(userMessage(new APIError('Household access denied',403,true),fallback),'Please sign in again to continue.');
  assert.equal(userMessage(new APIError('controls are unavailable on Sunday',400,true),fallback),'Light controls are unavailable on Sundays for now.');
+ assert.equal(userMessage(new APIError('a native pattern can be created only as a copy of a matching slot in the latest controller snapshot; use import from the controller',400,true),fallback),'This saved-on-lights pattern no longer matches your lights, so it cannot be added as a copy.');
 });
 test('request keeps JSON error text and ignores gateway pages',async()=>{
  serve(400,JSON.stringify({error:'address ranges overlap on output output-1'}));

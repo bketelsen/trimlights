@@ -30,6 +30,8 @@ controller operations.
   parameter bytes. Labels/favorites do not affect matching. No custom design is
   playable merely because its software preview works. Historical pinned revisions
   are resolved directly; later edits and archival do not silently replace them.
+  A pin whose name breaks the current [pattern name rule](patterns.md#interface)
+  reports `changed_slot` until a rule pins a renamed revision.
 - Readiness checks every enabled rule, even outside the seven-day horizon, and
   every unexpired override. Disabled rules and expired overrides are shown but do
   not contribute pattern blockers. Overlap conflicts and evaluator issues are

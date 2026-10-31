@@ -10,6 +10,7 @@ export function userMessage(error:unknown,fallback:string):string {
  if(error instanceof APIError){
   if(/sunday/i.test(error.message))return 'Light controls are unavailable on Sundays for now.';
   if(error.status===409)return 'Someone else saved a change. Your edits are still here; load the latest version or save a copy.';
+  if(error.status===400&&/latest controller snapshot/.test(error.message))return 'This saved-on-lights pattern no longer matches your lights, so it cannot be added as a copy.';
   if(error.status===403)return 'Please sign in again to continue.';
   // The service writes 4xx JSON errors as user-safe validation and limit text.
   if(error.fromServer&&error.status>=400&&error.status<500&&error.message.trim())return serverText(error.message);

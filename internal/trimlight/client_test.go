@@ -384,3 +384,13 @@ func TestProbeKeepsGateThroughRecoveryAndIndependentRead(t *testing.T) {
 		mu.Unlock()
 	}
 }
+
+// A Sunday snapshot refuses before the clock query with a sentinel, so callers
+// can answer a stable message without the transport text.
+func TestSundaySnapshotRefusesWithSentinel(t *testing.T) {
+	c, _ := testClient(t)
+	c.now = func() time.Time { return time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC) }
+	if _, err := c.Snapshot(context.Background(), 3306); !errors.Is(err, ErrSundayClock) {
+		t.Fatal(err)
+	}
+}

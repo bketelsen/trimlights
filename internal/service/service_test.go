@@ -29,7 +29,7 @@ func setupIn(t *testing.T, c Controller, dir string) (*storage.Store, *Worker) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := NewWorker(s, c, -1)
+	w := NewWorker(s, c, -1, nil)
 	w.pace = 0
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -134,7 +134,7 @@ func TestHTTPAuthAcknowledgmentAndCachedStatus(t *testing.T) {
 		return &trimlight.Snapshot{QueriedAt: time.Now().UTC()}, nil
 	}))
 	token := strings.Repeat("a", 32)
-	h := Handler(s, w, token)
+	h := Handler(s, w, token, nil)
 	request := func(method, path, body, credential, ctype string) int {
 		r := httptest.NewRequest(method, path, strings.NewReader(body))
 		r.Header.Set("Authorization", credential)
@@ -189,4 +189,4 @@ func TestDisabledAndPublicBindRejected(t *testing.T) {
 	}
 }
 
-var _ http.Handler = Handler(nil, nil, "")
+var _ http.Handler = Handler(nil, nil, "", nil)
