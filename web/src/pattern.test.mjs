@@ -5,6 +5,8 @@ import nameVectors from './name-vectors.json' with {type:'json'};
 import {renderPattern,newDesign,validateDesign,validName,exportDesign} from './pattern.ts';
 for(const vector of vectors)test(vector.name,()=>assert.deepEqual(renderPattern(vector.design,vector.count,vector.tick_ms),vector.expected));
 for(const vector of nameVectors)test(`name: ${vector.name}`,()=>{assert.equal(validName(vector.value),vector.valid);assert.equal(validateDesign({...newDesign(),name:vector.value})===null,vector.valid);});
+// JSON vectors cannot carry a lone surrogate to Go (its decoder stores U+FFFD), so these cases stay here.
+test('names reject lone surrogates and keep valid pairs',()=>{for(const name of ['\uD800','\uDC00','Porch \uD83C','\uDF83 Porch','\uDF83\uD83C'])assert.equal(validName(name),false,JSON.stringify(name));assert.equal(validName('Porch \uD83C\uDF83'),true);});
 test('bounds and native effects cannot produce misleading frames',()=>{
  for(const [count,tick] of [[0,0],[2049,0],[5,-1],[5,86400001],[1,0.5]])assert.throws(()=>renderPattern(newDesign(),count,tick));
  const native={...newDesign(),effect:'native',brightness:100,speed:0,palette:[],native:{id:1,name:'Native',parameters_hex:'00'.repeat(156),snapshot_at:new Date().toISOString()}};

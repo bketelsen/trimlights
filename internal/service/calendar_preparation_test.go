@@ -283,3 +283,46 @@ func TestPreparationAPIBoundariesAndNoMutations(t *testing.T) {
 		t.Fatal(saved, err, w.Status())
 	}
 }
+
+// A native revision saved before the 2026-10-30 format-character rule fails
+// Design.Validate, so its pin reports changed_slot. The API cannot store such a
+// name now, so the test edits the loaded pin. Renaming alone keeps the old pin;
+// recovery needs the rule to pin the renamed revision.
+func TestReadinessLegacyFormatCharacterNameNeedsRepin(t *testing.T) {
+	s, _, _, plan, p := preparationFixture(t)
+	ctx := context.Background()
+	if _, err := s.SaveSchedule(ctx, 1, plan, "fixture"); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 28, 20, 0, 0, 0, time.UTC)
+	a := plan.Rules[0].Action
+	in := preparationInputs(t, s, 2, plan)
+	legacy := in.Pinned[a]
+	legacy.Design.Name = "Por\u200bch"
+	in.Pinned[a] = legacy
+	in.Observation.Snapshot.QueriedAt = now
+	report, err := prepareReadiness(plan, in, now)
+	if err != nil || report.Bindings[0].Status != "changed_slot" {
+		t.Fatal(report, err)
+	}
+	d := p.Design
+	d.Name = "Porch"
+	renamed, err := s.UpdatePattern(ctx, p.ID, 1, d, "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	in = preparationInputs(t, s, 2, plan)
+	if in.Pinned[a].Revision != 1 {
+		t.Fatal("rename moved the calendar pin")
+	}
+	plan.Rules[0].Action.Revision = renamed.Revision
+	if _, err = s.SaveSchedule(ctx, 2, plan, "fixture"); err != nil {
+		t.Fatal(err)
+	}
+	in = preparationInputs(t, s, 3, plan)
+	in.Observation.Snapshot.QueriedAt = now
+	report, err = prepareReadiness(plan, in, now)
+	if err != nil || report.Bindings[0].Status != "matched" {
+		t.Fatal(report, err)
+	}
+}

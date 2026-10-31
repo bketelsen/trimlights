@@ -71,3 +71,17 @@ func TestSharedNameVectors(t *testing.T) {
 		})
 	}
 }
+
+// Invalid UTF-8 cannot travel in the shared JSON vectors (encoding/json stores
+// U+FFFD), so the Go side checks it here; pattern.test.mjs checks lone surrogates.
+func TestNamesRejectInvalidUTF8(t *testing.T) {
+	for _, name := range []string{"\xff", "Porch \xed\xa0\x80", "\xf0\x9f\x8e"} {
+		d := Design{Schema: 1, Name: name, Effect: "static", Brightness: 50, Palette: []Run{{"#ff0000", 1}}}
+		if ValidName(name) || !errors.Is(d.Validate(), ErrInvalid) {
+			t.Fatalf("%q accepted", name)
+		}
+	}
+	if !ValidName("Porch \U0001F383") {
+		t.Fatal("valid supplementary character rejected")
+	}
+}

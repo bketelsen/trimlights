@@ -39,7 +39,11 @@ non-joiner (U+200C) remain allowed for emoji sequences and joined scripts. Go
 (`pattern.ValidName`) and TypeScript (`validName`) MUST agree on the shared name
 vectors; calendar rule names use the same rule. Since 2026-10-30 the format-character
 rule also applies to names saved earlier: such a pattern or calendar keeps its
-retained revisions, but it must be renamed before its next save or preview.
+retained revisions, but it must be renamed before its next save or preview. A
+calendar pin to such a native revision fails validation, so
+[calendar preparation](calendar-preparation.md) reports `changed_slot`. Renaming
+creates a new revision and does not move existing pins. To recover, rename the
+library pattern, then change each calendar rule to pin the new revision.
 Custom effects are `static` or `chase`; brightness and speed are integers 0–100.
 Palettes contain 1–30 runs, each a #RRGGBB color and count 1–60. Native designs use
 `effect: native`, empty palette, brightness 100, speed 0, reverse false, plus a
