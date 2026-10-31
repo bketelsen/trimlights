@@ -126,8 +126,19 @@ and [ADR-0011](../adr/0011-audited-household-native-controls.md).
 Public deployment and fixture policy follows
 [ADR-0007](../adr/0007-public-repository-and-private-deployment.md).
 A snapshot returns `stable_sha256`, the SHA-256 of all bytes except its seven-byte
-clock suffix. A non-dry diagnostic probe MUST require that reviewed fingerprint,
+clock suffix. Parsing MUST reject a snapshot whose pattern records or explicit
+schedule records reach into that suffix, so every parsed field is fingerprinted
+(added 2026-10-30). A non-dry diagnostic probe MUST require that reviewed fingerprint,
 match it against a fresh snapshot, and check its supported shape before entering
 edit mode. `probe-schedule2` retains its disabled-slot restriction; the separate
 [playback verification](playback-verification.md) requires a restorable TIMER
 baseline. A fingerprint mismatch MUST send no write.
+
+Before each `probe-schedule2` restoration write, including on a reconnect, the
+probe MUST read current state. Only snapshot offset 3319 (schedule 2 off-minute)
+MAY differ from the baseline non-clock bytes, and only with the probe value 4.
+Any other difference is an external change: cleanup MUST stop without a write and
+report `RESTORATION NOT VERIFIED`, with the observed state as `reconciled` in the
+report (added 2026-10-30). The restoration payload is unchanged. The probe MUST
+hold one client gate acquisition from its first exchange through cleanup, reconnect
+recovery and independent verification; fresh connections reuse that acquisition.

@@ -6,8 +6,10 @@ import (
 	"errors"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+	_ "time/tzdata" // IANA zones for DST tests, independent of the host.
 )
 
 func playbackClient(t *testing.T) (*Client, *emulator, *Snapshot) {
@@ -46,7 +48,7 @@ func TestPlaybackVerificationAndRecovery(t *testing.T) {
 			stages := map[string]bool{}
 			r, err := c.verifyPlayback(ctx, before.StableSHA256, 9, func(stage string, state *Snapshot) error {
 				if stages[stage] {
-					t.Fatalf("stage recorded twice: %s", stage)
+					t.Errorf("stage recorded twice: %s", stage)
 				}
 				stages[stage] = true
 				if stage == "off" && name == "cancel-hold" {
@@ -56,7 +58,7 @@ func TestPlaybackVerificationAndRecovery(t *testing.T) {
 					return errors.New("disk full")
 				}
 				return nil
-			}, time.Millisecond)
+			}, defaultPlaybackTiming(time.Millisecond))
 			if name == "success" && err != nil || name != "success" && err == nil {
 				t.Fatalf("incorrect error: %v", err)
 			}
@@ -118,7 +120,7 @@ func TestPlaybackRefusesUnreviewedOrUnrestorableBaseline(t *testing.T) {
 					return errors.New("disk full")
 				}
 				return nil
-			}, time.Millisecond)
+			}, defaultPlaybackTiming(time.Millisecond))
 			if err == nil || r.WriteAttempted {
 				t.Fatalf("invalid baseline accepted: %+v %v", r, err)
 			}
@@ -140,7 +142,7 @@ func TestPlaybackDoesNotOverwriteExternalChanges(t *testing.T) {
 			}
 			return false
 		}
-		r, err := c.verifyPlayback(context.Background(), before.StableSHA256, 9, func(string, *Snapshot) error { return nil }, time.Millisecond)
+		r, err := c.verifyPlayback(context.Background(), before.StableSHA256, 9, func(string, *Snapshot) error { return nil }, defaultPlaybackTiming(time.Millisecond))
 		if err == nil || !strings.Contains(err.Error(), "RESTORATION NOT VERIFIED") || r.RestoredVerified || r.IndependentVerified {
 			t.Fatalf("external change at %d hidden: %+v %v", offset, r, err)
 		}
@@ -156,7 +158,7 @@ func TestPlaybackDoesNotOverwriteExternalChanges(t *testing.T) {
 func TestPlaybackReportsPersistentRestorationFailure(t *testing.T) {
 	c, e, before := playbackClient(t)
 	e.onControl = func(n int, raw []byte) bool { e.dialFailure = true; return true }
-	r, err := c.verifyPlayback(context.Background(), before.StableSHA256, 9, func(string, *Snapshot) error { return nil }, time.Millisecond)
+	r, err := c.verifyPlayback(context.Background(), before.StableSHA256, 9, func(string, *Snapshot) error { return nil }, defaultPlaybackTiming(time.Millisecond))
 	if err == nil || !strings.Contains(err.Error(), "RESTORATION NOT VERIFIED") || r.RestoredVerified {
 		t.Fatalf("restoration failure hidden: %+v %v", r, err)
 	}
@@ -169,11 +171,11 @@ func TestPlaybackKeepsGateDuringCleanupAndIndependentRead(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
 			defer cancel()
 			if _, err := c.Snapshot(ctx, 3306); !errors.Is(err, context.DeadlineExceeded) {
-				t.Fatalf("competing snapshot was not gated at %s: %v", stage, err)
+				t.Errorf("competing snapshot was not gated at %s: %v", stage, err)
 			}
 		}
 		return nil
-	}, time.Millisecond)
+	}, defaultPlaybackTiming(time.Millisecond))
 	if err != nil || !r.IndependentVerified {
 		t.Fatalf("verification failed: %+v %v", r, err)
 	}
@@ -197,5 +199,185 @@ func TestPlaybackWireCommandsAreBounded(t *testing.T) {
 		} else if err == nil {
 			t.Fatalf("unsupported slot accepted: %d", mode)
 		}
+	}
+}
+
+func TestPlaybackWorstCaseWindow(t *testing.T) {
+	// Production values: 1 s pacing, 5 s I/O timeout and 10 s holds.
+	timing := defaultPlaybackTiming(10 * time.Second)
+	worst := timing.worstCase(time.Second, 5*time.Second)
+	if worst != 166*time.Second {
+		t.Fatalf("worst case %v", worst)
+	}
+	// Cleanup (40 s) and the independent read (10 s) must fit after the active
+	// phase, with the 5 s hand-over guard.
+	if active := timing.activeBudget(time.Second, 5*time.Second); active != 111*time.Second {
+		t.Fatalf("active budget %v", active)
+	}
+	zone := time.FixedZone("controller", -5*3600)
+	last := time.Date(2026, 10, 31, 23, 57, 13, 999999999, zone) // Saturday
+	for _, tc := range []struct {
+		start time.Time
+		want  bool
+	}{
+		{time.Date(2026, 10, 31, 6, 0, 0, 0, zone), false},
+		{last, false},
+		{last.Add(time.Nanosecond), true}, // Ends exactly at Sunday 00:00:00.
+		{time.Date(2026, 10, 31, 23, 59, 0, 0, zone), true},
+		{time.Date(2026, 11, 1, 12, 0, 0, 0, zone), true},              // Sunday.
+		{time.Date(2026, 11, 2, 0, 0, 0, 0, zone), false},              // Monday.
+		{time.Date(2026, 11, 1, 3, 0, 0, 0, time.UTC).In(zone), false}, // UTC Sunday, local Saturday.
+	} {
+		if got := playbackWindowReachesSunday(tc.start, worst); got != tc.want {
+			t.Errorf("%s: reaches Sunday = %v, want %v", tc.start, got, tc.want)
+		}
+	}
+	if !playbackWindowReachesSunday(time.Date(2026, 10, 28, 10, 0, 0, 0, zone), 12*time.Hour) {
+		t.Fatal("long window accepted")
+	}
+}
+
+func TestPlaybackRefusesWindowReachingSunday(t *testing.T) {
+	zone := time.FixedZone("controller", -5*3600)
+	for _, tc := range []struct {
+		name    string
+		now     time.Time
+		hold    time.Duration
+		refused bool
+	}{
+		{"saturday-23:59", time.Date(2026, 10, 31, 23, 59, 0, 0, zone), time.Millisecond, true},
+		// Test budgets total about 111 s: 23:58:00 ends on Saturday only
+		// without the two 10 s holds, so the holds carry the window past midnight.
+		{"window-crosses-midnight", time.Date(2026, 10, 31, 23, 58, 0, 0, zone), 10 * time.Second, true},
+		{"late-saturday-window-fits", time.Date(2026, 10, 31, 23, 57, 0, 0, zone), time.Millisecond, false},
+		{"early-saturday", time.Date(2026, 10, 31, 6, 0, 0, 0, zone), time.Millisecond, false},
+		{"utc-sunday-local-saturday", time.Date(2026, 11, 1, 3, 0, 0, 0, time.UTC), time.Millisecond, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, e, before := playbackClient(t)
+			c.location = zone
+			c.now = func() time.Time { return tc.now }
+			r, err := c.verifyPlayback(context.Background(), before.StableSHA256, 9, func(string, *Snapshot) error { return nil }, defaultPlaybackTiming(tc.hold))
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			if !tc.refused {
+				if err != nil || !r.IndependentVerified || len(e.controlWrites) != 4 {
+					t.Fatalf("allowed start failed: %+v %v writes=%v", r, err, e.controlWrites)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), "Sunday") || r.WriteAttempted || r.Before == nil {
+				t.Fatalf("Sunday window not refused: %+v %v", r, err)
+			}
+			if len(e.controlWrites) != 0 || e.editCount != 0 {
+				t.Fatalf("wrote before refusing: %v edits=%d", e.controlWrites, e.editCount)
+			}
+		})
+	}
+}
+
+// Saturday-night DST transitions in the controller's IANA zone. 2026-11-01 and
+// 2027-03-14 are Sundays on which New York leaves or enters daylight time.
+func TestPlaybackWindowAcrossDSTSaturdayNight(t *testing.T) {
+	zone, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	worst := defaultPlaybackTiming(10*time.Second).worstCase(time.Second, 5*time.Second)
+	for _, tc := range []struct {
+		start time.Time
+		want  bool
+	}{
+		{time.Date(2026, 10, 31, 23, 57, 13, 0, zone), false}, // Ends 23:59:59 EDT.
+		{time.Date(2026, 10, 31, 23, 57, 15, 0, zone), true},  // Ends 00:00:01 EDT on Sunday.
+		{time.Date(2027, 3, 13, 23, 57, 13, 0, zone), false},  // Ends 23:59:59 EST.
+		{time.Date(2027, 3, 13, 23, 58, 0, 0, zone), true},
+		{time.Date(2026, 11, 1, 4, 0, 0, 0, time.UTC).In(zone), true},  // 00:00 EDT Sunday.
+		{time.Date(2026, 11, 1, 3, 58, 0, 0, time.UTC).In(zone), true}, // 23:58 EDT Saturday.
+		{time.Date(2026, 11, 1, 3, 50, 0, 0, time.UTC).In(zone), false},
+	} {
+		if got := playbackWindowReachesSunday(tc.start, worst); got != tc.want {
+			t.Errorf("%s: reaches Sunday = %v, want %v", tc.start, got, tc.want)
+		}
+	}
+}
+
+// A blocked evidence recorder after the first write must not delay cleanup past
+// the active deadline, and no later control write may follow the deadline.
+func TestPlaybackBoundsBlockedRecorderBeforeCleanup(t *testing.T) {
+	c, e, before := playbackClient(t)
+	timing := defaultPlaybackTiming(time.Millisecond)
+	timing.margin, timing.guard = 300*time.Millisecond, 50*time.Millisecond
+	timing.cleanup, timing.independent = 5*time.Second, 2*time.Second
+	active := timing.activeBudget(c.pause, c.timeout)
+	release := make(chan struct{})
+	defer close(release)
+	var mu sync.Mutex
+	var stages []string
+	var cleanupAt time.Time
+	e.onControl = func(n int, _ []byte) bool {
+		if n == 2 {
+			cleanupAt = time.Now()
+		}
+		return false
+	}
+	begin := time.Now()
+	r, err := c.verifyPlayback(context.Background(), before.StableSHA256, 9, func(stage string, _ *Snapshot) error {
+		mu.Lock()
+		stages = append(stages, stage)
+		mu.Unlock()
+		if stage == "off" {
+			<-release // Blocks past the deadline, for example a stalled disk.
+		}
+		return nil
+	}, timing)
+	if err == nil || !strings.Contains(err.Error(), "record off") || !r.OffVerified || r.PlayedVerified {
+		t.Fatalf("overrun not reported: %+v %v", r, err)
+	}
+	if !r.RestoredVerified || !r.IndependentVerified {
+		t.Fatalf("cleanup did not restore: %+v %v", r, err)
+	}
+	if !strings.Contains(err.Error(), "record restored: skipped") || !strings.Contains(err.Error(), "record independent: skipped") {
+		t.Fatalf("skipped evidence not reported: %v", err)
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	want := [][]byte{{2, 0, 1, 0}, {4, 0, 1, 7}, {2, 0, 1, 2}}
+	if !reflect.DeepEqual(e.controlWrites, want) || !bytes.Equal(e.raw, before.raw) {
+		t.Fatalf("target write after deadline or baseline not restored: %v", e.controlWrites)
+	}
+	if limit := begin.Add(active + timing.guard); cleanupAt.IsZero() || cleanupAt.After(limit) {
+		t.Fatalf("cleanup write at %v, after %v", cleanupAt.Sub(begin), active+timing.guard)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !reflect.DeepEqual(stages, []string{"before", "off"}) {
+		t.Fatalf("recorder calls not serialized: %v", stages)
+	}
+}
+
+// An active-phase deadline also interrupts a hold and stops the target write.
+func TestPlaybackDeadlineStopsLaterWrites(t *testing.T) {
+	c, e, before := playbackClient(t)
+	// Hours-long holds, offset by a negative margin, put the active deadline
+	// (under 1 s) inside the first hold.
+	timing := playbackTiming{hold: time.Hour, cleanup: 5 * time.Second, independent: 2 * time.Second,
+		margin: 300*time.Millisecond - 2*time.Hour, guard: 50 * time.Millisecond}
+	active := timing.activeBudget(c.pause, c.timeout)
+	if active <= 0 || active > time.Second {
+		t.Fatalf("test active budget %v", active)
+	}
+	begin := time.Now()
+	r, err := c.verifyPlayback(context.Background(), before.StableSHA256, 9, func(string, *Snapshot) error { return nil }, timing)
+	if err == nil || !strings.Contains(err.Error(), "Sunday-safe deadline") || !r.RestoredVerified || !r.IndependentVerified {
+		t.Fatalf("deadline not enforced: %+v %v", r, err)
+	}
+	if elapsed := time.Since(begin); elapsed > active+timing.cleanup {
+		t.Fatalf("hold not interrupted: %v", elapsed)
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if want := [][]byte{{2, 0, 1, 0}, {4, 0, 1, 7}, {2, 0, 1, 2}}; !reflect.DeepEqual(e.controlWrites, want) {
+		t.Fatalf("write after deadline: %v", e.controlWrites)
 	}
 }

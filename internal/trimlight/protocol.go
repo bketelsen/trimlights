@@ -131,9 +131,12 @@ func ParseSnapshot(raw []byte, scheduleOffset int) (*Snapshot, error) {
 	if len(raw) < 26 || raw[0] != 0x15 || int(binary.BigEndian.Uint16(raw[1:3])) != len(raw)-3 {
 		return nil, errors.New("invalid snapshot length or opcode")
 	}
+	// Every parsed field must end before the seven-byte clock suffix, which
+	// StableSHA256 excludes; otherwise a changed field could keep its fingerprint.
+	stableEnd := len(raw) - 7
 	count := int(raw[25])
 	end := 26 + count*182
-	if end > len(raw) {
+	if end > stableEnd {
 		return nil, errors.New("truncated pattern records")
 	}
 	s := &Snapshot{RawHex: hex.EncodeToString(raw), raw: bytes.Clone(raw), LayoutNote: "Experimental captured layout; schedule offset is supplied explicitly."}
@@ -155,7 +158,7 @@ func ParseSnapshot(raw []byte, scheduleOffset int) (*Snapshot, error) {
 	if scheduleOffset == -1 {
 		return s, nil
 	}
-	if scheduleOffset < end || scheduleOffset > len(raw)-14 {
+	if scheduleOffset < end || scheduleOffset > stableEnd-14 {
 		return nil, errors.New("schedule offset outside snapshot suffix")
 	}
 	for i := 0; i < 2; i++ {
@@ -219,6 +222,26 @@ func validateProbeBaseline(s *Snapshot, expectedFingerprint string) error {
 	expected := []byte{0, 1, 0, 0, 2, 0, 3}
 	if len(s.raw) != 3492 || !bytes.Equal(s.raw[3313:3320], expected) || len(s.Patterns) != 18 || s.Patterns[0].ID != 1 || s.Patterns[17].ID != 18 {
 		return errors.New("controller differs from supported disabled-slot probe layout; no write permitted")
+	}
+	return nil
+}
+
+// probeOffMinuteOffset is schedule 2's off-minute byte (offset 3306 + 7 + 6),
+// the only byte that the supported probe changes.
+const probeOffMinuteOffset = 3319
+
+// validateProbeRestoration permits a restoration write only when the current
+// non-clock state equals the baseline, except that the probe byte may hold the
+// probe value 4. Any other difference is an external change: do not overwrite it.
+func validateProbeRestoration(before, current *Snapshot) error {
+	if before == nil || current == nil || len(current.raw) != len(before.raw) {
+		return errors.New("restoration refused: controller snapshot layout changed; no restoration write sent")
+	}
+	want, got := stable(before), stable(current)
+	for i := range want {
+		if got[i] != want[i] && (i != probeOffMinuteOffset || got[i] != 4) {
+			return fmt.Errorf("restoration refused: controller state changed outside the probe byte (first difference at offset %d: %d, baseline %d); no restoration write sent", i, got[i], want[i])
+		}
 	}
 	return nil
 }
