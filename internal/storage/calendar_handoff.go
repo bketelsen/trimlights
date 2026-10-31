@@ -84,7 +84,8 @@ func calendarHandoffControl(ctx context.Context, tx *sql.Tx, o Observation, op O
 			if state.Version == h.Version+1 && state.Status == "paused" {
 				state.Status, state.Reason = "active", ""
 				if h.Direction == "timer" {
-					state.Status = "disabled"
+					// Native TIMER owns the lights: a disabled runtime keeps no owner.
+					state.Status, state.Actor, state.OwnedSHA256 = "disabled", "", ""
 				}
 			}
 		} else {

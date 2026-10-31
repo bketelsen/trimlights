@@ -24,15 +24,17 @@ and review validity interval. A control audit cannot be both delivery and handof
   on calendar validity and never modifies native schedules.
 - Review expires after at most 60 seconds, shortened to the current intent's end.
   Apply and the driver's pre-write callback MUST reject expired reviews, changed
-  ownership, calendar revisions, desired actions or controller fingerprints.
+  ownership, calendar revisions, desired actions, controller fingerprints or
+  native schedules that differ from the review's copy.
   The transport context is bounded by review expiry as well as the worker timeout.
 - The pending audit, observation and paused ownership checkpoint MUST commit
   together before a physical command. Pending intent retains the initiating actor.
   A calendar save or competing transfer before this commit rejects the transfer.
 - Verified or reconciled completion with the expected ownership version changes
   status to active for takeover or disabled for TIMER. Completion stores the
-  resulting canonical fingerprint with the audit. A concurrent pause MUST win in
-  both directions.
+  resulting canonical fingerprint with the audit. Takeover makes it the owned
+  fingerprint; TIMER return clears the owned fingerprint and actor, so a disabled
+  runtime has no owner. A concurrent pause MUST win in both directions.
 - Unverified completion leaves Calendar paused. Persistence failure, interruption
   or cancellation MUST NOT trigger retry, replay or a compensating command.
   Startup recovery and backup restore preserve audit provenance and pause ownership.
