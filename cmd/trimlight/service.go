@@ -101,13 +101,23 @@ func serveCommand() *cobra.Command {
 			return result(cmd, map[string]any{"dry_run": true, "listen": listen, "controller_enabled": c.Controller != nil, "restore_guarded": guarded}, "Configuration valid; no listener, database or controller connection opened.")
 		}
 		if err = service.Run(cmd.Context(), c); err != nil {
-			// The returned error, with its detail, goes to the operator on the
-			// command line; the log line keeps only a safe description.
 			logger.Error("trimlight stopped", "error", service.LogError(err))
+			return terminalError(err)
 		}
-		return err
+		return nil
 	})
 	return cmd
+}
+
+// terminalError is what serve returns, and clix prints it to stderr, which is
+// the container log. OIDC discovery errors can quote provider response bodies,
+// issuer values and redirect URLs, so they become a fixed message; other errors
+// lose network addresses.
+func terminalError(err error) error {
+	if errors.Is(err, service.ErrHouseholdLogin) {
+		return errors.New("household login setup failed: check the OIDC issuer and its reachability; the log has the category")
+	}
+	return errors.New(service.LogError(err))
 }
 
 func parseLogLevel(value string) (slog.Level, error) {

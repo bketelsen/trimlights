@@ -202,7 +202,7 @@ func Run(ctx context.Context, c Config) error {
 		return err
 	}
 	worker := NewWorker(store, c.Controller, c.ScheduleOffset, logger)
-	var handler http.Handler = Handler(store, worker, c.APIToken, logger)
+	handler := Handler(store, worker, c.APIToken, logger)
 	mode := "bearer-development"
 	if c.OIDC != nil {
 		mode = "oidc"

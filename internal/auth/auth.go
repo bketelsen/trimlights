@@ -270,12 +270,12 @@ func (a *Auth) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	if identity.Nonce != flow.Nonce {
 		a.log.WarnContext(r.Context(), "sign-in verification failed", "reason", "nonce_mismatch")
-		http.Error(w, "Household access denied", 403)
+		http.Error(w, "Household access denied", http.StatusForbidden)
 		return
 	}
 	if !a.allowed(identity.Subject) {
 		a.log.WarnContext(r.Context(), "sign-in denied", "subject", identity.Subject)
-		http.Error(w, "Household access denied", 403)
+		http.Error(w, "Household access denied", http.StatusForbidden)
 		return
 	}
 	var claims struct {

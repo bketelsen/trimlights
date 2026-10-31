@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -173,19 +174,27 @@ func TestServeStartupFailureLogOmitsProviderData(t *testing.T) {
 	if err = os.WriteFile(oidcPath, config, 0600); err != nil {
 		t.Fatal(err)
 	}
-	for _, m := range []string{"body", "drop", "issuer"} {
+	for i, m := range []string{"body", "drop", "issuer", "body", "drop", "issuer"} {
 		mode = m
-		_, errs, err := execute(t, "serve", "--listen", "127.0.0.1:0", "--data-dir", filepath.Join(dir, "data-"+m), "--oidc-config", oidcPath)
+		args := []string{"serve", "--listen", "127.0.0.1:0", "--data-dir", filepath.Join(dir, fmt.Sprint("data-", i)), "--oidc-config", oidcPath}
+		if i >= 3 {
+			args = append(args, "--json")
+		}
+		out, errs, err := execute(t, args...)
 		if err == nil {
 			t.Fatal(m, "discovery failure accepted")
+		}
+		// Everything that serve writes reaches the container log: check it all.
+		if strings.Contains(strings.ToLower(out+errs+err.Error()), marker) {
+			t.Fatal(m, "provider data reached the output:", out, errs, err)
+		}
+		if !strings.Contains(out+errs, "household login setup failed") {
+			t.Fatal(m, "no operator message", out, errs)
 		}
 		var stopped map[string]any
 		for _, line := range strings.Split(errs, "\n") {
 			if !strings.HasPrefix(line, "{") {
-				continue // Cobra prints the detailed error for the operator.
-			}
-			if strings.Contains(strings.ToLower(line), marker) {
-				t.Fatal(m, "provider data reached the log:", line)
+				continue // The operator message is not JSON.
 			}
 			var entry map[string]any
 			if err = json.Unmarshal([]byte(line), &entry); err != nil {

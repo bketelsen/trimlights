@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -102,7 +103,7 @@ func TestControllerFailureLogsWithoutAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { s.Close() })
+	t.Cleanup(func() { _ = s.Close() })
 	logger, logs := testLogger(slog.LevelDebug)
 	w := NewWorker(s, controllerFunc(func(context.Context, int) (*trimlight.Snapshot, error) { return nil, transport }), -1, logger)
 	w.pace = 0
@@ -208,6 +209,44 @@ func TestRequestLogKeepsFlusherAndStatus(t *testing.T) {
 			}
 			entries := logs.entries(t)
 			if len(entries) != 1 || entries[0]["status"] != float64(tc.status) || entries[0]["path"] != "/stream" {
+				t.Fatal(logs.String())
+			}
+		})
+	}
+}
+
+// failingFlusher reports a flush failure through FlushError.
+type failingFlusher struct{ http.ResponseWriter }
+
+var errFlush = errors.New("flush failed")
+
+func (f failingFlusher) FlushError() error { return errFlush }
+
+// plainWriter supports no flushing at all.
+type plainWriter struct{ http.ResponseWriter }
+
+func TestRequestLogReportsFlushErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		wrap func(http.ResponseWriter) http.ResponseWriter
+		want error
+	}{
+		{"failing", func(w http.ResponseWriter) http.ResponseWriter { return failingFlusher{w} }, errFlush},
+		{"unsupported", func(w http.ResponseWriter) http.ResponseWriter { return plainWriter{w} }, http.ErrNotSupported},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logger, logs := testLogger(slog.LevelDebug)
+			var got error
+			h := requestLog(logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got = http.NewResponseController(w).Flush()
+			}))
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(tc.wrap(rr), httptest.NewRequest("GET", "/stream", nil))
+			if !errors.Is(got, tc.want) {
+				t.Fatalf("flush error %v, want %v", got, tc.want)
+			}
+			entries := logs.entries(t)
+			if len(entries) != 1 || entries[0]["status"] != float64(200) {
 				t.Fatal(logs.String())
 			}
 		})

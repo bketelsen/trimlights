@@ -103,8 +103,9 @@ bearer development and [household OIDC](household-auth.md#service-log-events) mo
   as a category, such as `network dial failed: timeout`.
 - A missing embedded frontend (`503`) and a frontend file error (`5xx`) are
   logged as `request failed` with a fixed `error` text.
-- The detailed terminal error still goes to the operator on the command line,
-  which also writes to standard error.
+- The error that `serve` returns is printed to standard error, which is also the
+  container log, so it MUST follow the same rules: a failed household login setup
+  returns a fixed message, and other errors lose network addresses.
 - Request lines exist only at debug level, so `/healthz` and `/readyz` probes add
   no lines at the default level. Query strings are never logged.
 

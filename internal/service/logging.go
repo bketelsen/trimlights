@@ -86,14 +86,18 @@ func (s *statusRecorder) Write(b []byte) (int, error) {
 }
 func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
-// Flush keeps streaming handlers working through the recorder. A flush before
-// any header commits status 200, so the recorder notes it.
-func (s *statusRecorder) Flush() {
+// FlushError keeps streaming handlers working through the recorder and reports
+// the underlying result, including an error that wraps http.ErrNotSupported. A
+// flush before any header commits status 200, so the recorder notes it.
+func (s *statusRecorder) FlushError() error {
 	if s.status == 0 {
 		s.status = http.StatusOK
 	}
-	_ = http.NewResponseController(s.ResponseWriter).Flush()
+	return http.NewResponseController(s.ResponseWriter).Flush()
 }
+
+// Flush serves handlers that assert http.Flusher, which has no error result.
+func (s *statusRecorder) Flush() { _ = s.FlushError() }
 
 // requestLog records method, path without query, status and duration at debug
 // level, so the default info level stays free of request and probe noise.
