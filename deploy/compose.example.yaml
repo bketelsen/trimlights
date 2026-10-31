@@ -15,6 +15,7 @@ services:
     security_opt: [no-new-privileges:true]
     environment:
       TRIMLIGHT_CONTROLLER_HOST: ${TRIMLIGHT_CONTROLLER_HOST:-}
+      GOMEMLIMIT: 400MiB
     ports:
       - "${TRIMLIGHT_BIND_ADDRESS:-127.0.0.1}:${TRIMLIGHT_PORT:-8787}:8787"
     volumes:
@@ -36,3 +37,6 @@ services:
       retries: 3
       start_period: 30s
     stop_grace_period: 30s
+    # One photo upload peaks near 210 MiB (docs/specs/house.md). The limit
+    # leaves room for the service; GOMEMLIMIT makes Go collect before it.
+    mem_limit: 512m
