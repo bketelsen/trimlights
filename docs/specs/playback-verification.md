@@ -39,6 +39,16 @@ Evidence recording errors MUST fail the command even if restoration succeeded.
   Sunday in `--timezone`, it MUST refuse without a write. Every snapshot sends a
   clock query, which refuses unverified Sunday times, so cleanup could not read or
   restore state. No Sunday encoding is assumed (added 2026-10-30).
+- The check MUST also be enforced (added 2026-10-30). At the check, the operation
+  sets an absolute active-phase deadline: the window end less the cleanup and
+  independent budgets and a five-second hand-over guard (111 seconds after the
+  check with the values above). OFF, playback, readbacks, holds and the `off` and
+  `played` evidence records MUST end by it. At the deadline, no further control
+  write is sent and cleanup starts at once. The `restored` and `independent`
+  records MUST return within the cleanup and independent budgets. A recorder call
+  that does not return in time fails the command as an evidence error; recorder
+  calls stay serialized, so later records are skipped, and reported, while an
+  overrun call still runs. Restoration does not wait for evidence recording.
 - OFF uses payload `02 00 01 00`. Saved playback uses `04 00 01 ID`. TIMER uses
   `02 00 01 02`. Each write MUST follow the captured edit-session exchange; all
   exchanges MUST retain the client's pacing. No standalone MANUAL mode command
