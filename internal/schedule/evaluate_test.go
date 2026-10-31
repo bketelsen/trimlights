@@ -372,7 +372,7 @@ func checkIssues(t *testing.T, out Preview, want []Issue) {
 		t.Fatalf("issues %+v, want %+v", out.Issues, want)
 	}
 }
-func pattern(id string) Action { return Action{Kind: "pattern", PatternID: id, Revision: 1} }
+func patternAction(id string) Action { return Action{Kind: "pattern", PatternID: id, Revision: 1} }
 
 var off = Action{Kind: "off"}
 
@@ -394,7 +394,7 @@ func TestMidnightDSTGapAndRepeatEndToEnd(t *testing.T) {
 	}
 	// The local day starts at 01:00 CDT and lasts 23 hours.
 	checkSegments(t, out, []Segment{
-		{From: instant("2026-03-08T05:00:00Z"), Until: instant("2026-03-08T06:00:00Z"), Action: pattern("early")},
+		{From: instant("2026-03-08T05:00:00Z"), Until: instant("2026-03-08T06:00:00Z"), Action: patternAction("early")},
 		{From: instant("2026-03-08T06:00:00Z"), Until: instant("2026-03-09T04:00:00Z"), Action: off},
 	})
 	checkIssues(t, out, []Issue{{"early", "2026-03-08", "Missing clock time: shifted forward by 1h0m0s."}})
@@ -405,7 +405,7 @@ func TestMidnightDSTGapAndRepeatEndToEnd(t *testing.T) {
 	}
 	// The local day starts at the first midnight and lasts 25 hours.
 	checkSegments(t, out, []Segment{
-		{From: instant("2026-11-01T04:00:00Z"), Until: instant("2026-11-01T07:00:00Z"), Action: pattern("early")},
+		{From: instant("2026-11-01T04:00:00Z"), Until: instant("2026-11-01T07:00:00Z"), Action: patternAction("early")},
 		{From: instant("2026-11-01T07:00:00Z"), Until: instant("2026-11-02T05:00:00Z"), Action: off},
 	})
 	checkIssues(t, out, []Issue{{"early", "2026-11-01", "Repeated clock time: using the first occurrence for the start."}})
@@ -423,8 +423,8 @@ func TestMidnightDSTGapAndRepeatEndToEnd(t *testing.T) {
 	// the gap; neither window loses or gains elapsed time.
 	checkSegments(t, out, []Segment{
 		{From: instant("2026-03-28T19:00:00Z"), Until: instant("2026-03-28T20:00:00Z"), Action: off},
-		{From: instant("2026-03-28T20:00:00Z"), Until: instant("2026-03-28T22:00:00Z"), Action: pattern("evening")},
-		{From: instant("2026-03-28T22:00:00Z"), Until: instant("2026-03-28T22:30:00Z"), Action: pattern("early")},
+		{From: instant("2026-03-28T20:00:00Z"), Until: instant("2026-03-28T22:00:00Z"), Action: patternAction("evening")},
+		{From: instant("2026-03-28T22:00:00Z"), Until: instant("2026-03-28T22:30:00Z"), Action: patternAction("early")},
 		{From: instant("2026-03-28T22:30:00Z"), Until: instant("2026-03-29T00:00:00Z"), Action: off},
 	})
 	checkIssues(t, out, []Issue{
@@ -454,9 +454,9 @@ func TestSkippedCivilDateEndToEnd(t *testing.T) {
 	// never wins on 2011-12-31.
 	checkSegments(t, out, []Segment{
 		{From: instant("2011-12-29T10:00:00Z"), Until: instant("2011-12-29T22:00:00Z"), Action: off},
-		{From: instant("2011-12-29T22:00:00Z"), Until: instant("2011-12-29T23:00:00Z"), Action: pattern("daily")},
+		{From: instant("2011-12-29T22:00:00Z"), Until: instant("2011-12-29T23:00:00Z"), Action: patternAction("daily")},
 		{From: instant("2011-12-29T23:00:00Z"), Until: instant("2011-12-30T22:00:00Z"), Action: off},
-		{From: instant("2011-12-30T22:00:00Z"), Until: instant("2011-12-30T23:00:00Z"), Action: pattern("daily")},
+		{From: instant("2011-12-30T22:00:00Z"), Until: instant("2011-12-30T23:00:00Z"), Action: patternAction("daily")},
 		{From: instant("2011-12-30T23:00:00Z"), Until: instant("2011-12-31T10:00:00Z"), Action: off},
 	})
 	skipped := "Skipped: civil date or clock time does not exist"
