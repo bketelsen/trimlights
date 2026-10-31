@@ -80,6 +80,10 @@ Refresh accepts exactly one JSON object, with `Content-Type: application/json`:
 - All API responses MUST use `Cache-Control: no-store`. No credentialed CORS or
   cookie authentication exists in this development mode. Use the separate
   [household OIDC mode](household-auth.md) through Caddy instead.
+- The embedded UI serves only `/` (as `index.html`) and regular files under
+  `/assets/`. It MUST NOT list directories. Content-hashed `/assets/` files use
+  `Cache-Control: public, max-age=31536000, immutable`; `/` uses `no-cache`;
+  errors and the 503 for a missing build use `no-store`.
 
 ## Observed playback state — 2026-10-28
 

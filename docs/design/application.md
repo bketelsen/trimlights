@@ -65,6 +65,8 @@ flowchart LR
   directories or hosts can still compete and require operational isolation.
 - `internal/auth`: OIDC state/nonce/PKCE, subject allowlist, opaque sessions and CSRF.
 - `internal/webui`: embedded browser build and restrictive content security policy.
+  It serves an allowlist with long-lived caching for hashed bundles and no
+  directory listings ([local service contract](../specs/local-service.md)).
 - `internal/pattern`: validated design schema and deterministic logical-pixel render.
 - `internal/schedule`: pure calendar validation, civil/solar intervals and precedence.
 - `internal/house`: bounded photo normalization and validated address/geometry model.
