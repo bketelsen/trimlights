@@ -43,8 +43,9 @@ func TestOpenKeepsDataFilesPrivate(t *testing.T) {
 				t.Fatalf("%s has mode %04o, want 0600", path, got)
 			}
 		}
-		if got := mode(t, dir); got != 0o700 {
-			t.Fatalf("data directory has mode %04o, want 0700", got)
+		// The operator owns the directory's mode; the store only reports it.
+		if got := mode(t, dir); got != 0o755 {
+			t.Fatalf("data directory has mode %04o, want 0755 unchanged", got)
 		}
 	}
 	s, err := Open(dir)
@@ -52,7 +53,7 @@ func TestOpenKeepsDataFilesPrivate(t *testing.T) {
 		t.Fatal(err)
 	}
 	check(s, "first")
-	if notes := s.PermissionNotes(); len(notes) != 1 || !strings.Contains(notes[0], "from mode 0755 to 0700") {
+	if notes := s.PermissionNotes(); len(notes) != 1 || !strings.Contains(notes[0], "has mode 0755; it was not changed") {
 		t.Fatal(notes)
 	}
 	if err = s.Close(); err != nil {
@@ -60,11 +61,6 @@ func TestOpenKeepsDataFilesPrivate(t *testing.T) {
 	}
 
 	// Files an earlier version left readable are tightened on the next open.
-	for _, path := range []string{dir, db} {
-		if err = os.Chmod(path, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
 	if err = os.Chmod(db, 0o644); err != nil {
 		t.Fatal(err)
 	}

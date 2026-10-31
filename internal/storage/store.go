@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -38,21 +37,22 @@ type Observation struct {
 // preventing two processes using this data directory from owning the controller.
 // The database is created with mode 0600 before SQLite opens it, so SQLite gives
 // its -wal and -shm files the same mode regardless of the umask. Open tightens
-// group- or world-accessible paths it owns and reports each change or remaining
-// exposure through PermissionNotes; it does not refuse to start.
+// group- or world-accessible database files it owns, never changes the data
+// directory, and reports each change or remaining exposure through
+// PermissionNotes; it does not refuse to start.
 func Open(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
 	var notes []string
-	note := func(path string, mode func(fs.FileMode) fs.FileMode) error {
-		message, err := tighten(path, mode)
+	add := func(message string, err error) error {
 		if message != "" {
 			notes = append(notes, message)
 		}
 		return err
 	}
-	if err := note(dir, privateDir); err != nil {
+	note := func(path string) error { return add(tighten(path)) }
+	if err := add(exposedDir(dir)); err != nil {
 		return nil, err
 	}
 	lock, err := os.OpenFile(filepath.Join(dir, "service.lock"), os.O_CREATE|os.O_RDWR, 0600)
@@ -68,7 +68,7 @@ func Open(dir string) (*Store, error) {
 	// Files from an earlier version or an interrupted run keep their old mode.
 	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
 		if err == nil {
-			err = note(path+suffix, privateFile)
+			err = note(path + suffix)
 		}
 	}
 	if err != nil {
@@ -95,7 +95,7 @@ func Open(dir string) (*Store, error) {
 	}
 	// SQLite copies the database mode to these files; check them as defence in depth.
 	for _, suffix := range []string{"-wal", "-shm"} {
-		if err = note(path+suffix, privateFile); err != nil {
+		if err = note(path + suffix); err != nil {
 			return nil, errors.Join(err, s.Close())
 		}
 	}
