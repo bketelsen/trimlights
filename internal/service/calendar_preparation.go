@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -215,7 +216,7 @@ func prepareNativeDraft(plan schedule.Plan, input storage.CalendarInputs, today 
 	return out, nil
 }
 
-func registerCalendarPreparation(mux *http.ServeMux, store *storage.Store) {
+func registerCalendarPreparation(mux *http.ServeMux, store *storage.Store, logger *slog.Logger) {
 	for _, kind := range []string{"readiness", "native-draft"} {
 		mux.HandleFunc("POST /api/v1/schedule/"+kind, func(w http.ResponseWriter, r *http.Request) {
 			expected, ok := revision(w, r)
@@ -254,7 +255,7 @@ func registerCalendarPreparation(mux *http.ServeMux, store *storage.Store) {
 				case errors.Is(err, storage.ErrScheduleReference):
 					jsonError(w, 400, err.Error())
 				default:
-					jsonError(w, 500, "cannot read calendar preparation inputs")
+					serverError(w, r, logger, 500, "cannot read calendar preparation inputs", err)
 				}
 				return
 			}

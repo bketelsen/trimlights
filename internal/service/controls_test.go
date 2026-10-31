@@ -90,7 +90,7 @@ func nativeService(t *testing.T) (*storage.Store, *Worker, *nativeStub, *trimlig
 func TestControlAPIValidationAuditAndStaleSecondUser(t *testing.T) {
 	s, w, c, snap := nativeService(t)
 	token := strings.Repeat("x", 32)
-	h := Handler(s, w, token)
+	h := Handler(s, w, token, nil)
 	call := func(body, authz string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("POST", "/api/v1/controller/control", strings.NewReader(body))
 		r.Header.Set("Authorization", authz)
@@ -144,7 +144,7 @@ func TestHouseholdControlCSRFAndActor(t *testing.T) {
 	http.DefaultTransport = provider.Client().Transport
 	t.Cleanup(func() { http.DefaultTransport = old })
 	cfg := auth.Config{Origin: "https://lights.example.test", Issuer: provider.URL, ClientID: "fixture", ClientSecret: "fixture-secret", AllowedSubjects: []string{"owner"}}
-	a, err := auth.New(context.Background(), cfg, s)
+	a, err := auth.New(context.Background(), cfg, s, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestHouseholdControlCSRFAndActor(t *testing.T) {
 		r.Header.Set("X-CSRF-Token", tc.csrf)
 		r.Header.Set("Content-Type", "application/json")
 		out := httptest.NewRecorder()
-		a.Handler(apiHandler(s, w)).ServeHTTP(out, r)
+		a.Handler(apiHandler(s, w, nil)).ServeHTTP(out, r)
 		if out.Code != tc.want {
 			t.Fatal(out.Code, out.Body.String())
 		}
@@ -183,7 +183,7 @@ func TestControlsDisabledAfterPersistenceFailure(t *testing.T) {
 	}
 	defer s.Close()
 	c := newNativeStub(t)
-	w := NewWorker(s, c, 3306)
+	w := NewWorker(s, c, 3306, nil)
 	w.pace = 0
 	ctx, cancel := context.WithCancel(context.Background())
 	doneWorker := make(chan struct{})

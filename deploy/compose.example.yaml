@@ -27,6 +27,7 @@ services:
       - --oidc-config=/config/oidc.json
       - --timezone=${TRIMLIGHT_TIMEZONE:-UTC}
       - --daily-schedules-offset=${TRIMLIGHT_SCHEDULE_OFFSET:--1}
+      - --log-level=${TRIMLIGHT_LOG_LEVEL:-info}
     # The scratch image has no shell or curl; the binary checks /readyz itself.
     healthcheck:
       test: ["CMD", "/trimlight", "healthcheck"]

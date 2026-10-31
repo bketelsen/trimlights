@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -40,10 +41,12 @@ type Worker struct {
 	lastError       string
 	pace            time.Duration
 	controlsBlocked bool
+	log             *slog.Logger
 }
 
-func NewWorker(store *storage.Store, controller Controller, offset int) *Worker {
-	return &Worker{store: store, controller: controller, offset: offset, queue: make(chan request, 8), pace: time.Second}
+// NewWorker serializes controller access. A nil logger uses slog.Default.
+func NewWorker(store *storage.Store, controller Controller, offset int, logger *slog.Logger) *Worker {
+	return &Worker{store: store, controller: controller, offset: offset, queue: make(chan request, 8), pace: time.Second, log: loggerOrDefault(logger)}
 }
 func (w *Worker) Enqueue(ctx context.Context, actor string) (string, <-chan error, error) {
 	return w.enqueue(ctx, actor, nil, nil, nil, nil)
@@ -234,7 +237,38 @@ func (w *Worker) Run(ctx context.Context) {
 				w.controlsBlocked = true
 			}
 			w.mu.Unlock()
+			w.logOperation(r, op, readErr, persistErr)
 			r.done <- errors.Join(readErr, persistErr)
 		}
 	}
+}
+
+// logOperation records one finished controller operation: its kind, outcome and
+// duration. It never logs the controller address or raw transport text.
+func (w *Worker) logOperation(r request, op storage.Operation, readErr, persistErr error) {
+	kind, outcome := "snapshot", "verified"
+	attrs := []any{"operation_id", op.ID}
+	if r.control != nil {
+		kind, outcome = "control", op.Control.Outcome
+		switch {
+		case r.handoff != nil:
+			kind = "calendar-handoff"
+		case r.calendar != nil:
+			kind = "calendar-delivery"
+		}
+		attrs = append(attrs, "action", r.control.Action, "write_attempted", op.Control.WriteAttempted)
+	} else if readErr != nil {
+		outcome = "failed"
+	}
+	attrs = append(attrs, "kind", kind, "outcome", outcome, "duration_ms", op.Finished.Sub(op.Started).Milliseconds())
+	level := slog.LevelInfo
+	if readErr != nil {
+		level = slog.LevelWarn
+		attrs = append(attrs, "error", safeError(readErr))
+	}
+	if persistErr != nil {
+		level = slog.LevelError
+		attrs = append(attrs, "persistence_error", safeError(persistErr))
+	}
+	w.log.Log(context.Background(), level, "controller operation finished", attrs...)
 }

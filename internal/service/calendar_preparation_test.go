@@ -221,8 +221,8 @@ func (forbiddenPreparationController) Snapshot(context.Context, int) (*trimlight
 }
 func TestPreparationAPIBoundariesAndNoMutations(t *testing.T) {
 	s, _, _, plan, _ := preparationFixture(t)
-	w := NewWorker(s, forbiddenPreparationController{}, 3306)
-	h := Handler(s, w, strings.Repeat("x", 32))
+	w := NewWorker(s, forbiddenPreparationController{}, 3306, nil)
+	h := Handler(s, w, strings.Repeat("x", 32), nil)
 	ctx := context.Background()
 	beforeOps, _ := s.Operations(ctx)
 	beforePatterns, _ := s.Patterns(ctx, true)
