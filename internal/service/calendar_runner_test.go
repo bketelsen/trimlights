@@ -363,8 +363,37 @@ func TestCalendarRunnerBoundsDeliveryByIntentLifetime(t *testing.T) {
 	if _, err := r.Step(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if c.writes != 0 || runtimeState(t, r).Status != "paused" {
-		t.Fatal("expired transport sent a command")
+	// No pending intent was journaled, so no write was possible: the stale
+	// intent is re-evaluated instead of pausing household ownership.
+	if state := runtimeState(t, r); c.writes != 0 || state.Status != "active" || state.PendingID != "" {
+		t.Fatal("expired transport sent a command or paused ownership", c.writes, state)
+	}
+	c.waitForDeadline = false
+	clock.Set(plan.Override.ExpiresAt)
+	step(t, r)
+	if c.writes != 1 || c.raw[3] != 1 || runtimeState(t, r).Status != "active" {
+		t.Fatal("did not re-evaluate the current intent", c.writes, runtimeState(t, r))
+	}
+}
+
+func TestCalendarRunnerGuardSaveRaceDoesNotPause(t *testing.T) {
+	r, c, _, _ := runnerFixture(t)
+	calls := 0
+	r.intent = func(ctx context.Context, s *storage.Store, now time.Time, snap *trimlight.Snapshot) (storage.SavedSchedule, schedule.Segment, trimlight.ControlRequest, error) {
+		calls++
+		if calls == 2 {
+			// The pre-write guard sees a save between its schedule and input reads.
+			return storage.SavedSchedule{}, schedule.Segment{}, trimlight.ControlRequest{}, storage.ErrScheduleConflict
+		}
+		return calendarIntent(ctx, s, now, snap)
+	}
+	step(t, r)
+	if state := runtimeState(t, r); calls != 2 || c.writes != 0 || state.Status != "active" || state.PendingID != "" {
+		t.Fatal("save race paused ownership or reached hardware", calls, c.writes, state)
+	}
+	step(t, r)
+	if c.writes != 1 || runtimeState(t, r).Status != "active" {
+		t.Fatal("did not deliver on the next pass", c.writes, runtimeState(t, r))
 	}
 }
 

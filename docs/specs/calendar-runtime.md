@@ -33,6 +33,10 @@ re-evaluates the current instant; elapsed transitions are not queued.
 - Evaluate current intent after the read and again before recording pending intent.
   A calendar save, ownership change or interval expiry while queued MUST prevent
   a stale write. Revision/ownership checks and pending intent commit together.
+  These stale-intent rejections, including a save between the guard's own reads
+  and the intent deadline ending a request before pending intent is journaled,
+  keep ownership active and re-evaluate on the next pass. They are not errors:
+  no write was possible. Any failure after pending intent is journaled pauses.
 - A pending operation belongs to one ownership version. Completion updates its
   checkpoint atomically with the final observation/audit. Only verified/reconciled
   results advance the owned fingerprint. Errors pause; no ambiguous write retries.
