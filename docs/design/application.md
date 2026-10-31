@@ -102,6 +102,9 @@ controls first and shows observation age as “Last checked.” Saved timer time
 the browser's local display format. The UI translates mode and operation names
 into household language; raw snapshots, wire parameters, revision numbers and
 transport errors remain in the service/API contracts rather than ordinary screens.
+As of 2026-10-30, a rejected entry (a 4xx JSON error) shows the service's own
+validation text, so the household can see what to fix; gateway pages and network
+failures show plain retry advice instead (see the [house contract](../specs/house.md#rules)).
 Calendar has one plain planning-only notice, with timer imports, file management,
 history and setup behind disclosures. House keeps wiring and precise corner fields
 behind setup controls. Preview labels state what the image is; research caveats
