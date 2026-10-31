@@ -129,9 +129,7 @@ Bundles contain the OIDC secret and are not encrypted; store them privately.
 
 In House, upload a JPEG, PNG or WebP (up to 12 MiB and 50 million pixels). The picker
 requests supported formats so Safari can convert compatible photos. If HEIC still
-arrives, export it as JPEG in Photos or Preview. A photo that needs more than
-128 MiB to decode, such as a 16-bit PNG or a large progressive JPEG, is refused;
-export it as a standard JPEG. Original files and metadata are
+arrives, export it as JPEG in Photos or Preview. Original files and metadata are
 not retained. Up to 20 sanitized photos and their thumbnails stay in SQLite.
 
 Add a roofline, set its output, first bulb and count, then tap its corners in order.

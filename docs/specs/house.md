@@ -28,14 +28,6 @@ Layout schema 1 contains `runs` and `views`. Each run has a stable `id`, `name`,
 - Uploads MUST be at most 12 MiB, 50 million decoded pixels and 16384 pixels on
   either edge. The service MUST inspect dimensions before decoding and serialize
   decoding; a concurrent upload receives 429. At most 20 photos may be stored.
-- Before decoding, the service MUST estimate decoder memory from the headers
-  (color model and bit depth, PNG interlacing, JPEG sampling factors, components
-  and progressive coding) and refuse an estimate above 128 MiB with export
-  advice. A 16-bit PNG or a large progressive JPEG can be refused below the pixel
-  limit; a baseline 4:2:0 JPEG at 48 million pixels is accepted. Scaling MUST
-  read the decoded image directly and apply EXIF orientation to the working
-  image, so one upload peaks near 210 MiB (12 MiB input, 128 MiB decode, 64 MiB
-  working image).
 - JPEG, PNG and WebP MUST be decoded and re-encoded without original metadata;
   EXIF orientation 1–8 MUST be applied. Unsupported HEIC MUST return conversion
   advice. Full images have maximum edge 4096; thumbnails have maximum edge 512.
