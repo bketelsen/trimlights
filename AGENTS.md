@@ -26,8 +26,10 @@ Reusable procedures belong in `.agents/skills/`, starting from its TEMPLATE.
   runs `make ci`; `make verify` is the non-mutating gate without pnpm. Fix lint
   findings; never loosen `.golangci.yml`
   ([ADR-0016](docs/adr/0016-adopt-the-frostyard-make-gate.md)).
-- Pin workflow actions by full commit SHA with a version comment. Only the
-  publish job holds registry/attestation permissions, and it runs no build code
+- Pin workflow actions by full commit SHA with a version comment. Images pass
+  through 3 jobs: build (read-only; runs pnpm and Go), publish and promote. Only
+  publish and promote hold `packages: write`; only publish holds `id-token` and
+  `attestations`; neither runs repository build code
   ([ADR-0015](docs/adr/0015-versioned-attested-images.md)). Release tags come from `make bump`.
 
 ## Repository boundary

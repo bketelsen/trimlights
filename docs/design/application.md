@@ -351,8 +351,9 @@ workflow publishes `ghcr.io/bketelsen/trimlights` for linux/amd64 and
 linux/arm64 only after `make ci` passes ([repository gate](#repository-gate)). A build job without write
 permissions compiles both static binaries and hands them over as an artifact.
 A separate publish job packages them with the copy-only Containerfile, pushes,
-and attests the pushed digest with GitHub build provenance. That job runs no
-pnpm, Node or Go.
+and attests the pushed digest with GitHub build provenance. Only publish and
+promote (below) hold `packages: write`, only publish holds `id-token` and
+`attestations`, and neither runs pnpm, Node, Go or repository build code.
 
 | Trigger | Tags | Embedded version |
 | --- | --- | --- |
@@ -362,8 +363,9 @@ pnpm, Node or Go.
 A `promote` job (`contents: read`, `packages: write`) moves `:main`. Promote
 jobs share the concurrency group `promote-main`, so they run one at a time. Each
 one reads the current head of main and retags `:main` to the digest of
-`:sha-<head>`, then checks that digest. If that image is not pushed yet, it
-skips; the head's own run promotes it later. So `:main` always moves to the head
+`:sha-<head>` from a registry HEAD request, then checks that digest. Only a 404
+(the head image is not pushed yet) skips; the head's own run promotes it later.
+Any other answer or error fails the job. So `:main` always moves to the head
 image at promotion time, and it can lag the head for a short time while the head
 image builds. A failed promotion is repaired by the next one.
 
