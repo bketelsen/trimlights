@@ -33,7 +33,9 @@ Layout schema 1 contains `runs` and `views`. Each run has a stable `id`, `name`,
   refuse an estimate above 128 MiB with export advice. A PNG is budgeted from
   its IHDR bit depth, color type and interlacing; a non-paletted PNG counts as
   NRGBA (4 bytes per pixel) or NRGBA64 (8 bytes per pixel, 16-bit), because a
-  later tRNS chunk can select those. A WebP is budgeted from its actual image
+  later tRNS chunk can select those. The first PNG chunk MUST be a 13-byte IHDR
+  with the dimensions that DecodeConfig reports; otherwise the upload is refused
+  as an unsupported format before decoding. A WebP is budgeted from its actual image
   chunk (VP8 or VP8L) and ALPH compression, not from the VP8X header. Lossless
   data (VP8L, or ALPH compression 1) adds the worst-case Huffman storage of
   golang.org/x/image/vp8l: up to 2600 groups, about 206 MiB. In effect, only

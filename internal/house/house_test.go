@@ -368,6 +368,35 @@ func TestDecodeMemoryBudget(t *testing.T) {
 	}
 }
 
+func TestPNGChunkBeforeIHDRRefused(t *testing.T) {
+	// An unknown chunk whose bytes sit where IHDR fields would be: color type
+	// 3 (paletted) and no interlace. The real IHDR is 16-bit RGBA at the pixel limit.
+	ihdr := pngHeader(7071, 7071, 16, 6, 0)
+	data := []byte{0, 0, 0, 0, 0, 0, 0, 0, 8, 3, 0, 0, 0}
+	chunk := binary.BigEndian.AppendUint32(nil, uint32(len(data)))
+	chunk = append(chunk, "xxXx"...)
+	chunk = append(chunk, data...)
+	chunk = binary.BigEndian.AppendUint32(chunk, crc32.ChecksumIEEE(chunk[4:]))
+	raw := append(append(append([]byte{}, ihdr[:8]...), chunk...), ihdr[8:]...)
+	if raw[25] != 3 || raw[28] != 0 {
+		t.Fatal("fixture does not spoof the IHDR offsets")
+	}
+	cfg, kind, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil || kind != "png" || cfg.Width != 7071 || cfg.ColorModel != color.NRGBA64Model {
+		t.Fatal("image/png no longer accepts a chunk before IHDR", cfg, err)
+	}
+	if n := decodeBytes(raw, kind, cfg); n != -1 {
+		t.Fatal(n)
+	}
+	if _, err := Sanitize(raw); err != ErrFormat {
+		t.Fatal(err)
+	}
+	// A first IHDR whose size disagrees with DecodeConfig is refused too.
+	if n := decodeBytes(pngHeader(10, 10, 8, 6, 0), kind, image.Config{Width: 7071, Height: 7071}); n != -1 {
+		t.Fatal(n)
+	}
+}
+
 // TestDecodeEstimateCoversAllocation checks the estimates against what the
 // decoders actually allocate.
 func TestDecodeEstimateCoversAllocation(t *testing.T) {
@@ -621,7 +650,11 @@ func TestOrientAfterScalingMatchesReference(t *testing.T) {
 		for i := range got.Pix {
 			worst = max(worst, int(got.Pix[i])-int(want.Pix[i]), int(want.Pix[i])-int(got.Pix[i]))
 		}
-		if worst > 2 {
+		// The sample positions mirror exactly, so amd64 gives identical
+		// pixels. The bilinear weights come from mirrored float coordinates,
+		// and another architecture (for example with fused multiply-add) can
+		// round one of them differently; allow 1 level for that.
+		if worst > 1 {
 			t.Fatal(o, "max channel difference", worst)
 		}
 	}

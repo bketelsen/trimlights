@@ -12,7 +12,8 @@ import (
 const MaxDecodeBytes = 128 << 20
 
 // decodeBytes returns a conservative upper estimate of the bytes that
-// image.Decode allocates for raw, from the headers alone.
+// image.Decode allocates for raw, from the headers alone, or -1 when the
+// headers are not in the order that the estimate requires.
 func decodeBytes(raw []byte, kind string, cfg image.Config) int64 {
 	pixels := int64(cfg.Width) * int64(cfg.Height)
 	switch kind {
@@ -26,8 +27,12 @@ func decodeBytes(raw []byte, kind string, cfg image.Config) int64 {
 		// Use the IHDR bit depth and color type, not cfg.ColorModel: DecodeConfig
 		// stops after IHDR, and a later tRNS chunk turns gray or truecolor into
 		// NRGBA or NRGBA64. Budget that worst case for every non-paletted PNG.
-		if len(raw) < 29 {
-			return pixels * 16
+		// The PNG specification requires IHDR first, but image/png accepts
+		// unknown chunks before it. Refuse that, so the fields read here are
+		// the IHDR that DecodeConfig read, with the same dimensions.
+		if len(raw) < 33 || binary.BigEndian.Uint32(raw[8:12]) != 13 || string(raw[12:16]) != "IHDR" ||
+			int64(binary.BigEndian.Uint32(raw[16:20])) != int64(cfg.Width) || int64(binary.BigEndian.Uint32(raw[20:24])) != int64(cfg.Height) {
+			return -1
 		}
 		depth, colorType, interlace := raw[24], raw[25], raw[28]
 		per := int64(4)
