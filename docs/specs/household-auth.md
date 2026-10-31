@@ -58,13 +58,19 @@ Sign-in outcomes follow the [service log contract](local-service.md#service-logs
 | `sign-in succeeded` | info | `subject` |
 | `sign-in denied` | warn | `subject` not in the allowlist |
 | `sign-in callback refused` | warn | `reason`: `malformed_callback`, `unexpected_issuer`, `invalid_or_expired_flow`, `state_mismatch` or `flow_already_used` |
-| `sign-in token exchange failed` | warn | `idp_status` and `oauth_error`, or a transport `error` |
-| `sign-in verification failed` | warn | `reason`: `missing_id_token`, `invalid_id_token`, `nonce_mismatch` or `invalid_claims`; verifier `error` |
+| `sign-in token exchange failed` | warn | `reason`: `idp_rejected` with `idp_status` and `oauth_error`, `transport` with `timeout`, or `invalid_token_response` |
+| `sign-in verification failed` | warn | `reason`: `missing_id_token`, `expired_id_token`, `jwks_unavailable`, `issuer_mismatch`, `audience_mismatch`, `malformed_id_token`, `id_token_not_yet_valid`, `invalid_signature`, `invalid_id_token`, `nonce_mismatch` or `invalid_claims` |
 | `sign-in flow unavailable`, `sign-in session not saved`, `sign-out failed` | error | `status`, `error`; `subject` when known |
 
 - Logs MUST NOT contain authorization codes, state, nonces, PKCE verifiers, ID or
   access tokens, flow or session cookie values, session hashes, CSRF tokens or the
-  client secret. Token exchange failures omit the provider response body.
+  client secret.
+- Provider failures MUST be logged as the fixed categories above, never as raw
+  exchange or verifier errors: those can quote response bodies, claim values and
+  URLs with queries. `oauth_error` MUST be one of the RFC 6749 token error codes
+  (`invalid_request`, `invalid_client`, `invalid_grant`, `unauthorized_client`,
+  `unsupported_grant_type`, `invalid_scope`) or `unknown`. A failed OIDC setup at
+  startup logs only `household login setup failed`.
 
 ## Derived artifacts
 

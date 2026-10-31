@@ -83,7 +83,7 @@ an unauthenticated TrueNAS install can pull the image.
 
 The service writes JSON logs to standard error; read them with `docker logs`
 (or the TrueNAS app log view). Set `TRIMLIGHT_LOG_LEVEL` to `debug`, `info`,
-`warn` or `error`; `debug` adds one line per request. Logs record sign-in subjects
+`warn` or `error`; `debug` adds request lines (method, path, status, duration). Logs record sign-in subjects
 and the causes of server errors, never tokens, cookies or the controller address.
 See the [service log contract](docs/specs/local-service.md#service-logs).
 

@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -81,7 +82,7 @@ func apiHandler(store *storage.Store, worker *Worker, logger *slog.Logger) http.
 	registerCalendarPreparation(mux, store, logger)
 	registerHouse(mux, store, logger)
 	registerControls(mux, worker, logger)
-	mux.Handle("GET /", webui.Handler())
+	mux.Handle("GET /", webui.Handler(logger))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { jsonResponse(w, 200, map[string]string{"status": "ok"}) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := store.Observation(r.Context()); err != nil {
@@ -207,7 +208,7 @@ func Run(ctx context.Context, c Config) error {
 		mode = "oidc"
 		login, err := auth.New(ctx, *c.OIDC, store, logger)
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: %w", ErrHouseholdLogin, err)
 		}
 		api := apiHandler(store, worker, logger)
 		household := login.Handler(api)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
@@ -133,7 +134,7 @@ func TestControllerFailureLogsWithoutAddress(t *testing.T) {
 			request = entry
 		}
 	}
-	if operation == nil || operation["kind"] != "snapshot" || operation["outcome"] != "failed" || operation["level"] != "WARN" || operation["error"] != "controller network dial failed" {
+	if operation == nil || operation["kind"] != "snapshot" || operation["outcome"] != "failed" || operation["level"] != "WARN" || operation["error"] != "network dial failed" {
 		t.Fatal(operation, logs.String())
 	}
 	if _, ok := operation["duration_ms"]; !ok {
@@ -148,7 +149,7 @@ func TestControllerFailureLogsWithoutAddress(t *testing.T) {
 }
 
 func TestSafeErrorAndRequestLogLevel(t *testing.T) {
-	if got := safeError(fmt.Errorf("connect: %w", &net.DNSError{Name: "controller.home.invalid", Err: "no such host"})); got != "controller name lookup failed" {
+	if got := safeError(fmt.Errorf("connect: %w", &net.DNSError{Name: "controller.home.invalid", Err: "no such host"})); got != "network name lookup failed" {
 		t.Fatal(got)
 	}
 	if got := safeError(fmt.Errorf("plain")); got != "plain" {
@@ -166,5 +167,49 @@ func TestSafeErrorAndRequestLogLevel(t *testing.T) {
 	}
 	if logs.String() != "" {
 		t.Fatal("info level logged probe requests", logs.String())
+	}
+}
+
+func TestRequestLogKeepsFlusherAndStatus(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		serve  func(http.ResponseWriter)
+	}{
+		{"direct flusher", 200, func(w http.ResponseWriter) {
+			f, ok := w.(http.Flusher)
+			if !ok {
+				panic("recorder hides http.Flusher")
+			}
+			f.Flush()
+			_, _ = w.Write([]byte("event"))
+		}},
+		{"response controller", 200, func(w http.ResponseWriter) {
+			if err := http.NewResponseController(w).Flush(); err != nil {
+				panic(err)
+			}
+		}},
+		{"status then flush", 202, func(w http.ResponseWriter) {
+			w.WriteHeader(202)
+			w.(http.Flusher).Flush()
+		}},
+		{"static", 418, func(w http.ResponseWriter) {
+			w.WriteHeader(418)
+			_, _ = w.Write([]byte("static"))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logger, logs := testLogger(slog.LevelDebug)
+			h := requestLog(logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { tc.serve(w) }))
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, httptest.NewRequest("GET", "/stream", nil))
+			if rr.Code != tc.status || (tc.name != "static" && !rr.Flushed) {
+				t.Fatal(rr.Code, rr.Flushed)
+			}
+			entries := logs.entries(t)
+			if len(entries) != 1 || entries[0]["status"] != float64(tc.status) || entries[0]["path"] != "/stream" {
+				t.Fatal(logs.String())
+			}
+		})
 	}
 }

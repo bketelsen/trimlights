@@ -2,6 +2,7 @@ package auth
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -100,7 +101,7 @@ func TestSignInLogsOutcomesWithoutSecrets(t *testing.T) {
 
 	// A tampered flow cookie is refused before the exchange.
 	tampered := *flow
-	tampered.Value = "x" + flow.Value[1:]
+	tampered.Value = tamper(t, flow.Value)
 	if got := call(a, "GET", path, &tampered, "", "").Code; got != 400 {
 		t.Fatal(got)
 	}
@@ -130,7 +131,7 @@ func TestSignInLogsOutcomesWithoutSecrets(t *testing.T) {
 		{"sign-in callback refused", map[string]any{"reason": "invalid_or_expired_flow"}},
 		{"sign-in token exchange failed", map[string]any{"idp_status": float64(400)}},
 		{"sign-in denied", map[string]any{"subject": "outsider", "level": "WARN"}},
-		{"sign-in verification failed", map[string]any{"reason": "invalid_id_token"}},
+		{"sign-in verification failed", map[string]any{"reason": "invalid_signature"}},
 	} {
 		if !findLog(entries, want.msg, want.attrs) {
 			t.Fatal("missing log", want, logs.String())
@@ -145,5 +146,62 @@ func TestSignInLogsOutcomesWithoutSecrets(t *testing.T) {
 		if strings.Contains(text, secret) {
 			t.Fatalf("log contains credential material %q:\n%s", secret, text)
 		}
+	}
+}
+
+// tamper flips 1 bit in the sealed bytes, so the value always differs.
+func tamper(t *testing.T, value string) string {
+	t.Helper()
+	raw, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil || len(raw) == 0 {
+		t.Fatal("flow cookie is not sealed base64", err)
+	}
+	raw[len(raw)/2] ^= 1
+	out := base64.RawURLEncoding.EncodeToString(raw)
+	if out == value {
+		t.Fatal("tampered value did not change")
+	}
+	return out
+}
+
+// TestSignInFailureLogsUseFixedCategories feeds provider data that carries a
+// marker into every failure path. Only fixed categories may reach the log.
+func TestSignInFailureLogsUseFixedCategories(t *testing.T) {
+	for _, tc := range []struct {
+		mode  string
+		attrs map[string]any
+	}{
+		{"oauth-marker", map[string]any{"msg": "sign-in token exchange failed", "reason": "idp_rejected", "idp_status": float64(400), "oauth_error": "unknown"}},
+		{"oauth-allowed", map[string]any{"msg": "sign-in token exchange failed", "reason": "idp_rejected", "idp_status": float64(400), "oauth_error": "invalid_grant"}},
+		{"redirect", map[string]any{"msg": "sign-in token exchange failed", "reason": "transport"}},
+		{"expires", map[string]any{"msg": "sign-in token exchange failed", "reason": "invalid_token_response"}},
+		{"malformed-id", map[string]any{"msg": "sign-in verification failed", "reason": "malformed_id_token"}},
+		{"issuer-marker", map[string]any{"msg": "sign-in verification failed", "reason": "issuer_mismatch"}},
+		{"jwks", map[string]any{"msg": "sign-in verification failed", "reason": "jwks_unavailable"}},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			// A fresh fixture has no cached keys, so the key set is fetched.
+			a, f := authFixture(t)
+			logs := captureLogs(a)
+			path, flow := begin(t, a, f)
+			f.mu.Lock()
+			f.invalid = tc.mode
+			f.mu.Unlock()
+			if got := call(a, "GET", path, flow, "", "").Code; got != 401 {
+				t.Fatal(got)
+			}
+			if strings.Contains(strings.ToLower(logs.String()), leakMarker) {
+				t.Fatal("provider data reached the log:", logs.String())
+			}
+			msg := tc.attrs["msg"].(string)
+			if !findLog(logEntries(t, logs), msg, tc.attrs) {
+				t.Fatal("missing category", tc.attrs, logs.String())
+			}
+			for _, e := range logEntries(t, logs) {
+				if _, ok := e["error"]; ok {
+					t.Fatal("raw error logged", e)
+				}
+			}
+		})
 	}
 }

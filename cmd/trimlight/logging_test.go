@@ -11,6 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"net/http"
+	"net/http/httptest"
+
 	"github.com/frostyard/clix"
 )
 
@@ -124,5 +127,76 @@ func TestServeLogLevelFlag(t *testing.T) {
 	}
 	if _, _, err := execute(t, "serve", "--data-dir", t.TempDir(), "--api-token-file", token, "--log-level", "loud", "--dry-run"); err == nil {
 		t.Fatal("invalid log level accepted")
+	}
+}
+
+// TestServeStartupFailureLogOmitsProviderData makes OIDC discovery fail with
+// provider data that carries a marker. The JSON log keeps only a category.
+func TestServeStartupFailureLogOmitsProviderData(t *testing.T) {
+	const marker = "leakmarker5k"
+	mux := http.NewServeMux()
+	provider := httptest.NewTLSServer(mux)
+	defer provider.Close()
+	mode := ""
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		switch mode {
+		case "body":
+			http.Redirect(w, r, "/moved?leak="+marker, http.StatusFound)
+		case "drop":
+			http.Redirect(w, r, "/drop?leak="+marker, http.StatusFound)
+		case "issuer":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"issuer":"https://` + marker + `.test","authorization_endpoint":"https://` + marker + `.test/a","token_endpoint":"https://` + marker + `.test/t","jwks_uri":"https://` + marker + `.test/k"}`))
+		}
+	})
+	mux.HandleFunc("/moved", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, marker+" discovery body", 500)
+	})
+	mux.HandleFunc("/drop", func(w http.ResponseWriter, r *http.Request) {
+		if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {
+			_ = conn.Close()
+		}
+	})
+	old := http.DefaultTransport
+	http.DefaultTransport = provider.Client().Transport
+	t.Cleanup(func() { http.DefaultTransport = old })
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "secret"), []byte("client-secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	config, err := json.Marshal(map[string]any{"origin": "https://lights.example.test", "issuer": provider.URL, "client_id": "fixture", "client_secret_file": "secret", "allowed_subjects": []string{"owner"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oidcPath := filepath.Join(dir, "oidc.json")
+	if err = os.WriteFile(oidcPath, config, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []string{"body", "drop", "issuer"} {
+		mode = m
+		_, errs, err := execute(t, "serve", "--listen", "127.0.0.1:0", "--data-dir", filepath.Join(dir, "data-"+m), "--oidc-config", oidcPath)
+		if err == nil {
+			t.Fatal(m, "discovery failure accepted")
+		}
+		var stopped map[string]any
+		for _, line := range strings.Split(errs, "\n") {
+			if !strings.HasPrefix(line, "{") {
+				continue // Cobra prints the detailed error for the operator.
+			}
+			if strings.Contains(strings.ToLower(line), marker) {
+				t.Fatal(m, "provider data reached the log:", line)
+			}
+			var entry map[string]any
+			if err = json.Unmarshal([]byte(line), &entry); err != nil {
+				t.Fatal(line)
+			}
+			if entry["msg"] == "trimlight stopped" {
+				stopped = entry
+			}
+		}
+		if stopped == nil || stopped["error"] != "household login setup failed" || stopped["level"] != "ERROR" {
+			t.Fatal(m, stopped, errs)
+		}
 	}
 }

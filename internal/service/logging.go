@@ -29,6 +29,19 @@ func logFailure(r *http.Request, logger *slog.Logger, code int, err error, attrs
 	loggerOrDefault(logger).ErrorContext(r.Context(), "request failed", attrs...)
 }
 
+// ErrHouseholdLogin marks a failed OIDC setup at startup. Discovery errors can
+// quote provider response bodies, issuer values and redirect URLs.
+var ErrHouseholdLogin = errors.New("household login setup failed")
+
+// LogError describes a terminal service error for the log. It keeps only a
+// category for household login setup and removes network addresses otherwise.
+func LogError(err error) string {
+	if errors.Is(err, ErrHouseholdLogin) {
+		return ErrHouseholdLogin.Error()
+	}
+	return safeError(err)
+}
+
 // safeError describes an error without network addresses. Controller transport
 // errors carry the controller address, which must never reach the log.
 func safeError(err error) string {
@@ -37,11 +50,11 @@ func safeError(err error) string {
 	}
 	var dns *net.DNSError
 	if errors.As(err, &dns) {
-		return "controller name lookup failed"
+		return "network name lookup failed"
 	}
 	var op *net.OpError
 	if errors.As(err, &op) {
-		message := "controller network " + op.Op + " failed"
+		message := "network " + op.Op + " failed"
 		var syscall *os.SyscallError
 		switch {
 		case op.Timeout():
@@ -72,6 +85,15 @@ func (s *statusRecorder) Write(b []byte) (int, error) {
 	return s.ResponseWriter.Write(b)
 }
 func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+
+// Flush keeps streaming handlers working through the recorder. A flush before
+// any header commits status 200, so the recorder notes it.
+func (s *statusRecorder) Flush() {
+	if s.status == 0 {
+		s.status = http.StatusOK
+	}
+	_ = http.NewResponseController(s.ResponseWriter).Flush()
+}
 
 // requestLog records method, path without query, status and duration at debug
 // level, so the default info level stays free of request and probe noise.

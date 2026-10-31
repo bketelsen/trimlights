@@ -24,6 +24,7 @@ const (
 	testCode        = "code-Q7xV2pLmR4"
 	testSecret      = "client-secret-9HqT3w"
 	testAccessToken = "never-expose-this-access-token"
+	leakMarker      = "leakmarker7q"
 )
 
 type providerFixture struct {
@@ -40,6 +41,33 @@ func (f *providerFixture) token(w http.ResponseWriter, r *http.Request) {
 	defer f.mu.Unlock()
 	f.calls++
 	_ = r.ParseForm()
+	// Failure modes for the log tests carry leakMarker in every place that a raw
+	// error could quote: error codes, URLs, token fields and claims. They answer
+	// before the client check, because the OAuth client retries with another
+	// client authentication style after a failure.
+	switch f.invalid {
+	case "oauth-marker":
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(400)
+		_, _ = w.Write([]byte(`{"error":"` + leakMarker + `","error_description":"` + leakMarker + `"}`))
+		return
+	case "oauth-allowed":
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(400)
+		_, _ = w.Write([]byte(`{"error":"invalid_grant","error_description":"` + leakMarker + `"}`))
+		return
+	case "redirect":
+		http.Redirect(w, r, "/token-redirect?leak="+leakMarker, http.StatusTemporaryRedirect)
+		return
+	case "expires":
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"` + leakMarker + `","token_type":"Bearer","expires_in":"` + leakMarker + `"}`))
+		return
+	case "malformed-id":
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"a","token_type":"Bearer","id_token":"` + leakMarker + `.` + leakMarker + `.` + leakMarker + `"}`))
+		return
+	}
 	user, password, ok := r.BasicAuth()
 	if !ok || user != "client" || password != testSecret || r.Form.Get("code") != testCode || r.Form.Get("grant_type") != "authorization_code" || r.Form.Get("redirect_uri") != "https://lights.test/auth/callback" || oauth2.S256ChallengeFromVerifier(r.Form.Get("code_verifier")) != f.challenge {
 		http.Error(w, "bad token request", 400)
@@ -55,6 +83,9 @@ func (f *providerFixture) token(w http.ResponseWriter, r *http.Request) {
 		claims["aud"] = "wrong"
 	case "issuer":
 		claims["iss"] = "https://wrong.test"
+	case "issuer-marker":
+		claims["iss"] = "https://" + leakMarker + ".test"
+		claims["aud"] = leakMarker
 	case "expiry":
 		claims["exp"] = time.Now().Add(-time.Hour).Unix()
 	}
@@ -91,9 +122,22 @@ func authFixture(t *testing.T) (*Auth, *providerFixture) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"issuer": server.URL, "authorization_endpoint": server.URL + "/authorize", "token_endpoint": server.URL + "/token", "jwks_uri": server.URL + "/keys", "id_token_signing_alg_values_supported": []string{"RS256"}})
 	})
 	mux.HandleFunc("/keys", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		failing := f.invalid == "jwks"
+		f.mu.Unlock()
+		if failing {
+			http.Error(w, leakMarker+" key set body", 500)
+			return
+		}
 		_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: &key.PublicKey, Algorithm: "RS256", Use: "sig"}}})
 	})
 	mux.HandleFunc("/token", f.token)
+	mux.HandleFunc("/token-redirect", func(w http.ResponseWriter, r *http.Request) {
+		// Drop the connection, so the client error quotes the redirect URL.
+		if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {
+			_ = conn.Close()
+		}
+	})
 	store, err := storage.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

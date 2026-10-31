@@ -101,7 +101,9 @@ func serveCommand() *cobra.Command {
 			return result(cmd, map[string]any{"dry_run": true, "listen": listen, "controller_enabled": c.Controller != nil, "restore_guarded": guarded}, "Configuration valid; no listener, database or controller connection opened.")
 		}
 		if err = service.Run(cmd.Context(), c); err != nil {
-			logger.Error("trimlight stopped", "error", err)
+			// The returned error, with its detail, goes to the operator on the
+			// command line; the log line keeps only a safe description.
+			logger.Error("trimlight stopped", "error", service.LogError(err))
 		}
 		return err
 	})

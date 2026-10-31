@@ -264,7 +264,7 @@ func (a *Auth) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	identity, err := a.verifier.Verify(ctx, raw)
 	if err != nil {
-		a.log.WarnContext(r.Context(), "sign-in verification failed", "reason", "invalid_id_token", "error", err)
+		a.log.WarnContext(r.Context(), "sign-in verification failed", "reason", verifyFailure(err))
 		http.Error(w, "Invalid identity token", 401)
 		return
 	}
@@ -370,8 +370,12 @@ func (a *Auth) refused(r *http.Request, reason string) {
 	a.log.WarnContext(r.Context(), "sign-in callback refused", "reason", reason)
 }
 
-// exchangeFailure keeps the IdP response body out of the log: it could echo
-// request values. The status and the OAuth error code are enough to diagnose.
+// oauthErrors are the RFC 6749 section 5.2 token error codes. Any other code
+// comes from the response body unchecked, so it is logged as "unknown".
+var oauthErrors = map[string]bool{"invalid_request": true, "invalid_client": true, "invalid_grant": true, "unauthorized_client": true, "unsupported_grant_type": true, "invalid_scope": true}
+
+// exchangeFailure describes a failed token exchange with fixed categories only.
+// Raw errors can carry response bodies, claim values or URLs with queries.
 func exchangeFailure(err error) []any {
 	var retrieve *oauth2.RetrieveError
 	if errors.As(err, &retrieve) {
@@ -379,9 +383,43 @@ func exchangeFailure(err error) []any {
 		if retrieve.Response != nil {
 			status = retrieve.Response.StatusCode
 		}
-		return []any{"idp_status", status, "oauth_error", retrieve.ErrorCode}
+		code := "unknown"
+		if oauthErrors[retrieve.ErrorCode] {
+			code = retrieve.ErrorCode
+		}
+		return []any{"reason", "idp_rejected", "idp_status", status, "oauth_error", code}
 	}
-	return []any{"error", err}
+	var transport *url.Error
+	if errors.As(err, &transport) {
+		return []any{"reason", "transport", "timeout", transport.Timeout()}
+	}
+	return []any{"reason", "invalid_token_response"}
+}
+
+// verifyFailure maps an ID token verification error to a fixed category. The
+// error text itself can quote claims, key set response bodies or URLs.
+func verifyFailure(err error) string {
+	var expired *oidc.TokenExpiredError
+	if errors.As(err, &expired) {
+		return "expired_id_token"
+	}
+	text := err.Error()
+	for _, c := range []struct{ fragment, reason string }{
+		{"fetching keys", "jwks_unavailable"},
+		{"get keys failed", "jwks_unavailable"},
+		{"issued by a different provider", "issuer_mismatch"},
+		{"expected audience", "audience_mismatch"},
+		{"malformed jwt", "malformed_id_token"},
+		{"failed to unmarshal claims", "malformed_id_token"},
+		{"before the nbf", "id_token_not_yet_valid"},
+		{"signature", "invalid_signature"},
+		{"not signed", "invalid_signature"},
+	} {
+		if strings.Contains(text, c.fragment) {
+			return c.reason
+		}
+	}
+	return "invalid_id_token"
 }
 func unauthorized(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
