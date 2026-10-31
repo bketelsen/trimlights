@@ -62,9 +62,22 @@ func handler(root fs.FS) http.Handler {
 			return
 		}
 		w.Header().Set("Cache-Control", cache)
-		http.ServeContent(w, r, name, info.ModTime(), content)
+		http.ServeContent(noStoreErrors{w}, r, name, info.ModTime(), content)
 	})
 }
+
+// noStoreErrors makes every error status from http.ServeContent, such as 412
+// or 416, use no-store instead of the cache policy of the file.
+type noStoreErrors struct{ http.ResponseWriter }
+
+func (w noStoreErrors) WriteHeader(status int) {
+	if status >= 400 {
+		w.Header().Set("Cache-Control", "no-store")
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w noStoreErrors) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 // route maps a URL path to a file name in the build and its cache policy.
 func route(path string) (name, cache string, ok bool) {

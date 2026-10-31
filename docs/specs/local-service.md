@@ -83,7 +83,8 @@ Refresh accepts exactly one JSON object, with `Content-Type: application/json`:
 - The embedded UI serves only `/` (as `index.html`) and regular files under
   `/assets/`. It MUST NOT list directories. Content-hashed `/assets/` files use
   `Cache-Control: public, max-age=31536000, immutable`; `/` uses `no-cache`;
-  errors and the 503 for a missing build use `no-store`.
+  every error status, including 412, 416 and the 503 for a missing build, uses
+  `no-store`.
 
 ## Observed playback state — 2026-10-28
 

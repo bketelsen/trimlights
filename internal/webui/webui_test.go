@@ -57,6 +57,30 @@ func TestCachePolicyAllowlistAndDirectories(t *testing.T) {
 	}
 }
 
+func TestConditionalAndRangeStatuses(t *testing.T) {
+	h := handler(fstest.MapFS{
+		"index.html":             {Data: []byte("<!doctype html>")},
+		"assets/index-AbC123.js": {Data: []byte("console.log(1)")},
+	})
+	for _, c := range []struct {
+		header, value string
+		status        int
+		cache         string
+	}{
+		{"Range", "bytes=100-200", 416, "no-store"},
+		{"If-Match", `"other"`, 412, "no-store"},
+		{"Range", "bytes=0-3", 206, "public, max-age=31536000, immutable"},
+	} {
+		r := httptest.NewRequest("GET", "/assets/index-AbC123.js", nil)
+		r.Header.Set(c.header, c.value)
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, r)
+		if rr.Code != c.status || rr.Header().Get("Cache-Control") != c.cache {
+			t.Fatalf("%s %s: %d %q", c.header, c.value, rr.Code, rr.Header().Get("Cache-Control"))
+		}
+	}
+}
+
 func TestMissingBuild(t *testing.T) {
 	h := handler(fstest.MapFS{"assets/index-AbC123.js": {Data: []byte("x")}})
 	for _, path := range []string{"/", "/assets/index-AbC123.js"} {
