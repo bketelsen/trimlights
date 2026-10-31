@@ -53,6 +53,20 @@ re-evaluates the current instant; elapsed transitions are not queued.
   The internal handoff coordinator is implemented and synthetically tested.
   Owner-facing activation and physical acceptance remain required before
   production execution.
+- Known gap (2026-10-30): every snapshot sends a clock query, and the driver
+  refuses Sunday in the controller timezone (`--timezone`). From Sunday 00:00 to
+  Monday 00:00 each runner refresh therefore fails. The runner treats this as a
+  read-only failure: it backs off to at most 5 minutes, sends no write and keeps
+  ownership active. It does not pause or set a runtime reason; the cause shows
+  only in the observation's last error, the failed operation's error in
+  operation history (`GET /api/v1/operations`) and the preparation blocker
+  `sunday_clock_unverified`. Sunday transitions are not delivered. Monday's first successful
+  pass applies only the then-current intent. A delivery whose readback falls on
+  Sunday is uncertain and pauses ownership.
+- Before production activation, either verified Sunday encoding MUST replace the
+  refusal ([test plan phase 3](../plans/scheduling-controller-test.md#phase-3--sunday-clock-support)),
+  or the runner MUST pause ownership with a clear Sunday reason instead of silent
+  back-off. Neither is implemented yet.
 
 ## Derived artifacts
 

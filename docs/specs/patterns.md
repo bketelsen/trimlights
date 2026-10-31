@@ -85,7 +85,7 @@ and capture timestamp. A native design has no simulated color output.
 - Preview MUST never call the controller or claim physical playback is verified.
   Native effects MUST show an unsupported-preview explanation.
 - Preview RGB channel scaling is integer `(channel * brightness + 50) / 100`,
-  rounded down. Palette runs repeat over logical addresses 0–2047. Reverse maps
+  which rounds half up (for example 255 at 50% gives 128). Palette runs repeat over logical addresses 0–2047. Reverse maps
   address i to `paletteLength - 1 - i`. Chase shifts that index backwards by
   `floor(tickMS * speed / 10000)`; speed 0 freezes motion. Negative indices wrap.
 - Preview playback MUST start its clock from a delivered animation frame, never
