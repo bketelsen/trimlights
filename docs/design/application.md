@@ -105,8 +105,9 @@ in place. Panels use consistent inner spacing and controls wrap at phone widths.
 As of 2026-10-30, the top-level page is in the URL hash (`#home`, `#library`,
 `#calendar`, `#house`, `#settings`), so reload keeps the page and browser Back,
 including Android Back, returns to the previous page. Back, Forward or a typed hash
-over unsaved edits asks first, like the navigation buttons. Each history entry stores
-its position, so a refusal returns to the same entry and keeps the others. Each page sets its document title and moves focus
+over unsaved edits asks first, like the navigation buttons. A refusal pushes the page
+still on screen after the entry the browser moved to. No earlier entry is overwritten
+or deleted; only forward entries are dropped, as on any navigation. Each page sets its document title and moves focus
 to its `h1`. Status messages render inside live regions that are always mounted, so
 screen readers announce them; alerts keep `role="alert"`. Text fields use 16 px text
 on narrow or touch screens so iOS Safari does not zoom, disclosure summaries and

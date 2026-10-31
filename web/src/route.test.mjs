@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {pageFromHash,pageHash,pageTitle,pages,routeIndex,routePush,routeSettle,routeState,routeStep} from './route.ts';
+import {pageFromHash,pageHash,pageTitle,pages,routeStep} from './route.ts';
 
 test('every page round-trips through its URL hash',()=>{for(const page of pages)assert.equal(pageFromHash(pageHash(page)),page);});
 test('an empty or unknown hash opens Home',()=>{for(const hash of ['','#','#unknown','#Home','#/house'])assert.equal(pageFromHash(hash),'home');});
@@ -11,112 +11,66 @@ test('each page has its own document title',()=>{
  assert.equal(pageTitle(null),'Trimlights');
 });
 
-const ask=answers=>{const calls=[];return {calls,canLeave:()=>{calls.push(true);return answers.shift()??true;}};};
-const apply=(model,events,canLeave)=>{const steps=[];for(const [page,index] of events){const step=routeStep(model,page,index,canLeave);steps.push(step);model=step.model;}return {model,steps};};
-
-test('route state round-trips and rejects foreign state',()=>{
- assert.equal(routeIndex(routeState(3)),3);
- for(const state of [null,undefined,'x',{},{trimlightsRoute:'2'},{trimlightsRoute:1.5}])assert.equal(routeIndex(state),undefined);
-});
-test('a refused Back returns to the same entry and keeps the earlier entries',()=>{
- // Home(0) -> Library(1) -> House(2), with unsaved edits on House.
- let model={page:'home',index:0};
- model=routePush(model,'patterns');model=routePush(model,'house');
- assert.deepEqual(model,{page:'house',index:2});
- const refuse=ask([false]);
- // Back fires popstate and hashchange; the app goes forward 1 entry; then the landing events arrive.
- const back=apply(model,[['patterns',1],['patterns',1],['house',2],['house',2]],refuse.canLeave);
- assert.equal(refuse.calls.length,1);
- assert.deepEqual(back.steps.map(s=>s.go),[1,undefined,undefined,undefined]);
- assert.ok(back.steps.every(s=>!s.show&&s.stamp===undefined&&!s.replace));
- assert.deepEqual(back.model,{page:'house',index:2});
- // After the save, Back reaches Library and then Home: no entry was lost.
- const accept=ask([]);
- const again=apply(back.model,[['patterns',1],['patterns',1],['home',0],['home',0]],accept.canLeave);
- assert.deepEqual(again.steps.map(s=>s.show),['patterns',undefined,'home',undefined]);
- assert.deepEqual(again.model,{page:'home',index:0});
-});
-test('the next navigation after a refusal continues from the kept entry',()=>{
- const refuse=ask([false]);
- const {model}=apply({page:'house',index:1},[['home',0],['house',1]],refuse.canLeave);
- assert.deepEqual(routePush(model,'settings'),{page:'settings',index:2});
- const forward=routeStep({page:'house',index:1},'settings',2,()=>false);
- assert.equal(forward.go,-1);
-});
-test('repeated Back without edits shows each page once',()=>{
- const accept=ask([]);
- const {model,steps}=apply({page:'settings',index:3},[['house',2],['house',2],['patterns',1],['home',0]],accept.canLeave);
- assert.deepEqual(steps.map(s=>s.show),['house',undefined,'patterns','home']);
- assert.deepEqual(model,{page:'home',index:0});
- assert.equal(accept.calls.length,3);
-});
-test('a typed hash is stamped as a new entry, or left with Back when refused',()=>{
- const accepted=apply({page:'home',index:0},[['house',undefined],['house',1]],()=>true);
- assert.deepEqual(accepted.steps[0],{model:{page:'house',index:1},show:'house',stamp:1});
- assert.deepEqual(accepted.model,{page:'house',index:1});
- const refuse=ask([false]);
- const refused=apply({page:'house',index:2},[['patterns',undefined],['patterns',undefined],['house',2]],refuse.canLeave);
- assert.equal(refuse.calls.length,1);
- assert.equal(refused.steps[0].go,-1);
- assert.deepEqual(refused.model,{page:'house',index:2});
- const same=routeStep({page:'home',index:0},'home',undefined,()=>assert.fail('no question for the same page'));
- assert.deepEqual(same,{model:{page:'home',index:1},stamp:1});
-});
-test('a changed page on the same entry is replaced back when refused',()=>{
- assert.deepEqual(routeStep({page:'house',index:2},'home',2,()=>false),{model:{page:'house',index:2},replace:true});
- assert.deepEqual(routeStep({page:'house',index:2},'home',2,()=>true),{model:{page:'home',index:2},show:'home'});
-});
-
-// A small browser: history entries, a cursor and queued (asynchronous) history.go calls.
-// Each traversal fires popstate and hashchange, as browsers do for a hash change.
+// A small browser: history entries (pages) and a cursor. pushState drops the
+// forward entries. A traversal or a typed hash fires popstate and then hashchange;
+// each event reads the current entry, as location.hash does.
 function browser(page){
- const b={entries:[{page,index:0}],cursor:0,queued:[],model:{page,index:0},shown:page,asks:0};
- b.event=leave=>{const entry=b.entries[b.cursor];const step=routeStep(b.model,entry.page,entry.index,()=>{b.asks++;return leave;});b.model=step.model;if(step.stamp!==undefined)entry.index=step.stamp;if(step.replace)b.entries[b.cursor]={page:step.model.page,index:step.model.index};if(step.go)b.queued.push(step.go);if(step.show)b.shown=step.show;};
- b.traverse=(delta,leave=true)=>{b.cursor+=delta;assert.ok(b.cursor>=0&&b.cursor<b.entries.length);b.event(leave);b.event(leave);};
- b.land=()=>{const asks=b.asks;b.traverse(b.queued.shift());assert.equal(b.asks,asks);};
- b.click=next=>{const pushed=routePush(b.model,next);if(!pushed||next===b.shown)return false;b.model=pushed;b.entries.splice(b.cursor+1,Infinity,{page:next,index:pushed.index});b.cursor++;b.shown=next;return true;};
- b.pages=()=>b.entries.map(e=>e.page);
+ const b={entries:[page],cursor:0,shown:page,answers:[],asks:0};
+ b.push=next=>{b.entries.splice(b.cursor+1,Infinity,next);b.cursor++;};
+ b.event=()=>{const step=routeStep(b.shown,b.entries[b.cursor],()=>{b.asks++;return b.answers.shift()??true;});if(step.show)b.shown=step.show;if(step.keep)b.push(step.keep);};
+ b.fire=()=>{b.event();b.event();};
+ b.traverse=delta=>{b.cursor+=delta;assert.ok(b.cursor>=0&&b.cursor<b.entries.length);b.fire();};
+ b.type=next=>{b.push(next);b.fire();};
+ b.click=next=>{if(next===b.shown)return;b.push(next);b.shown=next;};
+ b.refuse=()=>{b.answers.push(false);};
  return b;
 }
-test('a navigation before a refused Back has returned does not push or lose entries',()=>{
- const b=browser('home');
- assert.ok(b.click('patterns')&&b.click('house'));
- b.traverse(-1,false);
- assert.equal(b.asks,1);
- assert.deepEqual(b.queued,[1]);
- assert.equal(b.cursor,1);
- // history.go(1) has not completed yet: the click must not push from the refused entry.
- assert.equal(b.click('settings'),false);
- assert.deepEqual(b.pages(),['home','patterns','house']);
- b.land();
- assert.equal(b.cursor,2);
- assert.deepEqual(b.model,{page:'house',index:2});
- assert.equal(b.shown,'house');
- // After the landing, navigation and Back work with correct positions.
- assert.ok(b.click('settings'));
- assert.deepEqual(b.pages(),['home','patterns','house','settings']);
- assert.deepEqual(b.entries.map(e=>e.index),[0,1,2,3]);
- assert.equal(b.cursor,3);
- b.traverse(-1);b.traverse(-1);
- assert.equal(b.shown,'patterns');
- assert.deepEqual(b.model,{page:'patterns',index:1});
+const at=(b,entries,cursor,shown)=>{assert.deepEqual(b.entries,entries);assert.equal(b.cursor,cursor);assert.equal(b.shown,shown);assert.equal(b.entries[b.cursor],b.shown);};
+
+test('the same page needs no question and no change',()=>{
+ assert.deepEqual(routeStep('house','house',()=>assert.fail('no question')),{});
+ assert.deepEqual(routeStep('house','home',()=>true),{show:'home'});
+ assert.deepEqual(routeStep('house','home',()=>false),{keep:'house'});
 });
-test('a restoration that never lands is settled after the wait',()=>{
- const b=browser('home');
- b.click('house');
- b.traverse(-1,false);
- const pending=b.model.restoring;
- assert.ok(pending);
- b.queued=[]; // the history.go call never lands
- assert.equal(b.click('settings'),false);
- const settled=routeSettle(b.model,pending,b.entries[b.cursor].index);
- assert.deepEqual(settled,{model:{page:'house',index:0},replace:true});
- b.model=settled.model;b.entries[b.cursor]={page:'house',index:0};
- assert.ok(b.click('settings'));
- // The refused entry now holds the shown page, so the URL matches it again.
- assert.deepEqual(b.pages(),['house','settings']);
- assert.equal(b.cursor,1);
- // A settle after a landed restoration changes nothing.
- const landed={page:'house',index:2};
- assert.deepEqual(routeSettle(landed,{to:2,from:1},1),{model:landed});
+test('a refused Back keeps every earlier entry reachable',()=>{
+ const b=browser('home');b.click('patterns');b.click('house');
+ b.refuse();b.traverse(-1);
+ assert.equal(b.asks,1);
+ at(b,['home','patterns','house'],2,'house');
+ // After the save, Back reaches Library and then Home.
+ b.traverse(-1);at(b,['home','patterns','house'],1,'patterns');
+ b.traverse(-1);at(b,['home','patterns','house'],0,'home');
+ assert.equal(b.asks,3);
+});
+test('the next navigation after a refusal continues from the kept entry',()=>{
+ const b=browser('home');b.click('patterns');b.click('house');
+ b.refuse();b.traverse(-1);
+ b.click('settings');
+ at(b,['home','patterns','house','settings'],3,'settings');
+ b.traverse(-1);at(b,['home','patterns','house','settings'],2,'house');
+ b.traverse(-1);at(b,['home','patterns','house','settings'],1,'patterns');
+});
+test('repeated refused Back never loses an entry',()=>{
+ const b=browser('home');b.click('patterns');b.click('house');
+ b.refuse();b.traverse(-1);
+ b.refuse();b.traverse(-1);
+ at(b,['home','patterns','house'],2,'house');
+ assert.equal(b.asks,2);
+ b.traverse(-1);b.traverse(-1);
+ at(b,['home','patterns','house'],0,'home');
+});
+test('a refused typed hash keeps the page on screen',()=>{
+ const b=browser('home');b.click('house');
+ b.refuse();b.type('patterns');
+ assert.equal(b.asks,1);
+ at(b,['home','house','patterns','house'],3,'house');
+ b.traverse(-1);at(b,['home','house','patterns','house'],2,'patterns');
+});
+test('a refused Forward keeps the page on screen',()=>{
+ const b=browser('home');b.click('patterns');b.click('house');
+ b.traverse(-1);at(b,['home','patterns','house'],1,'patterns');
+ b.refuse();b.traverse(1);
+ assert.equal(b.asks,2);
+ at(b,['home','patterns','house','patterns'],3,'patterns');
+ b.traverse(-1);at(b,['home','patterns','house','patterns'],2,'house');
 });
