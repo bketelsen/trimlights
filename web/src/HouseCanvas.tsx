@@ -17,7 +17,9 @@ export function HouseCanvas({photo,view,layout,design,selectedRun,mode='pan',onP
  const [playing,setPlaying]=useState(()=>!window.matchMedia('(prefers-reduced-motion: reduce)').matches);const clock=useRef(new PreviewClock());
  const drag=useRef<{pointer:number;index:number;start:Point;pan:Point}|null>(null);
  const width=view.turns%2?photo.height:photo.width,height=view.turns%2?photo.width:photo.height;
- useEffect(()=>{setImageError(false);setPicture(undefined);setZoom(1);setPan({x:0,y:0});let live=true;const img=new Image();img.onload=()=>{if(live)setPicture(img)};img.onerror=()=>{if(live)setImageError(true)};img.src=`/api/v1/photos/${photo.id}/image`;return()=>{live=false};},[photo.id]);
+ useEffect(()=>{
+ // eslint-disable-next-line react-hooks/set-state-in-effect -- resets view state when the input changes; a keyed remount changes behaviour.
+ setImageError(false);setPicture(undefined);setZoom(1);setPan({x:0,y:0});let live=true;const img=new Image();img.onload=()=>{if(live)setPicture(img)};img.onerror=()=>{if(live)setImageError(true)};img.src=`/api/v1/photos/${photo.id}/image`;return()=>{live=false};},[photo.id]);
  useEffect(()=>{
   const el=canvas.current;if(!el)return;const ctx=el.getContext('2d');if(!ctx)return;
   const resize=()=>{const rect=el.getBoundingClientRect(),dpr=Math.min(window.devicePixelRatio||1,2);el.width=Math.max(1,Math.round(rect.width*dpr));el.height=Math.max(1,Math.round(rect.height*dpr));};resize();

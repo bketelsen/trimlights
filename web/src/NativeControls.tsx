@@ -11,7 +11,9 @@ export function NativeControls({snapshot,available,busy,csrf,refreshVersion,onBu
  const [error,setError]=useState('');
  const [notice,setNotice]=useState('');
  const sending=useRef(false);
- useEffect(()=>{setError('');},[refreshVersion]);
+ useEffect(()=>{
+ // eslint-disable-next-line react-hooks/set-state-in-effect -- clears the old error after a refresh; moving it changes behaviour.
+ setError('');},[refreshVersion]);
  const patterns=snapshot?.patterns??[];
  const selectedPattern=patterns.find(p=>p.id===Number(selected));
  const mode=snapshot?.playback?.mode??'unknown';

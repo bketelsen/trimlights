@@ -14,8 +14,12 @@ test('each page has its own document title',()=>{
 // A small browser: history entries (pages) and a cursor. pushState drops the
 // forward entries. A traversal or a typed hash fires popstate and then hashchange;
 // each event reads the current entry, as location.hash does.
+/** @typedef {import('./route.ts').Page} Page */
+/** @typedef {{entries:Page[],cursor:number,shown:Page,answers:boolean[],asks:number,push:(next:Page)=>void,event:()=>void,fire:()=>void,traverse:(delta:number)=>void,type:(next:Page)=>void,click:(next:Page)=>void,refuse:()=>void}} Browser */
+/** @param {Page} page */
 function browser(page){
- const b={entries:[page],cursor:0,shown:page,answers:[],asks:0};
+ // The methods are added below.
+ const b=/** @type {Browser} */(/** @type {unknown} */({entries:[page],cursor:0,shown:page,answers:[],asks:0}));
  b.push=next=>{b.entries.splice(b.cursor+1,Infinity,next);b.cursor++;};
  b.event=()=>{const step=routeStep(b.shown,b.entries[b.cursor],()=>{b.asks++;return b.answers.shift()??true;});if(step.show)b.shown=step.show;if(step.keep)b.push(step.keep);};
  b.fire=()=>{b.event();b.event();};
@@ -25,7 +29,7 @@ function browser(page){
  b.refuse=()=>{b.answers.push(false);};
  return b;
 }
-const at=(b,entries,cursor,shown)=>{assert.deepEqual(b.entries,entries);assert.equal(b.cursor,cursor);assert.equal(b.shown,shown);assert.equal(b.entries[b.cursor],b.shown);};
+const at=(/** @type {Browser} */b,/** @type {Page[]} */entries,/** @type {number} */cursor,/** @type {Page} */shown)=>{assert.deepEqual(b.entries,entries);assert.equal(b.cursor,cursor);assert.equal(b.shown,shown);assert.equal(b.entries[b.cursor],b.shown);};
 
 test('the same page needs no question and no change',()=>{
  assert.deepEqual(routeStep('house','house',()=>assert.fail('no question')),{});

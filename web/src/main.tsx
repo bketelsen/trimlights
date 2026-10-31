@@ -34,7 +34,7 @@ function App(){
  const heading=useRef<HTMLHeadingElement>(null);
  const dirty=scheduleDirty||houseDirty||patternDirty;
  const pageRef=useRef(page);
- const dirtyRef=useRef(dirty);dirtyRef.current=dirty;
+ const dirtyRef=useRef(dirty);/* eslint-disable react-hooks/refs -- async callbacks read the latest render state; syncing in an effect changes timing. */dirtyRef.current=dirty;/* eslint-enable react-hooks/refs */
  const shownPage=useRef(page);
  const show=useCallback((next:Page)=>{pageRef.current=next;setPage(next);setError('');},[]);
  // Back, Forward and typed URLs arrive as popstate and hashchange. If the person refuses
@@ -57,7 +57,9 @@ function App(){
  const report=useCallback((error:unknown)=>{if(error instanceof SignedOut){setIdentity(null);setStatus(null);setOperations([]);}else setError(userMessage(error,'Could not reach the app. Try again.'));},[]);
  const load=useCallback(async()=>{try{const result=await request<Status>('/api/v1/status');setStatus(result);setError('');}catch(error){report(error);}},[report]);
  useEffect(()=>{let live=true;request<Identity>('/api/v1/me').then(value=>{if(live)setIdentity(value);}).catch(error=>{if(live)report(error);});return()=>{live=false};},[report]);
- useEffect(()=>{if(!identity)return;void load();const timer=setInterval(()=>{if(!document.hidden)void load();},5000);return()=>clearInterval(timer);},[identity,load]);
+ useEffect(()=>{if(!identity)return;
+ // eslint-disable-next-line react-hooks/set-state-in-effect -- the first load starts with the effect; changing the load flow changes behaviour.
+ void load();const timer=setInterval(()=>{if(!document.hidden)void load();},5000);return()=>clearInterval(timer);},[identity,load]);
  useEffect(()=>{if(page!=='settings'||!identity)return;request<{operations:Operation[]}>('/api/v1/operations').then(result=>setOperations(result.operations)).catch(report);},[page,identity,report]);
  async function refresh(){if(!identity)return;setRefreshing(true);setRefreshDialog(false);try{await request('/api/v1/controller/refresh',identity.csrf_token,{acknowledge_clock_sync:true});await load();setRefreshVersion(value=>value+1);}catch(error){report(error);}finally{setRefreshing(false);}}
  async function logout(){if(!identity)return;try{await request('/api/v1/logout',identity.csrf_token);setIdentity(null);setStatus(null);setOperations([]);}catch(error){report(error);}}
@@ -85,7 +87,9 @@ function App(){
    {page==='settings'&&<div className="settings-grid"><section className="panel settings"><h2>Your household</h2><dl><dt>Signed in as</dt><dd>{identity.name||'Household member'}</dd><dt>Lights</dt><dd>{status?.worker.enabled?'Set up':'Not connected'}</dd><dt>Calendar</dt><dd>Planning only</dd></dl><p className="muted">Your saved light timers are ready to use from Home. Automatic Calendar playback is coming soon.</p><button className="button secondary" onClick={()=>void logout()}>Sign out</button></section><section className="panel settings"><h2>Recent activity</h2>{operations.length?<ul className="history">{operations.map(op=><li key={op.id}><span className={op.error?'warn':'success'} aria-label={op.error?'Needs attention':op.control?.outcome==='pending'?'In progress':'Complete'}>{op.error?'!':op.control?.outcome==='pending'?'…':'✓'}</span><div><strong>{op.error?(op.control?'Couldn’t confirm the change':'Couldn’t refresh the lights'):op.control?.outcome==='pending'?'Updating the lights…':op.control?op.control.request.action==='play'?`Selected ${patterns.find(p=>p.id===op.control!.request.pattern_id)?.name||'a pattern'}`:op.control.request.action==='off'?'Lights turned off':'Following light timers':'Light details refreshed'}</strong><small>{timeLabel(op.finished)}</small>{op.error&&<p>Refresh from Home before trying again.</p>}</div></li>)}</ul>:<p className="muted">Your recent changes will appear here.</p>}</section></div>}
 
   </main>
-  {refreshDialog&&<dialog ref={dialogRef} aria-labelledby="refresh-title" className="panel modal" onCancel={()=>setRefreshDialog(false)}><span className="eyebrow">CHECK YOUR LIGHTS</span><h2 id="refresh-title">Refresh light details?</h2><p>Close the Trimlight phone app first. Refreshing also keeps the lights’ clock up to date.</p><div className="modal-actions"><button autoFocus className="button secondary" onClick={()=>setRefreshDialog(false)}>Cancel</button><button className="button primary" onClick={()=>void refresh()}>Refresh now</button></div></dialog>}
+  {refreshDialog&&<dialog ref={dialogRef} aria-labelledby="refresh-title" className="panel modal" onCancel={()=>setRefreshDialog(false)}><span className="eyebrow">CHECK YOUR LIGHTS</span><h2 id="refresh-title">Refresh light details?</h2><p>Close the Trimlight phone app first. Refreshing also keeps the lights’ clock up to date.</p><div className="modal-actions"><button
+// eslint-disable-next-line jsx-a11y/no-autofocus -- the confirmation dialog focuses the safe Cancel action.
+autoFocus className="button secondary" onClick={()=>setRefreshDialog(false)}>Cancel</button><button className="button primary" onClick={()=>void refresh()}>Refresh now</button></div></dialog>}
   </>}
   <footer><span>A brighter kind of evening.</span><span>Made for home</span></footer>
  </div>;

@@ -4,12 +4,14 @@ import {APIError,photoUploadMessage,request,SignedOut,userMessage} from './api.t
 
 const fallback='Could not save. Please try again.';
 // Each call answers with one response and records what the browser would send.
+/** @param {number} status @param {string} body */
 function serve(status,body,type='application/json'){
+ /** @type {{path:unknown,init:any}[]} */
  const calls=[];
  globalThis.fetch=async(path,init)=>{calls.push({path,init});return new Response(body,{status,headers:{'Content-Type':type}});};
  return calls;
 }
-async function failure(promise){
+async function failure(/** @type {Promise<unknown>} */promise){
  try{await promise;}catch(e){return e;}
  assert.fail('request did not fail');
 }
