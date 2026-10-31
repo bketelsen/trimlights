@@ -8,7 +8,7 @@ import {House} from './House';
 import {clockTime,repeatLabel} from './uiText';
 import {NativeControls,type NativeSnapshot} from './NativeControls';
 import {LiveStatus} from './LiveRegion';
-import {pageFromHash,pageHash,pageLabel,pageTitle,pages,type Page} from './route';
+import {pageFromHash,pageHash,pageLabel,pageTitle,pages,routeIndex,routePush,routeState,routeStep,type Page,type RouteModel} from './route';
 
 type Identity = {subject:string;name:string;csrf_token:string;expires:string};
 type NativeSchedule = {slot:number;enabled:boolean;pattern_name:string;repetition_interpretation:string;start_time:string;off_time:string};
@@ -33,13 +33,26 @@ function App(){
  const dialogRef=useRef<HTMLDialogElement>(null);
  const heading=useRef<HTMLHeadingElement>(null);
  const dirty=scheduleDirty||houseDirty||patternDirty;
- const pageRef=useRef(page);pageRef.current=page;
+ const route=useRef<RouteModel>({page,index:routeIndex(history.state)??0});
  const dirtyRef=useRef(dirty);dirtyRef.current=dirty;
  const shownPage=useRef(page);
- const show=useCallback((next:Page)=>{pageRef.current=next;setPage(next);setError('');},[]);
- // Back, Forward and edited URLs arrive as hash changes. Keep unsaved edits unless the person confirms.
- useEffect(()=>{const changed=()=>{const next=pageFromHash(location.hash);if(next===pageRef.current)return;if(dirtyRef.current&&!window.confirm('Leave this page and discard unsaved changes?')){history.replaceState(history.state,'',pageHash(pageRef.current));return;}show(next);};window.addEventListener('hashchange',changed);return()=>window.removeEventListener('hashchange',changed);},[show]);
- function navigate(next:Page){if(next===page||(dirty&&!window.confirm('Leave this page and discard unsaved changes?')))return;show(next);location.hash=pageHash(next);}
+ const show=useCallback((next:Page)=>{setPage(next);setError('');},[]);
+ // Back, Forward and typed URLs arrive as popstate and hashchange. routeStep keeps unsaved
+ // edits unless the person confirms, and a refusal returns to the same history entry.
+ useEffect(()=>{
+  if(routeIndex(history.state)===undefined)history.replaceState(routeState(route.current.index),'');
+  const changed=()=>{
+   const step=routeStep(route.current,pageFromHash(location.hash),routeIndex(history.state),()=>!dirtyRef.current||window.confirm('Leave this page and discard unsaved changes?'));
+   route.current=step.model;
+   if(step.stamp!==undefined)history.replaceState(routeState(step.stamp),'');
+   if(step.replace)history.replaceState(routeState(step.model.index),'',pageHash(step.model.page));
+   if(step.go)history.go(step.go);
+   if(step.show)show(step.show);
+  };
+  window.addEventListener('popstate',changed);window.addEventListener('hashchange',changed);
+  return()=>{window.removeEventListener('popstate',changed);window.removeEventListener('hashchange',changed);};
+ },[show]);
+ function navigate(next:Page){if(next===page||(dirty&&!window.confirm('Leave this page and discard unsaved changes?')))return;route.current=routePush(route.current,next);history.pushState(routeState(route.current.index),'',pageHash(next));show(next);}
  useEffect(()=>{document.title=pageTitle(identity?page:null);},[identity,page]);
  // Move focus to the new page heading so that screen readers and keyboards start there.
  useEffect(()=>{if(shownPage.current===page)return;shownPage.current=page;heading.current?.focus();},[page]);

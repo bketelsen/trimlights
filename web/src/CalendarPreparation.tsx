@@ -62,7 +62,7 @@ export function CalendarPreparation({plan,revision,latestRevision,csrf,busy,setB
   <details className="native-copy"><summary>Check planned patterns</summary>
    <p>See which patterns in your plan are already saved on your lights.</p>
    <button className="button secondary" disabled={busy} onClick={()=>void run('readiness')}>{working?'Checking…':'Check patterns'}</button>
-   {readiness&&<div aria-live="polite">
+   <LiveStatus>{readiness&&<>
     {staleReadiness&&<p className="notice">Your plan changed. Check again to include your latest edits.</p>}
     <p className="footnote">{sourceLabel(readiness.source,readiness.timezone)}</p>
     <ul className="calendar-issues">{readiness.blockers.filter(b=>!['sunday_clock_unverified','timer_handoff_unverified','runtime_unavailable'].includes(b.code)).map((b,i)=><li key={`${b.code}:${i}`}>{checkLabel(b.code)}</li>)}</ul>
@@ -70,7 +70,7 @@ export function CalendarPreparation({plan,revision,latestRevision,csrf,busy,setB
     <p><strong>Up next:</strong> {readiness.next?`${format(readiness.next.from,readiness.timezone)} · ${describeAction(readiness.next.action)}`:'No change this week.'}</p>
     <ul className="pattern-checks">{readiness.bindings.map((b,i)=><li key={`${b.id}:${i}`}><strong>{b.name}</strong>{b.required?'':' · paused'}<br/>{checkLabel(b.status)}</li>)}</ul>
     {!readiness.bindings.length&&<p>Add a routine to plan your first evening.</p>}
-   </div>}
+   </>}</LiveStatus>
   </details>
  </details>
 }
