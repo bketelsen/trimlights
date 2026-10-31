@@ -69,11 +69,16 @@ vulncheck:
 # verify is credential-free and non-mutating: a read-only reviewer runs it,
 # and it needs no Node or pnpm. ci adds the frontend build and tests and the
 # binary build; CI runs exactly make ci. check formats Go code, then runs ci.
+# The steps of ci and check run in a fixed order, also under make -j (or an
+# inherited MAKEFLAGS=-j, as in make bump): a sub-make starts only after the
+# step before it ends, so gofmt -w never changes files that verify reads.
 verify: tidy-check fmt-check vet lint test docs-check
 
-ci: verify web-test build
+ci: verify
+	$(MAKE) --no-print-directory web-test build
 
-check: fmt ci
+check: fmt
+	$(MAKE) --no-print-directory ci
 
 # svu's release, read from mise.toml; make bump checks it (ADR-0015).
 SVU_VERSION := $(strip $(shell sed -n 's/^svu = "\(.*\)"/\1/p' mise.toml))
