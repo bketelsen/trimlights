@@ -30,7 +30,7 @@ func registerControls(mux *http.ServeMux, worker *Worker) {
 			jsonError(w, 400, "expected one JSON object")
 			return
 		}
-		if err := input.ControlRequest.Validate(); err != nil {
+		if err := input.Validate(); err != nil {
 			jsonError(w, 400, err.Error())
 			return
 		}

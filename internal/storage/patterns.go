@@ -122,7 +122,7 @@ func (s *Store) CreatePattern(ctx context.Context, d pattern.Design, actor strin
 	if err != nil {
 		return SavedPattern{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	p, err := createPattern(ctx, tx, d, actor)
 	if err != nil {
 		return p, err
@@ -155,7 +155,7 @@ func (s *Store) mutatePattern(ctx context.Context, id string, expected int, acto
 	if err != nil {
 		return SavedPattern{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	p, err := scanPattern(tx.QueryRowContext(ctx, "SELECT "+patternFields+" FROM pattern_revisions r JOIN pattern_heads h ON h.id=r.id AND h.revision=r.revision WHERE h.id=?", id))
 	if err != nil {
 		return p, err
@@ -197,7 +197,7 @@ func (s *Store) ImportControllerPatterns(ctx context.Context, actor string) (Imp
 	if err != nil {
 		return ImportResult{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var raw []byte
 	err = tx.QueryRowContext(ctx, "SELECT body FROM observation WHERE id=1").Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {

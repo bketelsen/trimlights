@@ -209,7 +209,7 @@ func readOIDC(path string) (*auth.Config, error) {
 		return nil, errors.New("OIDC secret file is too large")
 	}
 	input.ClientSecret = strings.TrimSpace(string(b))
-	if err = input.Config.Validate(); err != nil {
+	if err = input.Validate(); err != nil {
 		return nil, err
 	}
 	return &input.Config, nil

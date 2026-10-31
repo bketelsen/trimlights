@@ -28,7 +28,7 @@ func Handler() http.Handler {
 			return
 		}
 		if _, err := fs.Stat(root, "index.html"); err != nil {
-			http.Error(w, "Frontend not built; run make web-build", 503)
+			http.Error(w, "Frontend not built; run make web-build", http.StatusServiceUnavailable)
 			return
 		}
 		files.ServeHTTP(w, r)

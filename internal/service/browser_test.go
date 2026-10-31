@@ -57,7 +57,7 @@ func TestBrowserPreview(t *testing.T) {
 			return
 		}
 		if r.Method != "GET" && r.Method != "HEAD" && (r.Header.Get("Origin") != "http://127.0.0.1:8789" || r.Header.Get("X-CSRF-Token") != csrf) {
-			http.Error(w, "Invalid fixture mutation", 403)
+			http.Error(w, "Invalid fixture mutation", http.StatusForbidden)
 			return
 		}
 		if r.URL.Path == "/api/v1/me" {

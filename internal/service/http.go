@@ -194,7 +194,7 @@ func Run(ctx context.Context, c Config) error {
 		return err
 	}
 	worker := NewWorker(store, c.Controller, c.ScheduleOffset)
-	var handler http.Handler = Handler(store, worker, c.APIToken)
+	handler := Handler(store, worker, c.APIToken)
 	if c.OIDC != nil {
 		login, err := auth.New(ctx, *c.OIDC, store)
 		if err != nil {
@@ -235,7 +235,11 @@ func Run(ctx context.Context, c Config) error {
 		if err != nil {
 			_ = server.Close()
 		}
-		<-serveDone
+		// Serve returns http.ErrServerClosed after Shutdown or Close; report
+		// any other Serve failure only when the shutdown itself succeeded.
+		if serveErr := <-serveDone; err == nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			err = serveErr
+		}
 		return err
 	}
 }

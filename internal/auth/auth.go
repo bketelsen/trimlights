@@ -105,7 +105,7 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 	state, browser, nonce, verifier := rand.Text(), rand.Text(), rand.Text(), oauth2.GenerateVerifier()
 	f := storage.LoginFlow{StateHash: hash(state), BrowserHash: hash(browser), Nonce: nonce, Verifier: verifier, Expires: a.now().Add(10 * time.Minute)}
 	if err := a.store.SaveFlow(r.Context(), f); err != nil {
-		http.Error(w, "Login temporarily unavailable", 503)
+		http.Error(w, "Login temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	cookie(w, flowCookie, browser, 600)
@@ -132,34 +132,34 @@ func (a *Auth) callback(w http.ResponseWriter, r *http.Request) {
 	ctx := oidc.ClientContext(r.Context(), a.client)
 	token, err := a.oauth.Exchange(ctx, code, oauth2.VerifierOption(flow.Verifier))
 	if err != nil {
-		http.Error(w, "Identity provider rejected login", 401)
+		http.Error(w, "Identity provider rejected login", http.StatusUnauthorized)
 		return
 	}
 	raw, ok := token.Extra("id_token").(string)
 	if !ok {
-		http.Error(w, "Missing identity token", 401)
+		http.Error(w, "Missing identity token", http.StatusUnauthorized)
 		return
 	}
 	identity, err := a.verifier.Verify(ctx, raw)
 	if err != nil {
-		http.Error(w, "Invalid identity token", 401)
+		http.Error(w, "Invalid identity token", http.StatusUnauthorized)
 		return
 	}
 	if identity.Nonce != flow.Nonce || !a.allowed(identity.Subject) {
-		http.Error(w, "Household access denied", 403)
+		http.Error(w, "Household access denied", http.StatusForbidden)
 		return
 	}
 	var claims struct {
 		Name string `json:"name"`
 	}
 	if err = identity.Claims(&claims); err != nil {
-		http.Error(w, "Invalid identity claims", 401)
+		http.Error(w, "Invalid identity claims", http.StatusUnauthorized)
 		return
 	}
 	id := rand.Text()
 	session := storage.Session{Hash: a.sessionHash(id), Subject: identity.Subject, Name: claims.Name, CSRF: rand.Text(), Expires: a.now().Add(12 * time.Hour)}
 	if err = a.store.SaveSession(r.Context(), session); err != nil {
-		http.Error(w, "Could not save login", 503)
+		http.Error(w, "Could not save login", http.StatusServiceUnavailable)
 		return
 	}
 	cookie(w, sessionCookie, id, 12*60*60)
@@ -183,7 +183,7 @@ func (a *Auth) Handler(next http.Handler) http.Handler {
 		}
 		if r.URL.Path == "/auth/login" || r.URL.Path == "/auth/callback" {
 			if r.Method != "GET" {
-				http.Error(w, "Method not allowed", 405)
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
 			if r.URL.Path == "/auth/login" {
@@ -209,7 +209,7 @@ func (a *Auth) Handler(next http.Handler) http.Handler {
 		}
 		if r.Method != "GET" && r.Method != "HEAD" {
 			if r.Header.Get("Origin") != a.config.Origin || subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(session.CSRF)) != 1 {
-				http.Error(w, "Invalid request origin or CSRF token", 403)
+				http.Error(w, "Invalid request origin or CSRF token", http.StatusForbidden)
 				return
 			}
 		}
@@ -220,7 +220,7 @@ func (a *Auth) Handler(next http.Handler) http.Handler {
 		}
 		if r.URL.Path == "/api/v1/logout" && r.Method == "POST" {
 			if err = a.store.DeleteSession(r.Context(), session.Hash); err != nil {
-				http.Error(w, "Could not log out", 503)
+				http.Error(w, "Could not log out", http.StatusServiceUnavailable)
 				return
 			}
 			cookie(w, sessionCookie, "", -1)

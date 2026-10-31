@@ -85,7 +85,7 @@ func (s *Store) init() error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if version == 0 {
 		_, err = tx.Exec(`CREATE TABLE observation(id INTEGER PRIMARY KEY CHECK(id=1), body BLOB NOT NULL);
  CREATE TABLE operations(id TEXT PRIMARY KEY, started TEXT NOT NULL, finished TEXT NOT NULL, actor TEXT NOT NULL, error TEXT NOT NULL);
@@ -210,7 +210,7 @@ func (s *Store) record(ctx context.Context, o Observation, op Operation, complet
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err = calendarControl(ctx, tx, o, op, complete); err != nil {
 		return err
 	}
@@ -286,7 +286,7 @@ func (s *Store) RecoverControlIntents(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	message := "A controller operation was interrupted; its outcome is uncertain. Refresh before another command."
 	result, err := tx.ExecContext(ctx, `UPDATE operations SET error=?,finished=? WHERE id IN (SELECT id FROM control_audits WHERE json_extract(body,'$.outcome')='pending')`, message, time.Now().UTC().Format("2006-01-02T15:04:05.000000000Z"))
 	if err != nil {
