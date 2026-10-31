@@ -232,3 +232,7 @@ builds are ignored. The public [protocol notes](protocol-observations.json) reco
 observed structure and limitations. [Fixture provenance](internal/trimlight/testdata/README.md)
 distinguishes synthetic regression data from private hardware evidence. Do not
 commit new real snapshots, even when their visible pattern names look harmless.
+
+## License
+
+Trimlights is released under the [MIT License](LICENSE).
