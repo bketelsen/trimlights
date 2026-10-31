@@ -11,6 +11,8 @@ last operation and reason. Control audit JSON can contain `calendar` provenance:
 ownership version, calendar revision, pinned action, and intended interval.
 `GET /api/v1/status` reports this persisted state separately from the always-false
 `calendar_execution` capability. There is no enable API, CLI flag or startup runner.
+A source guard test (`internal/service/dormancy_test.go`) fails when non-test code
+outside the definitions names the runner, the handoff coordinator or `ClaimCalendar`.
 
 The internal runner provides a single reconciliation step and a cancellable loop.
 Successful passes run at most every 30 seconds, shortened for the next boundary.
@@ -59,6 +61,7 @@ re-evaluates the current instant; elapsed transitions are not queued.
 | Calendar ownership checkpoint | Durable pending intent and verified completion |
 | Calendar delivery audit | Calendar revision, pinned action and actual outcome |
 | Runtime tests | Fake time, synthetic controller, real SQLite and worker queue |
+| Dormancy guard | Parsed non-test Go sources against an allowed list of definitions |
 
 ## References
 
