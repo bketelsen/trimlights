@@ -17,6 +17,7 @@ import (
 
 	"github.com/frostyard/clix"
 	"github.com/spf13/cobra"
+	"golang.org/x/sys/unix"
 	"trimlights/internal/auth"
 	"trimlights/internal/service"
 	"trimlights/internal/trimlight"
@@ -94,6 +95,9 @@ func serveCommand() *cobra.Command {
 		if clix.DryRun {
 			return result(cmd, map[string]any{"dry_run": true, "listen": listen, "controller_enabled": c.Controller != nil, "restore_guarded": guarded}, "Configuration valid; no listener, database or controller connection opened.")
 		}
+		// Defence in depth: storage sets explicit modes, and any other file the
+		// service creates stays private to the service user.
+		unix.Umask(0o077)
 		return service.Run(cmd.Context(), c)
 	})
 	return cmd

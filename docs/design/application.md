@@ -62,6 +62,9 @@ flowchart LR
 - `internal/storage`: SQLite schema and atomic observation/audit persistence. A
   process lock prevents concurrent owners of one data directory; separate data
   directories or hosts can still compete and require operational isolation.
+  Database files are private (0600) regardless of the umask; startup tightens
+  group/world access the process owns and warns about the rest
+  ([contract](../specs/local-service.md)).
 - `internal/auth`: OIDC state/nonce/PKCE, subject allowlist, opaque sessions and CSRF.
 - `internal/webui`: embedded browser build and restrictive content security policy.
 - `internal/pattern`: validated design schema and deterministic logical-pixel render.

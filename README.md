@@ -83,6 +83,9 @@ an unauthenticated TrueNAS install can pull the image.
 
 The container runs as UID/GID 65532 with a read-only root filesystem. Give that
 user write access to the data dataset and read access to the config/secret files.
+The service keeps its database files at mode 0600. When it owns a group- or
+world-accessible data directory it changes it to owner-only; otherwise it logs a
+`data permissions` warning, so restrict that directory to the service user.
 Use a local filesystem for the live SQLite database, not an NFS/SMB share.
 Timezone data and public CA roots are embedded. No privileged network access,
 Kubernetes, Redis or Node server is needed.

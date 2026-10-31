@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -186,6 +187,9 @@ func Run(ctx context.Context, c Config) error {
 		return err
 	}
 	defer store.Close()
+	for _, note := range store.PermissionNotes() {
+		slog.Warn("data permissions", "detail", note)
+	}
 	if err := store.RecoverControlIntents(ctx); err != nil {
 		return err
 	}

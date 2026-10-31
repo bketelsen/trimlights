@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -20,9 +21,10 @@ import (
 )
 
 type Store struct {
-	db   *sql.DB
-	lock *os.File
-	dir  string
+	db    *sql.DB
+	lock  *os.File
+	dir   string
+	notes []string
 }
 
 type Observation struct {
@@ -34,8 +36,23 @@ type Observation struct {
 
 // Open requires a local filesystem. The flock is held for the store's lifetime,
 // preventing two processes using this data directory from owning the controller.
+// The database is created with mode 0600 before SQLite opens it, so SQLite gives
+// its -wal and -shm files the same mode regardless of the umask. Open tightens
+// group- or world-accessible paths it owns and reports each change or remaining
+// exposure through PermissionNotes; it does not refuse to start.
 func Open(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
+		return nil, err
+	}
+	var notes []string
+	note := func(path string, mode func(fs.FileMode) fs.FileMode) error {
+		message, err := tighten(path, mode)
+		if message != "" {
+			notes = append(notes, message)
+		}
+		return err
+	}
+	if err := note(dir, privateDir); err != nil {
 		return nil, err
 	}
 	lock, err := os.OpenFile(filepath.Join(dir, "service.lock"), os.O_CREATE|os.O_RDWR, 0600)
@@ -46,10 +63,21 @@ func Open(dir string) (*Store, error) {
 		lock.Close()
 		return nil, fmt.Errorf("data directory already owned: %w", err)
 	}
+	path := filepath.Join(dir, "trimlights.db")
+	err = createPrivate(path)
+	// Files from an earlier version or an interrupted run keep their old mode.
+	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+		if err == nil {
+			err = note(path+suffix, privateFile)
+		}
+	}
+	if err != nil {
+		return nil, errors.Join(err, lock.Close())
+	}
 	// The driver applies these per-connection PRAGMAs to every new connection,
 	// including one that replaces a connection discarded after an error.
 	query := url.Values{"_pragma": {"busy_timeout(5000)", "journal_mode(WAL)", "foreign_keys(1)", "synchronous(FULL)"}}
-	dsn, err := FileURL(filepath.Join(dir, "trimlights.db"), query)
+	dsn, err := FileURL(path, query)
 	if err != nil {
 		lock.Close()
 		return nil, err
@@ -65,8 +93,19 @@ func Open(dir string) (*Store, error) {
 		s.Close()
 		return nil, err
 	}
+	// SQLite copies the database mode to these files; check them as defence in depth.
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if err = note(path+suffix, privateFile); err != nil {
+			return nil, errors.Join(err, s.Close())
+		}
+	}
+	s.notes = notes
 	return s, nil
 }
+
+// PermissionNotes describes each data path that Open tightened, or that stays
+// group- or world-accessible because this process cannot change it.
+func (s *Store) PermissionNotes() []string { return append([]string(nil), s.notes...) }
 
 // FileURL returns an absolute, escaped SQLite file: URI for path. Escaping keeps
 // '?', '#' and '%' in directory names part of the path; query holds driver
@@ -93,11 +132,17 @@ func (s *Store) init() error {
 	}
 	if version > 0 {
 		backup := filepath.Join(s.dir, fmt.Sprintf("before-schema-%d-%d.db", version, time.Now().UnixNano()))
-		if _, err := s.db.Exec("VACUUM INTO ?", backup); err != nil {
+		// VACUUM INTO accepts an empty file; creating it first keeps the copy
+		// private while SQLite writes it.
+		f, err := os.OpenFile(backup, os.O_CREATE|os.O_EXCL|os.O_WRONLY, privateMode)
+		if err != nil {
 			return fmt.Errorf("migration backup: %w", err)
 		}
-		if err := os.Chmod(backup, 0600); err != nil {
-			return err
+		if err = f.Close(); err != nil {
+			return fmt.Errorf("migration backup: %w", err)
+		}
+		if _, err := s.db.Exec("VACUUM INTO ?", backup); err != nil {
+			return errors.Join(fmt.Errorf("migration backup: %w", err), os.Remove(backup))
 		}
 	}
 	tx, err := s.db.Begin()

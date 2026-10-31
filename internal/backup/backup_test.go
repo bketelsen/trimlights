@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -115,6 +116,8 @@ func TestSchemaFiveBackupStillRestoresAndMigrates(t *testing.T) {
 	}
 }
 func TestLiveBackupRestoresAllHouseholdStateAndClearsAuthentication(t *testing.T) {
+	// A common umask must not make backup or restore output readable to others.
+	defer syscall.Umask(syscall.Umask(0o022))
 	source, dir := fixture(t)
 	ctx := context.Background()
 	out := filepath.Join(t.TempDir(), "house.zip")
@@ -191,6 +194,12 @@ func TestLiveBackupRestoresAllHouseholdStateAndClearsAuthentication(t *testing.T
 	for _, path := range []string{out, filepath.Join(restored, "data/trimlights.db"), filepath.Join(restored, "config/oidc.json"), filepath.Join(restored, "config/pocket-id.secret"), filepath.Join(restored, "data/controller-disabled")} {
 		info, err := os.Stat(path)
 		if err != nil || info.Mode().Perm() != 0600 {
+			t.Fatal(path, err)
+		}
+	}
+	for _, path := range []string{restored, filepath.Join(restored, "data"), filepath.Join(restored, "config")} {
+		info, err := os.Stat(path)
+		if err != nil || info.Mode().Perm() != 0700 {
 			t.Fatal(path, err)
 		}
 	}
