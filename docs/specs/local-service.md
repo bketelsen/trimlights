@@ -109,13 +109,16 @@ and [ADR-0011](../adr/0011-audited-household-native-controls.md).
 | --- | --- |
 | `build/trimlight` | Static Go binary with clix build metadata and timezone data |
 | `trimlights.db` | Local SQLite storage; generated runtime state, never committed |
-| `make check` | Formatting, vet, race tests, protocol fixtures, doc links and build |
+| `make verify` | Tidy, formatting, vet, lint, race tests, protocol fixtures and doc links; non-mutating, no pnpm |
+| `make ci` | `make verify`, frontend tests and build, and the static binary build; run by CI |
+| `make check` | Go formatting (`gofmt -w`), then `make ci` |
 
 ## References
 
 - Rationale: [ADR-0003](../adr/0003-shared-homelab-application.md),
   [ADR-0002](../adr/0002-agent-portable-instruction-surface.md);
-  health check: [ADR-0015](../adr/0015-versioned-attested-images.md).
+  health check: [ADR-0015](../adr/0015-versioned-attested-images.md);
+  gate targets: [ADR-0016](../adr/0016-adopt-the-frostyard-make-gate.md).
 - Context: [application design](../design/application.md).
 - Built in: [roadmap](../plans/roadmap.md).
 - Future household requirements: [v1 acceptance](v1-acceptance.md).

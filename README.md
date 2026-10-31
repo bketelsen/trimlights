@@ -41,16 +41,21 @@ Trimlight application or a general-purpose controller driver.
 
 ## Build
 
-Use Go 1.27.3, Node 24.19.0 and pnpm 11.25.0 (versions pinned in CI).
-The minimum Go version in go.mod is 1.26.6. Node is only a build dependency.
+Run `mise install` for the pinned tools: Go 1.27.3 from go.mod's toolchain line,
+golangci-lint and svu from `mise.toml` (checksums in `mise.lock`). Use Node 24.19.0
+and pnpm 11.25.0 (versions pinned in CI). The minimum Go version in go.mod is
+1.26.6. Node is only a build dependency.
 
 ```sh
-make check
+make verify   # tidy, gofmt -l, vet, lint, race tests, doc links; no pnpm, no writes
+make ci       # verify, then frontend tests/build and the static binary (CI runs this)
+make check    # gofmt -w, then make ci: run before declaring a change done
 ./build/trimlight --help
 ```
 
-`make check` runs the frontend build/tests, formatting, vet, Go race tests,
-documentation links and a static binary build. It never contacts lighting hardware.
+`make vulncheck` runs the pinned govulncheck and needs the network. Set
+`IN_NSL='nsl run -m <machine>'` to run pnpm in an nsl machine. No target contacts
+lighting hardware ([repository gate](docs/design/application.md#repository-gate)).
 The binary is written to `build/trimlight` and `build/<architecture>/trimlight`.
 All public protocol fixtures are synthetic; no original household captures are
 included. Python is not required to build, test or run the application.
