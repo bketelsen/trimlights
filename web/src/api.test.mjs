@@ -205,13 +205,13 @@ test('request picks an explicit method and sends a body only with a mutation', a
 test('a mutation without a CSRF token throws and sends nothing', async () => {
   const calls = serve(200, JSON.stringify({ ok: true }));
   const photo = new Blob([new Uint8Array([1])], { type: 'image/png' });
-  for (const args of [
+  for (const args of /** @type {Parameters<typeof request>[]} */ ([
     ['/api/v1/logout', ''],
     ['/api/v1/patterns', undefined, { name: 'Porch' }],
     ['/api/v1/photos', '', undefined, { raw: photo }],
     ['/api/v1/house', undefined, undefined, { method: 'PUT' }],
     ['/api/v1/patterns/p1', '', {}, { method: 'DELETE' }],
-  ]) {
+  ])) {
     const rejected = await failure(request(...args));
     assert.ok(rejected instanceof MissingCSRF, args[0]);
     assert.equal(

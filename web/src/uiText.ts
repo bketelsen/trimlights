@@ -11,4 +11,6 @@ export function repeatLabel(value: string) {
 }
 // copyName names a copy " (copy)" within the 80-character name limit. It counts code
 // points, as the service does, so it never splits a surrogate pair.
-export function copyName(name:string){return [...name].slice(0,73).join('')+' (copy)';}
+export function copyName(name: string) {
+  return [...name].slice(0, 73).join('') + ' (copy)';
+}
