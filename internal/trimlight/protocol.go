@@ -131,9 +131,12 @@ func ParseSnapshot(raw []byte, scheduleOffset int) (*Snapshot, error) {
 	if len(raw) < 26 || raw[0] != 0x15 || int(binary.BigEndian.Uint16(raw[1:3])) != len(raw)-3 {
 		return nil, errors.New("invalid snapshot length or opcode")
 	}
+	// Every parsed field must end before the seven-byte clock suffix, which
+	// StableSHA256 excludes; otherwise a changed field could keep its fingerprint.
+	stableEnd := len(raw) - 7
 	count := int(raw[25])
 	end := 26 + count*182
-	if end > len(raw) {
+	if end > stableEnd {
 		return nil, errors.New("truncated pattern records")
 	}
 	s := &Snapshot{RawHex: hex.EncodeToString(raw), raw: bytes.Clone(raw), LayoutNote: "Experimental captured layout; schedule offset is supplied explicitly."}
@@ -155,7 +158,7 @@ func ParseSnapshot(raw []byte, scheduleOffset int) (*Snapshot, error) {
 	if scheduleOffset == -1 {
 		return s, nil
 	}
-	if scheduleOffset < end || scheduleOffset > len(raw)-14 {
+	if scheduleOffset < end || scheduleOffset > stableEnd-14 {
 		return nil, errors.New("schedule offset outside snapshot suffix")
 	}
 	for i := 0; i < 2; i++ {
