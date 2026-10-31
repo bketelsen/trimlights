@@ -50,6 +50,10 @@ Layout schema 1 contains `runs` and `views`. Each run has a stable `id`, `name`,
   rendering. Import MUST preserve the current draft on validation failure, require
   explicit replacement of unsaved edits, and load a reviewable draft without saving.
   Photos are excluded; missing photo IDs require restoring the matching full backup.
+- Upload, validation and save failures MUST answer with JSON `{"error": text}`, where
+  4xx text is safe to show the household. The browser MUST show that text for a 4xx
+  answer, and its own wording for 409 conflicts, the 409 photo limit, 403 and gateway
+  pages that are not this JSON (for example a proxy's 413, 429 or 502 HTML).
 - Upload originals MUST NOT be retained or copied into the public repository.
   Physical calibration MUST NOT be inferred from uploaded photos or user geometry.
 

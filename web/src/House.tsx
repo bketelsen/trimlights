@@ -1,5 +1,5 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {APIError,request,SignedOut,userMessage} from './api';
+import {APIError,photoUploadMessage,request,SignedOut,userMessage} from './api';
 import {HouseCanvas} from './HouseCanvas';
 import {rotateView} from './house';
 import type {Layout,Mapping,Photo,Run,SavedHouse,View} from './house';
@@ -26,7 +26,7 @@ export function House({csrf,onError,onDirty}:{csrf:string;onError:(e:unknown)=>v
  function mappingChange(fn:(mapping:Mapping)=>void,record=true){viewChange(v=>{let m=v.mappings.find(m=>m.run_id===runID);if(!m){m={run_id:runID,points:[],reverse:false,adjustments:[]};v.mappings.push(m)}fn(m)},record);}
  function addRun(){if(!draft)return;const id=crypto.randomUUID();const nextStart=draft.runs.filter(r=>r.output==='output-1').reduce((v,r)=>Math.max(v,r.start+r.count),1);change(l=>l.runs.push({id,name:`Roofline ${l.runs.length+1}`,output:'output-1',start:nextStart,count:20}));setRunID(id);setMode('draw');setPointIndex(0);}
  function updateRun(fields:Partial<Run>){change(l=>{const r=l.runs.find(r=>r.id===runID);if(r)Object.assign(r,fields)});}
- async function upload(file:File){setBusy(true);setMessage('');try{if(file.size>12*1024*1024)throw new Error('Photo exceeds 12 MiB. Export a smaller JPEG.');const response=await fetch('/api/v1/photos',{method:'POST',credentials:'same-origin',headers:{'Content-Type':file.type||'application/octet-stream','X-CSRF-Token':csrf},body:file});if(response.status===401)throw new SignedOut();const result=await response.json();if(!response.ok)throw new Error('Could not upload this photo. Try a smaller JPEG or PNG.');const p=result as Photo;setPhotos(old=>[...old,p]);setPhotoID(p.id);setMode('pan');setMessage('Photo uploaded. Add a roofline, then draw its corners.');}catch(e){if(e instanceof SignedOut)onError(e);else setMessage(e instanceof Error?e.message:'Upload failed.')}finally{setBusy(false)}}
+ async function upload(file:File){setBusy(true);setMessage('');try{if(file.size>12*1024*1024)throw new Error('Photo exceeds 12 MiB. Export a smaller JPEG.');const p=await request<Photo>('/api/v1/photos',csrf,undefined,{raw:file});setPhotos(old=>[...old,p]);setPhotoID(p.id);setMode('pan');setMessage('Photo uploaded. Add a roofline, then draw its corners.');}catch(e){if(e instanceof SignedOut)onError(e);else setMessage(photoUploadMessage(e))}finally{setBusy(false)}}
  async function importLayout(file:File){
   setBusy(true);setMessage('');loadSequence.current++;
   try{
