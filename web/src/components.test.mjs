@@ -6,9 +6,11 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import native from '../.test-build/NativeControls.js';
 import preview from '../.test-build/HousePreview.js';
+import boundary from '../.test-build/ErrorBoundary.js';
 
 const { NativeControls } = native,
-  { HousePreview } = preview;
+  { HousePreview, HousePreviewBody } = preview,
+  { ErrorFallback } = boundary;
 const noop = () => {};
 const props = {
   available: true,
@@ -57,6 +59,14 @@ test('NativeControls keeps every control action disabled until the phone app is 
   assert.doesNotMatch(checkbox, /checked/);
 });
 
+test('NativeControls before the first status shows a neutral checking state', () => {
+  const html = render(NativeControls, { ...props, available: false, checking: true });
+  assert.match(text(html), /Checking your lights…/);
+  assert.match(text(html), /Checking…/);
+  assert.doesNotMatch(text(html), /Refresh your lights to get started|Refresh to check/);
+  assert.doesNotMatch(html, /role="alert"/);
+});
+
 test('NativeControls without a snapshot asks for a refresh and reports busy work', () => {
   const idle = render(NativeControls, { ...props, available: false });
   assert.match(text(idle), /Refresh to check/);
@@ -73,4 +83,28 @@ test('HousePreview renders a closed disclosure with only its summary', () => {
     html,
     /^<details class="house-preview"><summary>Preview on your house<\/summary><\/details>$/,
   );
+});
+
+test('HousePreviewBody shows an error alone, without the loading text', () => {
+  const base = { error: '', photos: [], photoID: '', onPhoto: noop };
+  const failed = render(HousePreviewBody, {
+    ...base,
+    error: 'Could not load your house. Please try again.',
+  });
+  assert.equal(failed, '<p role="alert">Could not load your house. Please try again.</p>');
+  assert.equal(render(HousePreviewBody, base), '<p>Loading your house…</p>');
+  // A pinned pattern that is unavailable fails after the house loaded: the error still stands alone.
+  const house = { revision: 1, layout: { schema: 1, runs: [], views: [] } };
+  assert.doesNotMatch(
+    render(HousePreviewBody, { ...base, house, error: 'This saved pattern is unavailable' }),
+    /Loading|Add a photo/,
+  );
+  assert.match(render(HousePreviewBody, { ...base, house }), /Add a photo and trace your roofline/);
+});
+
+test('ErrorFallback says that unsaved changes are lost and reloads only on request', () => {
+  const html = render(ErrorFallback, { onReload: noop });
+  assert.match(html, /role="alert"/);
+  assert.match(text(html), /Unsaved changes on this page could not be kept/);
+  assert.match(html, /<button[^>]*>Reload the app<\/button>/);
 });

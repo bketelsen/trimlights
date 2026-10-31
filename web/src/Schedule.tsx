@@ -1,9 +1,10 @@
-import { appendNativeRules } from './calendarDraft';
+import { appendNativeRules, repeatChange } from './calendarDraft';
 import { CalendarPreparation } from './CalendarPreparation';
 import { HousePreview } from './HousePreview';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { APIError, request, SignedOut, userMessage } from './api';
 import { LiveStatus } from './LiveRegion';
+import { copyName } from './uiText';
 import type { SavedPattern } from './pattern';
 
 export type Action = { kind: 'off' | 'pattern'; pattern_id?: string; revision?: number };
@@ -189,6 +190,8 @@ export function Schedule({
   const savedRef = useRef<Saved | null>(null);
   const loadSequence = useRef(0);
   const previewSequence = useRef(0);
+  // A special date has no weekdays; keep each rule's selection to give it back if it repeats again.
+  const lastWeekdays = useRef(new Map<string, number[]>());
   const dirty = !!draft && JSON.stringify(draft) !== JSON.stringify(saved?.plan);
   /* eslint-disable react-hooks/refs -- async callbacks read the latest render state; syncing in an effect changes timing. */ draftRef.current =
     draft;
@@ -550,18 +553,16 @@ export function Schedule({
                   value={rule.kind}
                   onChange={(e) => {
                     const kind = e.target.value as Rule['kind'];
-                    const start = rule.from || today(draft.timezone);
-                    updateRule({
-                      kind,
-                      from: kind === 'weekly' ? undefined : start,
-                      through:
-                        kind === 'weekly'
-                          ? undefined
-                          : kind === 'exception'
-                            ? start
-                            : rule.through || start,
-                      weekdays: kind === 'exception' ? [] : [0, 1, 2, 3, 4, 5, 6],
-                    });
+                    if (kind === 'exception' && rule.weekdays.length)
+                      lastWeekdays.current.set(rule.id, rule.weekdays);
+                    updateRule(
+                      repeatChange(
+                        rule,
+                        kind,
+                        today(draft.timezone),
+                        lastWeekdays.current.get(rule.id),
+                      ),
+                    );
                   }}
                 >
                   <option value="weekly">Weekly routine</option>
@@ -685,7 +686,7 @@ export function Schedule({
                   update({
                     rules: [
                       ...draft.rules,
-                      { ...structuredClone(rule), id, name: rule.name.slice(0, 73) + ' (copy)' },
+                      { ...structuredClone(rule), id, name: copyName(rule.name) },
                     ],
                   });
                   setSelected(id);

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clockTime, repeatLabel } from './uiText.ts';
+import { clockTime, copyName, repeatLabel } from './uiText.ts';
+import { validName } from './pattern.ts';
 
 // The browser's locale decides the format, so compare with the same formatter.
 const local = (/** @type {number} */ hour, /** @type {number} */ minute) =>
@@ -64,4 +65,18 @@ test('repeatLabel calls every other value a custom repeat', () => {
   ]) {
     assert.equal(repeatLabel(value), 'Custom repeat', JSON.stringify(value));
   }
+});
+test('copyName stays within 80 code points and never splits a surrogate pair', () => {
+  assert.equal(copyName('Porch'), 'Porch (copy)');
+  const emoji = '\u{1F383}';
+  // 72 letters and then emoji: the 73rd code point is a whole emoji (2 UTF-16 units).
+  for (const name of ['a'.repeat(72) + emoji.repeat(8), emoji.repeat(80), 'b'.repeat(73) + emoji]) {
+    const copy = copyName(name);
+    assert.ok([...copy].length <= 80, name);
+    assert.equal(validName(copy), true, JSON.stringify(copy));
+    assert.doesNotMatch(copy, /\p{Cs}/u);
+    assert.ok(copy.endsWith(' (copy)'));
+  }
+  assert.equal(copyName(emoji.repeat(80)), emoji.repeat(73) + ' (copy)');
+  assert.equal(copyName('a'.repeat(72) + emoji.repeat(8)), 'a'.repeat(72) + emoji + ' (copy)');
 });

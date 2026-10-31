@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { APIError, photoUploadMessage, request, SignedOut, userMessage } from './api.ts';
+import {
+  APIError,
+  MissingCSRF,
+  photoUploadMessage,
+  request,
+  SignedOut,
+  userMessage,
+} from './api.ts';
 
 const fallback = 'Could not save. Please try again.';
 // Each call answers with one response and records what the browser would send.
@@ -171,4 +178,46 @@ test('photo upload failures explain the cause', async () => {
     photoUploadMessage(new Error('Photo exceeds 12 MiB. Export a smaller JPEG.')),
     'Photo exceeds 12 MiB. Export a smaller JPEG.',
   );
+});
+test('request picks an explicit method and sends a body only with a mutation', async () => {
+  const calls = serve(200, JSON.stringify({ ok: true }));
+  await request('/api/v1/status');
+  await request('/api/v1/logout', 'token');
+  await request('/api/v1/house', 'token', { a: 1 }, { method: 'put', revision: 2 });
+  await request('/api/v1/house/revisions', 'token', undefined, { method: 'GET' });
+  assert.deepEqual(
+    calls.map((c) => c.init.method),
+    ['GET', 'POST', 'PUT', 'GET'],
+  );
+  assert.equal(calls[0].init.body, undefined);
+  assert.deepEqual(calls[0].init.headers, {});
+  assert.equal(calls[1].init.body, '{}');
+  assert.deepEqual(calls[2].init.headers, {
+    'Content-Type': 'application/json',
+    'X-CSRF-Token': 'token',
+    'If-Match': '"2"',
+  });
+  assert.equal(calls[2].init.body, '{"a":1}');
+  // An explicit GET never sends the token or a body.
+  assert.equal(calls[3].init.body, undefined);
+  assert.deepEqual(calls[3].init.headers, {});
+});
+test('a mutation without a CSRF token throws and sends nothing', async () => {
+  const calls = serve(200, JSON.stringify({ ok: true }));
+  const photo = new Blob([new Uint8Array([1])], { type: 'image/png' });
+  for (const args of /** @type {Parameters<typeof request>[]} */ ([
+    ['/api/v1/logout', ''],
+    ['/api/v1/patterns', undefined, { name: 'Porch' }],
+    ['/api/v1/photos', '', undefined, { raw: photo }],
+    ['/api/v1/house', undefined, undefined, { method: 'PUT' }],
+    ['/api/v1/patterns/p1', '', {}, { method: 'DELETE' }],
+  ])) {
+    const rejected = await failure(request(...args));
+    assert.ok(rejected instanceof MissingCSRF, args[0]);
+    assert.equal(
+      userMessage(rejected, fallback),
+      'Could not send this change. Reload the app and try again.',
+    );
+  }
+  assert.equal(calls.length, 0);
 });

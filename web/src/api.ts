@@ -39,6 +39,16 @@ export function photoUploadMessage(error: unknown): string {
     return 'This house already has 20 photos, the most it can keep.';
   return userMessage(error, 'Could not upload this photo. Check your connection and try again.');
 }
+// MissingCSRF is a programming error: a mutation was called without the session's CSRF token.
+export class MissingCSRF extends Error {
+  constructor() {
+    super('Could not send this change. Reload the app and try again.');
+  }
+}
+// The method is options.method when given; otherwise GET when there is no CSRF token,
+// body or raw Blob, and POST when there is. A mutation (any method but GET or HEAD)
+// needs a token: without one request() throws and sends nothing, so an empty token
+// can never turn a mutation into a GET.
 // raw sends a Blob (for example a photo File) as the body with its own content type instead of JSON.
 export async function request<T>(
   path: string,
@@ -47,19 +57,24 @@ export async function request<T>(
   options?: { method?: string; revision?: number; raw?: Blob },
 ): Promise<T> {
   const raw = options?.raw;
-  const headers: Record<string, string> = csrf
+  const method = (
+    options?.method ?? (csrf === undefined && body === undefined && !raw ? 'GET' : 'POST')
+  ).toUpperCase();
+  const mutation = method !== 'GET' && method !== 'HEAD';
+  if (mutation && !csrf) throw new MissingCSRF();
+  const headers: Record<string, string> = mutation
     ? {
         'Content-Type': raw ? raw.type || 'application/octet-stream' : 'application/json',
-        'X-CSRF-Token': csrf,
+        'X-CSRF-Token': csrf!,
       }
     : {};
   if (options?.revision !== undefined) headers['If-Match'] = `"${options.revision}"`;
   const response = await fetch(path, {
     credentials: 'same-origin',
     cache: 'no-store',
-    method: options?.method ?? (csrf ? 'POST' : 'GET'),
+    method,
     headers,
-    body: csrf ? (raw ?? JSON.stringify(body ?? {})) : undefined,
+    body: mutation ? (raw ?? JSON.stringify(body ?? {})) : undefined,
   });
   if (response.status === 401) throw new SignedOut();
   if (!response.ok) {

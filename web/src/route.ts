@@ -41,3 +41,9 @@ export function routeStep(current: Page, target: Page, canLeave: () => boolean):
   if (target === current) return {};
   return canLeave() ? { show: target } : { keep: current };
 }
+
+// mayDiscard decides whether an action that drops unsaved edits (for example
+// Reconnect, which reloads the app) can go ahead. It asks only when there are edits.
+export function mayDiscard(dirty: boolean, ask: () => boolean): boolean {
+  return !dirty || ask();
+}

@@ -2,7 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vectors from './pattern-vectors.json' with { type: 'json' };
 import nameVectors from './name-vectors.json' with { type: 'json' };
-import { renderPattern, newDesign, validateDesign, validName, exportDesign } from './pattern.ts';
+import {
+  renderPattern,
+  newDesign,
+  validateDesign,
+  validName,
+  exportDesign,
+  parsePatternFile,
+  notPatternFile,
+} from './pattern.ts';
 for (const vector of /** @type {{name:string,design:import('./pattern.ts').Design,count:number,tick_ms:number,expected:string[]}[]} */ (
   vectors
 ))
@@ -54,4 +62,24 @@ test('bounds and native effects cannot produce misleading frames', () => {
 test('export round trip is a portable design', () => {
   const d = newDesign();
   assert.deepEqual(JSON.parse(exportDesign(d)), d);
+});
+test('pattern files that are not designs get one clear message', () => {
+  for (const text of [
+    '',
+    '{',
+    'not json',
+    '<html></html>',
+    'null',
+    '5',
+    '"pattern"',
+    '[]',
+    '{}',
+    '{"schema":2,"name":"Porch"}',
+  ])
+    assert.throws(() => parsePatternFile(text), { message: notPatternFile }, JSON.stringify(text));
+  // A design with a bad field keeps the message for that field.
+  assert.throws(() => parsePatternFile(JSON.stringify({ ...newDesign(), brightness: 101 })), {
+    message: /Brightness and speed/,
+  });
+  assert.deepEqual(parsePatternFile(exportDesign(newDesign())), newDesign());
 });

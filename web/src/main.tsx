@@ -8,7 +8,18 @@ import { House } from './House';
 import { clockTime, repeatLabel } from './uiText';
 import { NativeControls, type NativeSnapshot } from './NativeControls';
 import { LiveStatus } from './LiveRegion';
-import { pageFromHash, pageHash, pageLabel, pageTitle, pages, routeStep, type Page } from './route';
+import { ErrorBoundary } from './ErrorBoundary';
+import { latestRequests } from './latest';
+import {
+  mayDiscard,
+  pageFromHash,
+  pageHash,
+  pageLabel,
+  pageTitle,
+  pages,
+  routeStep,
+  type Page,
+} from './route';
 
 type Identity = { subject: string; name: string; csrf_token: string; expires: string };
 type NativeSchedule = {
@@ -77,7 +88,12 @@ function age(seconds: number | null) {
 function App() {
   const [identity, setIdentity] = useState<Identity | null | undefined>(undefined);
   const [status, setStatus] = useState<Status | null>(null);
-  const [operations, setOperations] = useState<Operation[]>([]);
+  const [statusChecked, setStatusChecked] = useState(false);
+  // null while the list loads; operationsError stays in the Recent activity panel.
+  const [operations, setOperations] = useState<Operation[] | null>(null);
+  const [operationsError, setOperationsError] = useState('');
+  const [statusRequests] = useState(latestRequests);
+  const [operationRequests] = useState(latestRequests);
   const [page, setPage] = useState<Page>(() => pageFromHash(location.hash));
   const [scheduleDirty, setScheduleDirty] = useState(false);
   const [houseDirty, setHouseDirty] = useState(false);
@@ -146,18 +162,24 @@ function App() {
     if (error instanceof SignedOut) {
       setIdentity(null);
       setStatus(null);
-      setOperations([]);
+      setOperations(null);
     } else setError(userMessage(error, 'Could not reach the app. Try again.'));
   }, []);
+  // Polls, refreshes and controls all call load(). An answer applies only when no newer
+  // request has answered, so a slow older poll cannot overwrite a fresher status.
   const load = useCallback(async () => {
+    const settle = statusRequests.begin();
     try {
       const result = await request<Status>('/api/v1/status');
+      if (!settle()) return;
       setStatus(result);
       setError('');
     } catch (error) {
-      report(error);
+      if (settle()) report(error);
+    } finally {
+      setStatusChecked(true);
     }
-  }, [report]);
+  }, [report, statusRequests]);
   useEffect(() => {
     let live = true;
     request<Identity>('/api/v1/me')
@@ -175,17 +197,35 @@ function App() {
     if (!identity) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the first load starts with the effect; changing the load flow changes behaviour.
     void load();
+    // The poll skips a turn while a status request runs, so slow answers do not pile up.
     const timer = setInterval(() => {
-      if (!document.hidden) void load();
+      if (!document.hidden && !statusRequests.busy(60000)) void load();
     }, 5000);
     return () => clearInterval(timer);
-  }, [identity, load]);
+  }, [identity, load, statusRequests]);
+  // Opening Settings keeps the last list on screen while it reloads; the first visit
+  // and Refresh show the loading state (operations is null).
+  const loadOperations = useCallback(() => {
+    const settle = operationRequests.begin();
+    return request<{ operations: Operation[] }>('/api/v1/operations').then(
+      (result) => {
+        if (!settle()) return;
+        setOperations(result.operations);
+        setOperationsError('');
+      },
+      (error: unknown) => {
+        if (!settle()) return;
+        if (error instanceof SignedOut) report(error);
+        else {
+          setOperations([]);
+          setOperationsError(userMessage(error, 'Could not load recent activity. Try again.'));
+        }
+      },
+    );
+  }, [report, operationRequests]);
   useEffect(() => {
-    if (page !== 'settings' || !identity) return;
-    request<{ operations: Operation[] }>('/api/v1/operations')
-      .then((result) => setOperations(result.operations))
-      .catch(report);
-  }, [page, identity, report]);
+    if (page === 'settings' && identity) void loadOperations();
+  }, [page, identity, loadOperations]);
   async function refresh() {
     if (!identity) return;
     setRefreshing(true);
@@ -208,7 +248,7 @@ function App() {
       await request('/api/v1/logout', identity.csrf_token);
       setIdentity(null);
       setStatus(null);
-      setOperations([]);
+      setOperations(null);
     } catch (error) {
       report(error);
     }
@@ -234,7 +274,15 @@ function App() {
       </header>
       {error && (
         <div className="error-banner" role="alert">
-          {error} <button onClick={() => location.reload()}>Reconnect</button>
+          {error}{' '}
+          <button
+            onClick={() => {
+              if (mayDiscard(dirty, () => window.confirm('Reconnect and discard unsaved changes?')))
+                location.reload();
+            }}
+          >
+            Reconnect
+          </button>
         </div>
       )}
       {identity === undefined ? (
@@ -310,158 +358,181 @@ function App() {
                 </h1>
               </div>
             </div>
-            {page === 'home' && (
-              <>
-                <div className="home-update">
-                  <span className="muted">
-                    Last checked: {age(status?.snapshot_age_seconds ?? null)}
-                  </span>
-                  <button
-                    className="button secondary"
-                    disabled={
-                      !status?.capabilities.snapshot ||
-                      refreshing ||
-                      controlling ||
-                      !!status?.worker.active_operation
-                    }
-                    onClick={() => setRefreshDialog(true)}
-                  >
-                    {refreshing ? 'Refreshing…' : 'Refresh'} <span aria-hidden="true">↻</span>
-                  </button>
-                </div>
-                <LiveStatus>
-                  {(status?.observation.last_error || status?.worker.persistence_error) && (
-                    <div className="notice">
-                      {status.worker.persistence_error
-                        ? 'The app can’t save changes right now. Please try again later.'
-                        : 'We couldn’t check the lights. Refresh to try again.'}
-                    </div>
-                  )}
-                </LiveStatus>
-                <NativeControls
-                  refreshVersion={refreshVersion}
-                  snapshot={status?.observation.snapshot}
-                  available={status?.capabilities.native_controls ?? false}
-                  busy={refreshing || controlling || !!status?.worker.active_operation}
-                  csrf={identity.csrf_token}
-                  onBusy={setControlling}
-                  onComplete={load}
-                  onError={report}
-                />
-                <div className="section-heading">
-                  <h2>Your light timers</h2>
-                  <span>Saved on your lights</span>
-                </div>
-                {schedules.length ? (
-                  <div className="schedule-grid">
-                    {schedules.map((schedule) => (
-                      <section className="panel schedule-card" key={schedule.slot}>
-                        <div className="row">
-                          <span className="eyebrow">TIMER {schedule.slot}</span>
-                          <span className={`status-pill ${schedule.enabled ? 'good' : ''}`}>
-                            {schedule.enabled ? 'On' : 'Off'}
-                          </span>
-                        </div>
-                        <h3>{schedule.pattern_name || 'Unknown pattern'}</h3>
-                        <p className="schedule-time">
-                          {clockTime(schedule.start_time)} <span>–</span>{' '}
-                          {clockTime(schedule.off_time)}
-                        </p>
-                        <p className="muted">{repeatLabel(schedule.repetition_interpretation)}</p>
-                      </section>
-                    ))}
+            <ErrorBoundary key={page}>
+              {page === 'home' && (
+                <>
+                  <div className="home-update">
+                    <span className="muted">
+                      Last checked: {age(status?.snapshot_age_seconds ?? null)}
+                    </span>
+                    <button
+                      className="button secondary"
+                      disabled={
+                        !status?.capabilities.snapshot ||
+                        refreshing ||
+                        controlling ||
+                        !!status?.worker.active_operation
+                      }
+                      onClick={() => setRefreshDialog(true)}
+                    >
+                      {refreshing ? 'Refreshing…' : 'Refresh'} <span aria-hidden="true">↻</span>
+                    </button>
                   </div>
-                ) : (
-                  <section className="panel empty">
-                    <h3>Your timers will appear here</h3>
-                    <p>Refresh to see the times already set for your lights.</p>
-                  </section>
-                )}
-                <p className="footnote">
-                  Choose “Follow timers” above to use these times. Manage them in the Trimlight
-                  phone app.
-                </p>
-              </>
-            )}
-            {page === 'schedule' && (
-              <Schedule csrf={identity.csrf_token} onError={report} onDirty={setScheduleDirty} />
-            )}
-            {page === 'house' && (
-              <House csrf={identity.csrf_token} onError={report} onDirty={setHouseDirty} />
-            )}
-            {page === 'patterns' && (
-              <PatternLibrary
-                csrf={identity.csrf_token}
-                onError={report}
-                onDirty={setPatternDirty}
-              />
-            )}
-            {page === 'settings' && (
-              <div className="settings-grid">
-                <section className="panel settings">
-                  <h2>Your household</h2>
-                  <dl>
-                    <dt>Signed in as</dt>
-                    <dd>{identity.name || 'Household member'}</dd>
-                    <dt>Lights</dt>
-                    <dd>{status?.worker.enabled ? 'Set up' : 'Not connected'}</dd>
-                    <dt>Calendar</dt>
-                    <dd>Planning only</dd>
-                  </dl>
-                  <p className="muted">
-                    Your saved light timers are ready to use from Home. Automatic Calendar playback
-                    is coming soon.
-                  </p>
-                  <button className="button secondary" onClick={() => void logout()}>
-                    Sign out
-                  </button>
-                </section>
-                <section className="panel settings">
-                  <h2>Recent activity</h2>
-                  {operations.length ? (
-                    <ul className="history">
-                      {operations.map((op) => (
-                        <li key={op.id}>
-                          <span
-                            className={op.error ? 'warn' : 'success'}
-                            aria-label={
-                              op.error
-                                ? 'Needs attention'
-                                : op.control?.outcome === 'pending'
-                                  ? 'In progress'
-                                  : 'Complete'
-                            }
-                          >
-                            {op.error ? '!' : op.control?.outcome === 'pending' ? '…' : '✓'}
-                          </span>
-                          <div>
-                            <strong>
-                              {op.error
-                                ? op.control
-                                  ? 'Couldn’t confirm the change'
-                                  : 'Couldn’t refresh the lights'
-                                : op.control?.outcome === 'pending'
-                                  ? 'Updating the lights…'
-                                  : op.control
-                                    ? op.control.request.action === 'play'
-                                      ? `Selected ${patterns.find((p) => p.id === op.control!.request.pattern_id)?.name || 'a pattern'}`
-                                      : op.control.request.action === 'off'
-                                        ? 'Lights turned off'
-                                        : 'Following light timers'
-                                    : 'Light details refreshed'}
-                            </strong>
-                            <small>{timeLabel(op.finished)}</small>
-                            {op.error && <p>Refresh from Home before trying again.</p>}
+                  <LiveStatus>
+                    {(status?.observation.last_error || status?.worker.persistence_error) && (
+                      <div className="notice">
+                        {status.worker.persistence_error
+                          ? 'The app can’t save changes right now. Please try again later.'
+                          : 'We couldn’t check the lights. Refresh to try again.'}
+                      </div>
+                    )}
+                  </LiveStatus>
+                  <NativeControls
+                    checking={!statusChecked}
+                    refreshVersion={refreshVersion}
+                    snapshot={status?.observation.snapshot}
+                    available={status?.capabilities.native_controls ?? false}
+                    busy={refreshing || controlling || !!status?.worker.active_operation}
+                    csrf={identity.csrf_token}
+                    onBusy={setControlling}
+                    onComplete={load}
+                    onError={report}
+                  />
+                  <div className="section-heading">
+                    <h2>Your light timers</h2>
+                    <span>Saved on your lights</span>
+                  </div>
+                  {schedules.length ? (
+                    <div className="schedule-grid">
+                      {schedules.map((schedule) => (
+                        <section className="panel schedule-card" key={schedule.slot}>
+                          <div className="row">
+                            <span className="eyebrow">TIMER {schedule.slot}</span>
+                            <span className={`status-pill ${schedule.enabled ? 'good' : ''}`}>
+                              {schedule.enabled ? 'On' : 'Off'}
+                            </span>
                           </div>
-                        </li>
+                          <h3>{schedule.pattern_name || 'Unknown pattern'}</h3>
+                          <p className="schedule-time">
+                            {clockTime(schedule.start_time)} <span>–</span>{' '}
+                            {clockTime(schedule.off_time)}
+                          </p>
+                          <p className="muted">{repeatLabel(schedule.repetition_interpretation)}</p>
+                        </section>
                       ))}
-                    </ul>
+                    </div>
                   ) : (
-                    <p className="muted">Your recent changes will appear here.</p>
+                    <section className="panel empty">
+                      <h3>Your timers will appear here</h3>
+                      <p>Refresh to see the times already set for your lights.</p>
+                    </section>
                   )}
-                </section>
-              </div>
-            )}
+                  <p className="footnote">
+                    Choose “Follow timers” above to use these times. Manage them in the Trimlight
+                    phone app.
+                  </p>
+                </>
+              )}
+              {page === 'schedule' && (
+                <Schedule csrf={identity.csrf_token} onError={report} onDirty={setScheduleDirty} />
+              )}
+              {page === 'house' && (
+                <House csrf={identity.csrf_token} onError={report} onDirty={setHouseDirty} />
+              )}
+              {page === 'patterns' && (
+                <PatternLibrary
+                  csrf={identity.csrf_token}
+                  onError={report}
+                  onDirty={setPatternDirty}
+                />
+              )}
+              {page === 'settings' && (
+                <div className="settings-grid">
+                  <section className="panel settings">
+                    <h2>Your household</h2>
+                    <dl>
+                      <dt>Signed in as</dt>
+                      <dd>{identity.name || 'Household member'}</dd>
+                      <dt>Lights</dt>
+                      <dd>{status?.worker.enabled ? 'Set up' : 'Not connected'}</dd>
+                      <dt>Calendar</dt>
+                      <dd>Planning only</dd>
+                    </dl>
+                    <p className="muted">
+                      Your saved light timers are ready to use from Home. Automatic Calendar
+                      playback is coming soon.
+                    </p>
+                    <button className="button secondary" onClick={() => void logout()}>
+                      Sign out
+                    </button>
+                  </section>
+                  <section className="panel settings">
+                    <div className="section-heading activity-heading">
+                      <h2>Recent activity</h2>
+                      <button
+                        className="button secondary"
+                        disabled={operations === null}
+                        onClick={() => {
+                          setOperations(null);
+                          setOperationsError('');
+                          void loadOperations();
+                        }}
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                    {operationsError && (
+                      <div className="notice" role="alert">
+                        {operationsError}
+                      </div>
+                    )}
+                    {operations === null ? (
+                      <p className="muted">Loading recent activity…</p>
+                    ) : operations.length ? (
+                      <ul className="history">
+                        {operations.map((op) => (
+                          <li key={op.id}>
+                            <span
+                              className={op.error ? 'warn' : 'success'}
+                              aria-label={
+                                op.error
+                                  ? 'Needs attention'
+                                  : op.control?.outcome === 'pending'
+                                    ? 'In progress'
+                                    : 'Complete'
+                              }
+                            >
+                              {op.error ? '!' : op.control?.outcome === 'pending' ? '…' : '✓'}
+                            </span>
+                            <div>
+                              <strong>
+                                {op.error
+                                  ? op.control
+                                    ? 'Couldn’t confirm the change'
+                                    : 'Couldn’t refresh the lights'
+                                  : op.control?.outcome === 'pending'
+                                    ? 'Updating the lights…'
+                                    : op.control
+                                      ? op.control.request.action === 'play'
+                                        ? `Selected ${patterns.find((p) => p.id === op.control!.request.pattern_id)?.name || 'a pattern'}`
+                                        : op.control.request.action === 'off'
+                                          ? 'Lights turned off'
+                                          : 'Following light timers'
+                                      : 'Light details refreshed'}
+                              </strong>
+                              <small>{timeLabel(op.finished)}</small>
+                              {op.error && <p>Refresh from Home before trying again.</p>}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : operationsError ? null : (
+                      <p className="muted">Your recent changes will appear here.</p>
+                    )}
+                  </section>
+                </div>
+              )}
+            </ErrorBoundary>
           </main>
           {refreshDialog && (
             <dialog
@@ -503,6 +574,8 @@ function App() {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );

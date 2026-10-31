@@ -84,6 +84,29 @@ export function validateDesign(d: Design): string | null {
   }
   return null;
 }
+export const notPatternFile =
+  'This file is not a valid pattern file. Choose a pattern file downloaded from this app.';
+// parsePatternFile reads an imported pattern file. Text that is not JSON, or JSON that
+// is not a schema 1 design, gets one clear message; a design with bad fields gets
+// the validation message for that field.
+export function parsePatternFile(text: string): Design {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new Error(notPatternFile);
+  }
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    (value as { schema?: unknown }).schema !== 1
+  )
+    throw new Error(notPatternFile);
+  const invalid = validateDesign(value as Design);
+  if (invalid) throw new Error(invalid);
+  return value as Design;
+}
 export function renderPattern(design: Design, count: number, tickMS: number): string[] {
   const error = validateDesign(design);
   if (error) throw new Error(error);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendNativeRules } from './calendarDraft.ts';
+import { appendNativeRules, repeatChange } from './calendarDraft.ts';
 /** @typedef {import('./Schedule.tsx').Plan} Plan */
 /** @typedef {import('./Schedule.tsx').Rule} Rule */
 // Fixtures are deliberately minimal; the casts keep them minimal under checkJs.
@@ -56,4 +56,44 @@ test('repeat submission and duplicate IDs preserve original rules', () => {
   };
   assert.throws(() => appendNativeRules(full, full, incoming), /100-rule/);
   assert.equal(appendNativeRules(full, full, [incoming[0]]).rules.length, 100);
+});
+// Minimal rule fixtures: repeatChange reads only kind, from, through and weekdays.
+const rule = (/** @type {Partial<Rule>} */ fields) => /** @type {Rule} */ (fields);
+test('changing Repeat keeps the selected weekdays', () => {
+  const weekly = rule({ id: 'r', kind: 'weekly', weekdays: [1, 3, 5] });
+  const seasonal = repeatChange(weekly, 'seasonal', '2026-11-01');
+  assert.deepEqual(seasonal, {
+    kind: 'seasonal',
+    from: '2026-11-01',
+    through: '2026-11-01',
+    weekdays: [1, 3, 5],
+  });
+  assert.deepEqual(
+    repeatChange(rule({ ...weekly, ...seasonal, through: '2026-12-31' }), 'weekly', '2026-11-02'),
+    { kind: 'weekly', from: undefined, through: undefined, weekdays: [1, 3, 5] },
+  );
+  // An empty selection stays empty, so the form still asks for a day instead of choosing all.
+  assert.deepEqual(
+    repeatChange(rule({ ...weekly, weekdays: [] }), 'seasonal', '2026-11-01').weekdays,
+    [],
+  );
+  assert.notEqual(repeatChange(weekly, 'seasonal', '2026-11-01').weekdays, weekly.weekdays);
+});
+test('a special date has no weekdays and gives the earlier selection back', () => {
+  const weekly = rule({ id: 'r', kind: 'weekly', from: '2026-11-05', weekdays: [0, 6] });
+  const special = repeatChange(weekly, 'exception', '2026-11-01');
+  assert.deepEqual(special, {
+    kind: 'exception',
+    from: '2026-11-05',
+    through: '2026-11-05',
+    weekdays: [],
+  });
+  const dated = rule({ ...weekly, ...special });
+  assert.deepEqual(repeatChange(dated, 'weekly', '2026-11-01', [0, 6]).weekdays, [0, 6]);
+  // With nothing remembered (for example a loaded special date), every day is selected.
+  assert.deepEqual(repeatChange(dated, 'seasonal', '2026-11-01').weekdays, [0, 1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(
+    repeatChange(dated, 'seasonal', '2026-11-01', []).weekdays,
+    [0, 1, 2, 3, 4, 5, 6],
+  );
 });

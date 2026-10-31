@@ -7,6 +7,6 @@
     "module": "CommonJS",
     "moduleResolution": "Bundler"
   },
-  "files": ["src/NativeControls.tsx", "src/HousePreview.tsx"],
+  "files": ["src/NativeControls.tsx", "src/HousePreview.tsx", "src/ErrorBoundary.tsx"],
   "include": []
 }

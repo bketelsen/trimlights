@@ -10,9 +10,12 @@ export type NativeSnapshot = {
 };
 type Action = 'off' | 'play' | 'timer';
 
+// checking is true while the first status request runs. Nothing is known yet, so the
+// controls say so instead of asking for a refresh, which would look like a failure.
 export function NativeControls({
   snapshot,
   available,
+  checking = false,
   busy,
   csrf,
   refreshVersion,
@@ -22,6 +25,7 @@ export function NativeControls({
 }: {
   snapshot?: NativeSnapshot;
   available: boolean;
+  checking?: boolean;
   busy: boolean;
   csrf: string;
   refreshVersion: number;
@@ -95,17 +99,23 @@ export function NativeControls({
               ? 'Playing a pattern'
               : mode === 'off'
                 ? 'Turned off'
-                : 'Refresh to check'}
+                : checking
+                  ? 'Checking…'
+                  : 'Refresh to check'}
         </span>
       </div>
       {mode === 'manual' && matches.length > 0 && (
         <p className="now-playing">{matches.join(' / ')}</p>
       )}
-      {!available && (
-        <p className="notice">
-          Refresh your lights to get started. If they’re still unavailable, check that they have
-          power and Wi-Fi.
-        </p>
+      {checking ? (
+        <p className="muted">Checking your lights…</p>
+      ) : (
+        !available && (
+          <p className="notice">
+            Refresh your lights to get started. If they’re still unavailable, check that they have
+            power and Wi-Fi.
+          </p>
+        )
       )}
       <div className="native-play">
         <label className="field">

@@ -45,6 +45,10 @@ export function House({
     future = useRef<Layout[]>([]);
   const [undoCount, setUndoCount] = useState(0),
     [redoCount, setRedoCount] = useState(0);
+  // loadError stays on this page: the 5-second status poll in main.tsx clears the global
+  // banner, so a House poll error there would flicker. Without unsaved edits, the House
+  // poll tries again every 5 seconds and a success clears the error.
+  const [loadError, setLoadError] = useState('');
   const loadSequence = useRef(0);
   const mounted = useRef(true);
   const draftRef = useRef(draft);
@@ -75,8 +79,18 @@ export function House({
           setConflict(false);
         }
         setPhotoID((id) => id || p.photos[0]?.id || '');
+        setLoadError('');
       } catch (e) {
-        onError(e);
+        if (e instanceof SignedOut) onError(e);
+        else if (mounted.current && sequence === loadSequence.current)
+          setLoadError(
+            userMessage(
+              e,
+              draftRef.current
+                ? 'Could not check your house for changes. Check your connection.'
+                : 'Could not open your house. Check your connection; the app keeps trying.',
+            ),
+          );
       }
     },
     [onError],
@@ -278,6 +292,7 @@ export function House({
         setRedoCount(0);
       }
       setConflict(false);
+      setLoadError('');
       setMessage('House saved.');
     } catch (e) {
       if (e instanceof SignedOut) onError(e);
@@ -289,7 +304,14 @@ export function House({
       setBusy(false);
     }
   }
-  if (!draft) return <p>Opening house photos…</p>;
+  if (!draft)
+    return loadError ? (
+      <div className="notice" role="alert">
+        {loadError}
+      </div>
+    ) : (
+      <p>Opening house photos…</p>
+    );
   return (
     <>
       <p className="muted">Add a photo, trace your roofline, and try your favorite colors.</p>
@@ -317,6 +339,7 @@ export function House({
       <LiveStatus>
         {message && <p className={conflict ? 'notice' : 'house-message'}>{message}</p>}
       </LiveStatus>
+      <LiveStatus>{loadError && <p className="notice">{loadError}</p>}</LiveStatus>
       {conflict && (
         <div className="house-toolbar">
           <button className="button secondary" onClick={() => download(draft)}>
@@ -753,7 +776,10 @@ export function House({
           onClick={() =>
             request<{ revisions: SavedHouse[] }>('/api/v1/house/revisions')
               .then((r) => setHistory(r.revisions))
-              .catch(onError)
+              .catch((e) => {
+                if (e instanceof SignedOut) onError(e);
+                else setMessage(userMessage(e, 'Could not load saved versions. Please try again.'));
+              })
           }
         >
           History

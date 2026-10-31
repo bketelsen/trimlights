@@ -1439,6 +1439,9 @@ h2 {
 .library .section-heading {
   margin-top: 0;
 }
+.activity-heading {
+  margin-top: 0;
+}
 .saved-pattern {
   padding: 24px;
   display: flex;

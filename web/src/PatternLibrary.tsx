@@ -2,7 +2,14 @@ import { HousePreview } from './HousePreview';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { APIError, request, SignedOut, userMessage } from './api';
 import { LiveStatus } from './LiveRegion';
-import { exportDesign, newDesign, renderPattern, validateDesign } from './pattern';
+import {
+  exportDesign,
+  newDesign,
+  parsePatternFile,
+  renderPattern,
+  validateDesign,
+} from './pattern';
+import { copyName } from './uiText';
 import type { Design, SavedPattern } from './pattern';
 import { PreviewClock } from './previewClock';
 
@@ -133,9 +140,6 @@ function ReferenceNotice({ references }: { references: Reference[] | null }) {
       )}
     </div>
   );
-}
-function copyName(name: string) {
-  return [...name].slice(0, 73).join('') + ' (copy)';
 }
 
 export function PatternLibrary({
@@ -401,9 +405,7 @@ export function PatternLibrary({
       return;
     }
     try {
-      const design = JSON.parse(await input.text()) as Design;
-      const invalid = validateDesign(design);
-      if (invalid) throw new Error(invalid);
+      const design = parsePatternFile(await input.text());
       if (!mounted.current || sequence !== editorSequence.current || !discardDraft()) return;
       editorSequence.current++;
       setEditing(null);
