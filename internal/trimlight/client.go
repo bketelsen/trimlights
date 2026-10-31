@@ -219,8 +219,10 @@ type ProbeReport struct {
 }
 
 // ProbeSchedule2 is deliberately restricted to the captured disabled schedule.
-// record must persist the baseline before any write. Cleanup has its own context
-// so cancelling the experiment does not cancel the restoration attempt.
+// record must persist the baseline before any write, and must not call this Client:
+// one gate acquisition covers the probe, cleanup, reconnect recovery and the
+// independent read. Cleanup has its own contexts so cancelling the experiment does
+// not cancel the restoration attempt.
 func (c *Client) ProbeSchedule2(ctx context.Context, expectedFingerprint string, record func(string, *Snapshot) error) (*ProbeReport, error) {
 	if !validFingerprint(expectedFingerprint) {
 		return nil, errors.New("a reviewed baseline SHA-256 fingerprint is required")
@@ -278,9 +280,7 @@ func (c *Client) ProbeSchedule2(ctx context.Context, expectedFingerprint string,
 		}
 		defer func() {
 			if attempted {
-				clean, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-				defer cancel()
-				restoreErr = restore(s, clean, false)
+				restoreErr = c.probeCleanup(s, r, restore, &refused, record)
 			}
 		}()
 		attempted = true // Also restore after a partial/ambiguous send failure.
@@ -299,31 +299,49 @@ func (c *Client) ProbeSchedule2(ctx context.Context, expectedFingerprint string,
 		r.ChangedVerified = true
 		return record("changed", r.Changed)
 	})
-	// A broken socket must not prevent a bounded restoration on a fresh session.
-	if attempted && !r.RestoredVerified {
-		clean, cancel := context.WithTimeout(context.Background(), 35*time.Second)
-		for i := 0; i < 2 && !r.RestoredVerified && !refused; i++ {
-			restoreErr = c.withSession(clean, func(s *session) error { return restore(s, clean, true) })
-		}
-		cancel()
-	}
-	if r.RestoredVerified {
-		clean, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		var independentErr error
-		r.Independent, independentErr = c.Snapshot(clean, 3306)
-		cancel()
-		if independentErr == nil {
-			r.IndependentVerified = bytes.Equal(stable(r.Independent), stable(r.Before))
-			if !r.IndependentVerified {
-				independentErr = errors.New("independent read differs from baseline")
-			} else {
-				independentErr = record("independent", r.Independent)
-			}
-		}
-		restoreErr = errors.Join(restoreErr, independentErr)
-	}
 	if attempted && !r.RestoredVerified {
 		restoreErr = errors.Join(errors.New("RESTORATION NOT VERIFIED"), restoreErr)
 	}
 	return r, errors.Join(err, restoreErr)
+}
+
+// probeCleanup runs inside the probe's withSession callback, so the gate stays
+// held. Fresh connections therefore use openSession, never withSession.
+func (c *Client) probeCleanup(s *session, r *ProbeReport, restore func(*session, context.Context, bool) error, refused *bool, record func(string, *Snapshot) error) error {
+	clean, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	restoreErr := restore(s, clean, false)
+	cancel()
+	_ = s.conn.Close()
+	// A broken socket must not prevent a bounded restoration on a fresh session.
+	if !r.RestoredVerified && !*refused {
+		clean, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+		for i := 0; i < 2 && !r.RestoredVerified && !*refused; i++ {
+			// Pace across connections as within one session.
+			if restoreErr = wait(clean, c.pause); restoreErr == nil {
+				restoreErr = c.openSession(clean, func(fresh *session) error { return restore(fresh, clean, true) })
+			}
+		}
+		cancel()
+	}
+	if !r.RestoredVerified {
+		return restoreErr
+	}
+	independent, stop := context.WithTimeout(context.Background(), 10*time.Second)
+	independentErr := wait(independent, c.pause)
+	if independentErr == nil {
+		independentErr = c.openSession(independent, func(fresh *session) (err error) {
+			r.Independent, err = fresh.snapshot(independent, 3306)
+			return err
+		})
+	}
+	stop()
+	if independentErr == nil {
+		r.IndependentVerified = bytes.Equal(stable(r.Independent), stable(r.Before))
+		if !r.IndependentVerified {
+			independentErr = errors.New("independent read differs from baseline")
+		} else {
+			independentErr = record("independent", r.Independent)
+		}
+	}
+	return errors.Join(restoreErr, independentErr)
 }

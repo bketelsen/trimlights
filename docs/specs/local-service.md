@@ -130,4 +130,6 @@ probe MUST read current state. Only snapshot offset 3319 (schedule 2 off-minute)
 MAY differ from the baseline non-clock bytes, and only with the probe value 4.
 Any other difference is an external change: cleanup MUST stop without a write and
 report `RESTORATION NOT VERIFIED`, with the observed state as `reconciled` in the
-report (added 2026-10-30). The restoration payload is unchanged.
+report (added 2026-10-30). The restoration payload is unchanged. The probe MUST
+hold one client gate acquisition from its first exchange through cleanup, reconnect
+recovery and independent verification; fresh connections reuse that acquisition.

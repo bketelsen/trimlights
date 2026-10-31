@@ -341,3 +341,46 @@ func TestProbeCleanupDoesNotOverwriteExternalChanges(t *testing.T) {
 		})
 	}
 }
+
+// Another operation on the shared client must not run between the probe and its
+// cleanup, reconnect recovery or independent verification.
+func TestProbeKeepsGateThroughRecoveryAndIndependentRead(t *testing.T) {
+	for _, disconnect := range []bool{false, true} {
+		c, e := testClient(t)
+		e.disconnectOnce = disconnect
+		var mu sync.Mutex
+		var events []string
+		note := func(event string) { mu.Lock(); events = append(events, event); mu.Unlock() }
+		competing := make(chan error, 1)
+		r, err := c.ProbeSchedule2(context.Background(), fixtureFingerprint(t), func(stage string, _ *Snapshot) error {
+			note(stage)
+			switch stage {
+			case "before":
+				go func() {
+					_, err := c.Snapshot(context.Background(), 3306)
+					note("competing")
+					competing <- err
+				}()
+				time.Sleep(20 * time.Millisecond) // Let the competing read queue on the gate.
+			case "restored", "independent":
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+				defer cancel()
+				if _, err := c.Snapshot(ctx, 3306); !errors.Is(err, context.DeadlineExceeded) {
+					t.Errorf("disconnect=%v: snapshot was not gated at %s: %v", disconnect, stage, err)
+				}
+			}
+			return nil
+		})
+		if !r.RestoredVerified || !r.IndependentVerified || (err == nil) == disconnect {
+			t.Fatalf("disconnect=%v: probe result %+v %v", disconnect, r, err)
+		}
+		if err := <-competing; err != nil {
+			t.Fatal(err)
+		}
+		mu.Lock()
+		if events[len(events)-1] != "competing" {
+			t.Errorf("disconnect=%v: competing snapshot ran inside the probe: %v", disconnect, events)
+		}
+		mu.Unlock()
+	}
+}
