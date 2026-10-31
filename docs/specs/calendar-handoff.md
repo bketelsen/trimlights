@@ -34,7 +34,7 @@ and review validity interval. A control audit cannot be both delivery and handof
   status to active for takeover or disabled for TIMER. Completion stores the
   resulting canonical fingerprint with the audit. Takeover makes it the owned
   fingerprint; TIMER return clears the owned fingerprint and actor, so a disabled
-  runtime has no owner. A concurrent pause MUST win.
+  runtime has no owner. A concurrent pause MUST win in both directions.
 - Unverified completion leaves Calendar paused. Persistence failure, interruption
   or cancellation MUST NOT trigger retry, replay or a compensating command.
   Startup recovery and backup restore preserve audit provenance and pause ownership.

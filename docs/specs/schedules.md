@@ -12,7 +12,7 @@ The versioned plan has `schema: 1`, an IANA `timezone`, optional `location`
 
 | Field | Type | Constraints |
 | --- | --- | --- |
-| Rule `id`, `name` | strings | Unique stable ID; nonempty trimmed name, at most 80 characters |
+| Rule `id`, `name` | strings | Unique stable ID; name follows the [pattern name rule](patterns.md#interface) |
 | `enabled`, `end_next_day` | booleans | Next-day is explicit, never inferred |
 | `kind` | string | `weekly`, `seasonal`, `exception` |
 | `priority` | integer | 0–100; higher wins within a kind |

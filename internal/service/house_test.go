@@ -16,7 +16,7 @@ import (
 func TestPhotoAPIRequiresAuthAndSanitizesBeforePersistence(t *testing.T) {
 	store, worker := setup(t, nil)
 	token := strings.Repeat("p", 32)
-	h := Handler(store, worker, token)
+	h := Handler(store, worker, token, nil)
 	call := func(method, path string, body []byte, auth bool, version string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, path, bytes.NewReader(body))
 		if auth {

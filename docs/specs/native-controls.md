@@ -19,6 +19,14 @@ which must be 1–18. `baseline_sha256` is the displayed snapshot's full non-clo
 SHA-256. Successful responses include `operation_id` and `status: verified`.
 Malformed inputs return 400, unavailable controls/queue 503, stale baseline 409,
 and unverified command outcomes 502. No HTTP error authorizes a retry.
+The media type check accepts parameters such as `charset=utf-8`; see the
+[local service contract](local-service.md#interface). A 503 answers the fixed
+availability reason, `controller access is disabled`, `controller queue is full`
+or `controller is unavailable; try again later`. A 502 answers `operation_id`
+and a fixed `error`: `controller clock sync is unavailable on Sunday` for the
+Sunday refusal, the fixed availability reason, or `controller did not verify the
+change; refresh before trying again`. The cause stays in the operation audit and
+the [service log](local-service.md#service-logs).
 
 Status advertises native controls only when the controller implements them, the
 configured offset is 3306, a supported cached snapshot exists, and no observation

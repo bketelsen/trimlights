@@ -309,3 +309,31 @@ func TestCalendarHandoffBindsReviewedNativeSchedules(t *testing.T) {
 		})
 	}
 }
+
+func TestCalendarHandoffTimerConcurrentPauseWinsCompletion(t *testing.T) {
+	h, r, c, _, _ := handoffFixture(t)
+	ctx := context.Background()
+	if err := h.apply(ctx, "owner", reviewed(t, h, "calendar")); err != nil {
+		t.Fatal(err)
+	}
+	if c.writes != 1 || c.raw[3] != 1 || runtimeState(t, r).Status != "active" {
+		t.Fatal(c.writes, runtimeState(t, r))
+	}
+	native := bytes.Clone(c.raw[26:3320])
+	r.worker.controller = &pausingHandoffController{calendarController: c, pause: func() error {
+		state, err := r.store.CalendarRuntime(ctx)
+		if err != nil {
+			return err
+		}
+		return r.store.PauseCalendar(ctx, state.Version, "owner paused during return")
+	}}
+	if err := h.apply(ctx, "owner", reviewed(t, h, "timer")); !errors.Is(err, storage.ErrCalendarOwnership) {
+		t.Fatal("concurrent pause reported as TIMER return", err)
+	}
+	// The controller completed TIMER, but the pause keeps ownership paused rather
+	// than disabled, and native schedules stay untouched.
+	state := runtimeState(t, r)
+	if c.writes != 2 || c.raw[3] != 2 || state.Status != "paused" || state.PendingID != "" || state.Reason != "owner paused during return" || !bytes.Equal(native, c.raw[26:3320]) {
+		t.Fatal(c.writes, c.raw[3], state)
+	}
+}
