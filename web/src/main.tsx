@@ -156,19 +156,19 @@ function App() {
       setOperations(null);
     } else setError(userMessage(error, 'Could not reach the app. Try again.'));
   }, []);
-  // Polls, refreshes and controls all call load(). Only the newest call applies its
-  // answer, so a slow older poll cannot overwrite a fresher status.
+  // Polls, refreshes and controls all call load(). An answer applies only when no newer
+  // request has answered, so a slow older poll cannot overwrite a fresher status.
   const load = useCallback(async () => {
-    const current = statusRequests.begin();
+    const settle = statusRequests.begin();
     try {
       const result = await request<Status>('/api/v1/status');
-      if (!current()) return;
+      if (!settle()) return;
       setStatus(result);
       setError('');
     } catch (error) {
-      if (current()) report(error);
+      if (settle()) report(error);
     } finally {
-      if (current()) setStatusChecked(true);
+      setStatusChecked(true);
     }
   }, [report, statusRequests]);
   useEffect(() => {
@@ -188,26 +188,31 @@ function App() {
     if (!identity) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the first load starts with the effect; changing the load flow changes behaviour.
     void load();
+    // The poll skips a turn while a status request runs, so slow answers do not pile up.
     const timer = setInterval(() => {
-      if (!document.hidden) void load();
+      if (!document.hidden && !statusRequests.busy(60000)) void load();
     }, 5000);
     return () => clearInterval(timer);
-  }, [identity, load]);
-  const loadOperations = useCallback(async () => {
-    const current = operationRequests.begin();
-    setOperations(null);
-    setOperationsError('');
-    try {
-      const result = await request<{ operations: Operation[] }>('/api/v1/operations');
-      if (current()) setOperations(result.operations);
-    } catch (error) {
-      if (!current()) return;
-      if (error instanceof SignedOut) report(error);
-      else {
-        setOperations([]);
-        setOperationsError(userMessage(error, 'Could not load recent activity. Try again.'));
-      }
-    }
+  }, [identity, load, statusRequests]);
+  // Opening Settings keeps the last list on screen while it reloads; the first visit
+  // and Refresh show the loading state (operations is null).
+  const loadOperations = useCallback(() => {
+    const settle = operationRequests.begin();
+    return request<{ operations: Operation[] }>('/api/v1/operations').then(
+      (result) => {
+        if (!settle()) return;
+        setOperations(result.operations);
+        setOperationsError('');
+      },
+      (error: unknown) => {
+        if (!settle()) return;
+        if (error instanceof SignedOut) report(error);
+        else {
+          setOperations([]);
+          setOperationsError(userMessage(error, 'Could not load recent activity. Try again.'));
+        }
+      },
+    );
   }, [report, operationRequests]);
   useEffect(() => {
     if (page === 'settings' && identity) void loadOperations();
@@ -458,7 +463,11 @@ function App() {
                       <button
                         className="button secondary"
                         disabled={operations === null}
-                        onClick={() => void loadOperations()}
+                        onClick={() => {
+                          setOperations(null);
+                          setOperationsError('');
+                          void loadOperations();
+                        }}
                       >
                         Refresh
                       </button>

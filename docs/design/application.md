@@ -134,8 +134,10 @@ default browser display mode: a standalone mode needs a phone sign-in check firs
 As of 2026-10-31, an error boundary around each page (and around the app) replaces
 a render error with a plain message: it says that the page's unsaved changes could
 not be kept, and it reloads only when the person chooses Reload. Reconnect asks
-before it reloads over unsaved Calendar, House or Library edits. Only the newest
-status request applies its answer, so a slow poll cannot overwrite fresher status.
+before it reloads over unsaved Calendar, House or Library edits. A status answer
+applies only when no newer status request has answered, so a slow poll cannot
+overwrite fresher status. The 5-second poll skips its turn while a status request
+runs (a request older than 60 seconds no longer blocks it).
 House shows its own load errors on the page, not in the global banner that the
 status poll clears. Before the first status arrives, Home says it is checking the
 lights. `request()` sends GET only without a CSRF token or body; a mutation without
