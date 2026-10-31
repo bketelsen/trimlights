@@ -154,6 +154,78 @@ func TestInvalidControllerImportRollsBackWholeBatch(t *testing.T) {
 	}
 }
 
+func TestControllerImportReplacesInvalidSlotNames(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	ctx := context.Background()
+	stamp := time.Now().UTC()
+	params := strings.Repeat("00", 156)
+	raw := []string{"", "bad\x01name", "\ufeffMark", "  ", " Porch ", "Good"}
+	snap := &trimlight.Snapshot{QueriedAt: stamp}
+	for i, name := range raw {
+		snap.Patterns = append(snap.Patterns, trimlight.Pattern{ID: byte(i + 1), Name: name, ParametersHex: params})
+	}
+	if err = s.Record(ctx, Observation{Snapshot: snap}, Operation{ID: "fixture", Started: stamp, Finished: stamp}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := s.ImportControllerPatterns(ctx, "owner")
+	if err != nil || len(result.Imported) != len(raw) {
+		t.Fatal(result, err)
+	}
+	want := []string{"Controller pattern 1", "Controller pattern 2", "Controller pattern 3", "Controller pattern 4", "Porch", "Good"}
+	for i, p := range result.Imported {
+		if p.Design.Name != want[i] || p.Design.Native.Name != raw[i] || p.Design.Native.ID != byte(i+1) {
+			t.Fatalf("slot %d: %+v %+v", i+1, p.Design, p.Design.Native)
+		}
+	}
+}
+
+func TestCreateNativeRequiresCachedSlotMatch(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	ctx := context.Background()
+	stamp := time.Now().UTC()
+	params := strings.Repeat("ab", 156)
+	native := pattern.Design{Schema: 1, Name: "Copy", Effect: "native", Brightness: 100, Palette: []pattern.Run{}, Native: &pattern.Native{ID: 3, Name: "Slot", ParametersHex: params, SnapshotAt: stamp}}
+	if _, err = s.CreatePattern(ctx, native, "owner"); !errors.Is(err, ErrNativeSource) {
+		t.Fatal("native design created without a cached snapshot", err)
+	}
+	snap := &trimlight.Snapshot{QueriedAt: stamp, Patterns: []trimlight.Pattern{{ID: 3, Name: "Slot", ParametersHex: params}}}
+	if err = s.Record(ctx, Observation{Snapshot: snap}, Operation{ID: "fixture", Started: stamp, Finished: stamp}); err != nil {
+		t.Fatal(err)
+	}
+	for _, forge := range []func(*pattern.Native){
+		func(n *pattern.Native) { n.ID = 4 },
+		func(n *pattern.Native) { n.ParametersHex = strings.Repeat("00", 156) },
+		func(n *pattern.Native) { n.Name = "Forged\nname" },
+	} {
+		d := native
+		copied := *native.Native
+		forge(&copied)
+		d.Native = &copied
+		if _, err = s.CreatePattern(ctx, d, "owner"); !errors.Is(err, ErrNativeSource) {
+			t.Fatal("forged native design created", copied, err)
+		}
+	}
+	d := native
+	copied := *native.Native
+	copied.ParametersHex = strings.ToUpper(params)
+	d.Native = &copied
+	if _, err = s.CreatePattern(ctx, d, "owner"); err != nil {
+		t.Fatal("matching native duplicate rejected", err)
+	}
+	values, err := s.Patterns(ctx, true)
+	if err != nil || len(values) != 1 {
+		t.Fatal(values, err)
+	}
+}
+
 func TestSchemaTwoUpgradeRetainsSessionsAndCreatesPatterns(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Open(dir)

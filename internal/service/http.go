@@ -6,7 +6,9 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -24,6 +26,10 @@ type Config struct {
 	Controller                Controller
 	ScheduleOffset            int
 	OIDC                      *auth.Config
+	// Logger receives structured service logs; nil uses slog.Default.
+	Logger *slog.Logger
+	// Version and Commit identify the build in the startup log line.
+	Version, Commit string
 }
 
 func Validate(c Config) error {
@@ -53,8 +59,8 @@ func Validate(c Config) error {
 	return nil
 }
 
-func Handler(store *storage.Store, worker *Worker, token string) http.Handler {
-	mux := apiHandler(store, worker)
+func Handler(store *storage.Store, worker *Worker, token string, logger *slog.Logger) http.Handler {
+	mux := apiHandler(store, worker, logger)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -69,18 +75,18 @@ func Handler(store *storage.Store, worker *Worker, token string) http.Handler {
 	})
 }
 
-func apiHandler(store *storage.Store, worker *Worker) http.Handler {
+func apiHandler(store *storage.Store, worker *Worker, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
-	registerPatterns(mux, store)
-	registerSchedules(mux, store)
-	registerCalendarPreparation(mux, store)
-	registerHouse(mux, store)
-	registerControls(mux, worker)
-	mux.Handle("GET /", webui.Handler())
+	registerPatterns(mux, store, logger)
+	registerSchedules(mux, store, logger)
+	registerCalendarPreparation(mux, store, logger)
+	registerHouse(mux, store, logger)
+	registerControls(mux, worker, logger)
+	mux.Handle("GET /", webui.Handler(logger))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { jsonResponse(w, 200, map[string]string{"status": "ok"}) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := store.Observation(r.Context()); err != nil {
-			jsonError(w, 503, "storage unavailable")
+			serverError(w, r, logger, 503, "storage unavailable", err)
 			return
 		}
 		jsonResponse(w, 200, map[string]string{"status": "ready"})
@@ -88,7 +94,7 @@ func apiHandler(store *storage.Store, worker *Worker) http.Handler {
 	mux.HandleFunc("GET /api/v1/status", func(w http.ResponseWriter, r *http.Request) {
 		state, err := store.Observation(r.Context())
 		if err != nil {
-			jsonError(w, 500, "cannot read state")
+			serverError(w, r, logger, 500, "cannot read state", err)
 			return
 		}
 		var age *float64
@@ -98,7 +104,7 @@ func apiHandler(store *storage.Store, worker *Worker) http.Handler {
 		}
 		runtime, err := store.CalendarRuntime(r.Context())
 		if err != nil {
-			jsonError(w, 500, "cannot read calendar ownership")
+			serverError(w, r, logger, 500, "cannot read calendar ownership", err)
 			return
 		}
 		controls, reason := worker.ControlAvailability(state)
@@ -107,14 +113,13 @@ func apiHandler(store *storage.Store, worker *Worker) http.Handler {
 	mux.HandleFunc("GET /api/v1/operations", func(w http.ResponseWriter, r *http.Request) {
 		ops, err := store.Operations(r.Context())
 		if err != nil {
-			jsonError(w, 500, "cannot read operation history")
+			serverError(w, r, logger, 500, "cannot read operation history", err)
 			return
 		}
 		jsonResponse(w, 200, map[string]any{"operations": ops})
 	})
 	mux.HandleFunc("POST /api/v1/controller/refresh", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Content-Type") != "application/json" {
-			jsonError(w, 415, "Content-Type must be application/json")
+		if !requireJSON(w, r) {
 			return
 		}
 		var input struct {
@@ -136,13 +141,14 @@ func apiHandler(store *storage.Store, worker *Worker) http.Handler {
 		}
 		id, done, err := worker.Enqueue(r.Context(), actor)
 		if err != nil {
-			jsonError(w, 503, err.Error())
+			serverError(w, r, logger, 503, enqueueMessage(err), err)
 			return
 		}
 		select {
 		case err = <-done:
 			if err != nil {
-				jsonResponse(w, 502, map[string]any{"error": err.Error(), "operation_id": id})
+				logFailure(r, logger, 502, err, "operation_id", id)
+				jsonResponse(w, 502, map[string]any{"error": operationMessage(err, msgRefreshFailed), "operation_id": id})
 				return
 			}
 			jsonResponse(w, 200, map[string]string{"operation_id": id, "status": "verified"})
@@ -170,6 +176,7 @@ func RestoreGuard(dir string) (bool, error) {
 	return err == nil, err
 }
 func Run(ctx context.Context, c Config) error {
+	logger := loggerOrDefault(c.Logger)
 	guarded, err := RestoreGuard(c.DataDir)
 	if err != nil {
 		return err
@@ -193,14 +200,16 @@ func Run(ctx context.Context, c Config) error {
 	if err := store.SuspendCalendar(ctx); err != nil {
 		return err
 	}
-	worker := NewWorker(store, c.Controller, c.ScheduleOffset)
-	var handler http.Handler = Handler(store, worker, c.APIToken)
+	worker := NewWorker(store, c.Controller, c.ScheduleOffset, logger)
+	handler := Handler(store, worker, c.APIToken, logger)
+	mode := "bearer-development"
 	if c.OIDC != nil {
-		login, err := auth.New(ctx, *c.OIDC, store)
+		mode = "oidc"
+		login, err := auth.New(ctx, *c.OIDC, store, logger)
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: %w", ErrHouseholdLogin, err)
 		}
-		api := apiHandler(store, worker)
+		api := apiHandler(store, worker, logger)
 		household := login.Handler(api)
 		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
@@ -219,7 +228,9 @@ func Run(ctx context.Context, c Config) error {
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 60 * time.Second, WriteTimeout: 90 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10, BaseContext: func(net.Listener) context.Context { return ctx }}
+	// The controller address is deliberately absent: only whether access is enabled.
+	logger.InfoContext(ctx, "trimlight serving", "version", c.Version, "commit", c.Commit, "listen", listener.Addr().String(), "mode", mode, "controller_enabled", c.Controller != nil, "restore_guard", guarded)
+	server := &http.Server{Handler: requestLog(logger, handler), ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelWarn), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 60 * time.Second, WriteTimeout: 90 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10, BaseContext: func(net.Listener) context.Context { return ctx }}
 	serveDone := make(chan error, 1)
 	go func() { serveDone <- server.Serve(listener) }()
 	select {
@@ -229,6 +240,7 @@ func Run(ctx context.Context, c Config) error {
 		}
 		return err
 	case <-ctx.Done():
+		logger.InfoContext(context.WithoutCancel(ctx), "trimlight shutting down")
 		shutdown, c := context.WithTimeout(context.Background(), 5*time.Second)
 		defer c()
 		err = server.Shutdown(shutdown)

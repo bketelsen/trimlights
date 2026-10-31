@@ -13,7 +13,7 @@ import (
 func TestCalendarAPIValidationAndPreview(t *testing.T) {
 	store, worker := setup(t, nil)
 	token := strings.Repeat("x", 32)
-	handler := Handler(store, worker, token)
+	handler := Handler(store, worker, token, nil)
 	call := func(method, path string, body any, rev string) *httptest.ResponseRecorder {
 		raw, _ := json.Marshal(body)
 		r := httptest.NewRequest(method, path, bytes.NewReader(raw))
@@ -73,7 +73,7 @@ func TestCalendarAPIValidationAndPreview(t *testing.T) {
 
 func TestCalendarImportAPI(t *testing.T) {
 	store, worker := setup(t, nil)
-	handler := Handler(store, worker, strings.Repeat("x", 32))
+	handler := Handler(store, worker, strings.Repeat("x", 32), nil)
 	call := func(raw, rev string, authorized bool) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("POST", "/api/v1/schedule/validate", strings.NewReader(raw))
 		r.Header.Set("Content-Type", "application/json")
