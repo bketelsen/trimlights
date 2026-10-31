@@ -30,6 +30,35 @@ func (c *Client) VerifyPlayback(ctx context.Context, fingerprint string, target 
 	return c.verifyPlayback(ctx, fingerprint, target, record, 10*time.Second)
 }
 
+// Fixed cleanup budgets after an attempted write. Evidence margin covers local
+// recorder writes and scheduling delays, which have no protocol deadline.
+const (
+	playbackCleanupBudget     = 40 * time.Second
+	playbackIndependentBudget = 10 * time.Second
+	playbackEvidenceMargin    = time.Minute
+	// OFF and saved playback each send edit + write, then read back.
+	playbackOperationExchanges = 6
+)
+
+// playbackWorstCase bounds the time from the first write until cleanup and
+// independent verification finish: every paced exchange at its I/O timeout, both
+// observation holds, the whole cleanup (all attempts, reconnect and pacing) and
+// independent read budgets, plus the evidence margin.
+func playbackWorstCase(pause, timeout, hold time.Duration) time.Duration {
+	return playbackOperationExchanges*(pause+timeout) + 2*hold +
+		playbackCleanupBudget + playbackIndependentBudget + playbackEvidenceMargin
+}
+
+// playbackWindowReachesSunday reports whether any instant from start to
+// start+worst falls on Sunday in start's location. Every snapshot sends a clock
+// query, and the Sunday clock encoding is unverified, so cleanup cannot read or
+// restore state on Sunday. A day is at least 23 hours, so a window shorter than
+// 12 hours spans at most two local dates; longer windows are refused outright.
+func playbackWindowReachesSunday(start time.Time, worst time.Duration) bool {
+	end := start.Add(worst).In(start.Location())
+	return worst >= 12*time.Hour || start.Weekday() == time.Sunday || end.Weekday() == time.Sunday
+}
+
 func (s *session) playbackWrite(ctx context.Context, payload []byte) error {
 	if err := s.enterEdit(ctx); err != nil {
 		return err
@@ -110,7 +139,7 @@ func (c *Client) verifyPlayback(ctx context.Context, fingerprint string, target 
 			if !r.WriteAttempted {
 				return
 			}
-			clean, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+			clean, cancel := context.WithTimeout(context.Background(), playbackCleanupBudget)
 			defer cancel()
 			restoreErr := restore(clean, s)
 			_ = s.conn.Close()
@@ -130,7 +159,7 @@ func (c *Client) verifyPlayback(ctx context.Context, fingerprint string, target 
 			}
 			// Preserve any failed recovery attempt even if a later retry succeeds.
 			operationErr = errors.Join(operationErr, restoreErr)
-			independent, stop := context.WithTimeout(context.Background(), 10*time.Second)
+			independent, stop := context.WithTimeout(context.Background(), playbackIndependentBudget)
 			defer stop()
 			independentErr := wait(independent, c.pause)
 			if independentErr == nil {
@@ -153,6 +182,13 @@ func (c *Client) verifyPlayback(ctx context.Context, fingerprint string, target 
 			operationErr = errors.Join(operationErr, independentErr)
 		}()
 
+		// Refuse before any write if cleanup could still run on Sunday, when the
+		// clock query (and therefore every restoration readback) is refused.
+		start := c.now().In(c.location)
+		if worst := playbackWorstCase(c.pause, c.timeout, hold); playbackWindowReachesSunday(start, worst) {
+			return fmt.Errorf("playback verification refused: cleanup could run until %s, which reaches Sunday in %s; Sunday clock encoding is unverified, so no write was sent",
+				start.Add(worst).Format(time.RFC3339), c.location)
+		}
 		// Mark before edit/send so even a partially sent or canceled exchange
 		// triggers reconciliation. An unchanged baseline needs no cleanup write.
 		r.WriteAttempted = true

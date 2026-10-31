@@ -31,6 +31,14 @@ Evidence recording errors MUST fail the command even if restoration succeeded.
   mode 2 and exactly one original parameter match. No other layout is writable.
 - Baseline evidence MUST be persisted before any edit command or write. The
   operation MUST hold the client gate through cleanup and independent readback.
+- Before any edit command or write, the operation MUST compute the latest time at
+  which cleanup and independent verification can finish: six paced exchanges at
+  the I/O timeout, both holds, the 40-second cleanup budget, the ten-second
+  independent budget and a one-minute evidence margin (166 seconds with 1-second
+  pacing, 5-second timeouts and ten-second holds). If any instant from now to that time falls on
+  Sunday in `--timezone`, it MUST refuse without a write. Every snapshot sends a
+  clock query, which refuses unverified Sunday times, so cleanup could not read or
+  restore state. No Sunday encoding is assumed (added 2026-10-30).
 - OFF uses payload `02 00 01 00`. Saved playback uses `04 00 01 ID`. TIMER uses
   `02 00 01 02`. Each write MUST follow the captured edit-session exchange; all
   exchanges MUST retain the client's pacing. No standalone MANUAL mode command

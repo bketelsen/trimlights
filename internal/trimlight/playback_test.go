@@ -199,3 +199,71 @@ func TestPlaybackWireCommandsAreBounded(t *testing.T) {
 		}
 	}
 }
+
+func TestPlaybackWorstCaseWindow(t *testing.T) {
+	// Production values: 1 s pacing, 5 s I/O timeout and 10 s holds.
+	worst := playbackWorstCase(time.Second, 5*time.Second, 10*time.Second)
+	if worst != 166*time.Second {
+		t.Fatalf("worst case %v", worst)
+	}
+	zone := time.FixedZone("controller", -5*3600)
+	last := time.Date(2026, 10, 31, 23, 57, 13, 999999999, zone) // Saturday
+	for _, tc := range []struct {
+		start time.Time
+		want  bool
+	}{
+		{time.Date(2026, 10, 31, 6, 0, 0, 0, zone), false},
+		{last, false},
+		{last.Add(time.Nanosecond), true}, // Ends exactly at Sunday 00:00:00.
+		{time.Date(2026, 10, 31, 23, 59, 0, 0, zone), true},
+		{time.Date(2026, 11, 1, 12, 0, 0, 0, zone), true},              // Sunday.
+		{time.Date(2026, 11, 2, 0, 0, 0, 0, zone), false},              // Monday.
+		{time.Date(2026, 11, 1, 3, 0, 0, 0, time.UTC).In(zone), false}, // UTC Sunday, local Saturday.
+	} {
+		if got := playbackWindowReachesSunday(tc.start, worst); got != tc.want {
+			t.Errorf("%s: reaches Sunday = %v, want %v", tc.start, got, tc.want)
+		}
+	}
+	if !playbackWindowReachesSunday(time.Date(2026, 10, 28, 10, 0, 0, 0, zone), 12*time.Hour) {
+		t.Fatal("long window accepted")
+	}
+}
+
+func TestPlaybackRefusesWindowReachingSunday(t *testing.T) {
+	zone := time.FixedZone("controller", -5*3600)
+	for _, tc := range []struct {
+		name    string
+		now     time.Time
+		hold    time.Duration
+		refused bool
+	}{
+		{"saturday-23:59", time.Date(2026, 10, 31, 23, 59, 0, 0, zone), time.Millisecond, true},
+		// Test budgets total about 111 s: 23:58:00 ends on Saturday only
+		// without the two 10 s holds, so the holds carry the window past midnight.
+		{"window-crosses-midnight", time.Date(2026, 10, 31, 23, 58, 0, 0, zone), 10 * time.Second, true},
+		{"late-saturday-window-fits", time.Date(2026, 10, 31, 23, 57, 0, 0, zone), time.Millisecond, false},
+		{"early-saturday", time.Date(2026, 10, 31, 6, 0, 0, 0, zone), time.Millisecond, false},
+		{"utc-sunday-local-saturday", time.Date(2026, 11, 1, 3, 0, 0, 0, time.UTC), time.Millisecond, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, e, before := playbackClient(t)
+			c.location = zone
+			c.now = func() time.Time { return tc.now }
+			r, err := c.verifyPlayback(context.Background(), before.StableSHA256, 9, func(string, *Snapshot) error { return nil }, tc.hold)
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			if !tc.refused {
+				if err != nil || !r.IndependentVerified || len(e.controlWrites) != 4 {
+					t.Fatalf("allowed start failed: %+v %v writes=%v", r, err, e.controlWrites)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), "Sunday") || r.WriteAttempted || r.Before == nil {
+				t.Fatalf("Sunday window not refused: %+v %v", r, err)
+			}
+			if len(e.controlWrites) != 0 || e.editCount != 0 {
+				t.Fatalf("wrote before refusing: %v edits=%d", e.controlWrites, e.editCount)
+			}
+		})
+	}
+}
