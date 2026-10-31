@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"trimlights/internal/storage"
@@ -86,7 +87,8 @@ func (h *calendarHandoff) guard(ctx context.Context, review handoffReview, snap 
 	if state.Version != t.Version || state.PendingID != "" || (t.Direction == "calendar" && state.Status == "active") {
 		return storage.ErrCalendarOwnership
 	}
-	if snap == nil || snap.StableSHA256 != review.command.BaselineSHA256 {
+	// The review binds the native schedules it showed, in addition to the fingerprint.
+	if snap == nil || snap.StableSHA256 != review.command.BaselineSHA256 || !slices.Equal(snap.Schedules, review.schedules) {
 		return trimlight.ErrStaleBaseline
 	}
 	if t.Direction == "calendar" {

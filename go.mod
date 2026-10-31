@@ -7,7 +7,7 @@ toolchain go1.27.3
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/frostyard/clix v0.5.0
-	github.com/go-jose/go-jose/v4 v4.1.4
+	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/nathan-osman/go-sunrise v1.1.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto/x509roots/fallback v0.0.0-20261027005312-1da6254a58cf

@@ -15,11 +15,21 @@ import (
 var assets embed.FS
 
 // Cache policies. Vite names /assets/ files by content hash, so a changed file
-// always has a new URL. index.html keeps its name and must revalidate.
+// always has a new URL. index.html and the root files keep their names and
+// must revalidate.
 const (
 	cacheHashed = "public, max-age=31536000, immutable"
 	cacheFixed  = "no-cache"
 )
+
+// rootFiles are the public files that browsers request at fixed root paths for
+// home-screen use. The value is an explicit Content-Type, or empty to detect it.
+var rootFiles = map[string]string{
+	"/manifest.webmanifest": "application/manifest+json",
+	"/apple-touch-icon.png": "",
+	"/icon-192.png":         "",
+	"/icon-512.png":         "",
+}
 
 // Handler serves the embedded frontend. A nil logger uses slog.Default.
 func Handler(logger *slog.Logger) http.Handler {
@@ -30,8 +40,8 @@ func Handler(logger *slog.Logger) http.Handler {
 	return handler(root, logger)
 }
 
-// handler serves "/" as index.html and regular files under /assets/ from
-// root. It never lists a directory. It logs the 503 for a missing build and
+// handler serves "/" as index.html, regular files under /assets/ and the
+// root files from root. It never lists a directory. It logs the 503 for a missing build and
 // any 5xx from the serving path once.
 func handler(root fs.FS, logger *slog.Logger) http.Handler {
 	if logger == nil {
@@ -53,7 +63,7 @@ func handler(root fs.FS, logger *slog.Logger) http.Handler {
 			return
 		}
 		recorder := &statusWriter{ResponseWriter: w}
-		serveFile(recorder, r, root, name, cache)
+		serveFile(recorder, r, root, name, cache, rootFiles[r.URL.Path])
 		// The status and path are enough to look; the file system error itself
 		// is not exposed to the client.
 		if recorder.status >= 500 {
@@ -63,8 +73,9 @@ func handler(root fs.FS, logger *slog.Logger) http.Handler {
 }
 
 // serveFile answers 404 for a missing file or a directory and 500 for any
-// other file system error.
-func serveFile(w http.ResponseWriter, r *http.Request, root fs.FS, name, cache string) {
+// other file system error. An empty contentType is detected from the name or
+// the content.
+func serveFile(w http.ResponseWriter, r *http.Request, root fs.FS, name, cache, contentType string) {
 	f, err := root.Open(name)
 	if errors.Is(err, fs.ErrNotExist) {
 		http.NotFound(w, r)
@@ -89,6 +100,9 @@ func serveFile(w http.ResponseWriter, r *http.Request, root fs.FS, name, cache s
 		http.Error(w, "Frontend file is not seekable", http.StatusInternalServerError)
 		return
 	}
+	if contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
 	w.Header().Set("Cache-Control", cache)
 	http.ServeContent(w, r, name, info.ModTime(), content)
 }
@@ -101,6 +115,9 @@ func route(path string) (name, cache string, ok bool) {
 	name = strings.TrimPrefix(path, "/")
 	if strings.HasPrefix(name, "assets/") && name != "assets/" && !strings.HasSuffix(name, "/") && fs.ValidPath(name) {
 		return name, cacheHashed, true
+	}
+	if _, ok := rootFiles[path]; ok {
+		return name, cacheFixed, true
 	}
 	return "", "", false
 }

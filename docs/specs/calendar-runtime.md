@@ -30,11 +30,20 @@ re-evaluates the current instant; elapsed transitions are not queued.
   runner without trying to restore or overwrite it.
 - Resolve all enabled pattern references and unexpired overrides by exact original
   slot and parameter bytes. Custom/unmatched designs and current conflicts or
-  upcoming skipped occurrences pause. Resolved DST shifts and repeated clock times
+  upcoming skipped occurrences (evaluator issues with `skipped: true`, never
+  message text) pause. Resolved DST shifts and repeated clock times
   follow the existing evaluator semantics. Calendar preview remains independent.
 - Evaluate current intent after the read and again before recording pending intent.
   A calendar save, ownership change or interval expiry while queued MUST prevent
   a stale write. Revision/ownership checks and pending intent commit together.
+  These stale-intent rejections, including a save between the guard's own reads,
+  and a typed deadline-only expiry (only the intent deadline stopped the request,
+  before pending intent was journaled) keep ownership active and re-evaluate on
+  the next pass: no write was possible. Every other error pauses, also when the
+  deadline has passed: stale baseline, external change, unsupported state or
+  intent, persistence and unknown errors, and any failure after journaling.
+  The pending commit MUST also reject an invalid control, or one whose action
+  differs from the delivery action: OFF for `off`, play for `pattern`.
 - A pending operation belongs to one ownership version. Completion updates its
   checkpoint atomically with the final observation/audit. Only verified/reconciled
   results advance the owned fingerprint. Errors pause; no ambiguous write retries.

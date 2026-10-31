@@ -18,6 +18,7 @@ import (
 
 	"github.com/frostyard/clix"
 	"github.com/spf13/cobra"
+	"golang.org/x/sys/unix"
 	"trimlights/internal/auth"
 	"trimlights/internal/service"
 	"trimlights/internal/trimlight"
@@ -100,6 +101,9 @@ func serveCommand() *cobra.Command {
 		if clix.DryRun {
 			return result(cmd, map[string]any{"dry_run": true, "listen": listen, "controller_enabled": c.Controller != nil, "restore_guarded": guarded}, "Configuration valid; no listener, database or controller connection opened.")
 		}
+		// Defence in depth: storage sets explicit modes, and any other file the
+		// service creates stays private to the service user.
+		unix.Umask(0o077)
 		if err = service.Run(cmd.Context(), c); err != nil {
 			logger.Error("trimlight stopped", "error", service.LogError(err))
 			return terminalError(err)
@@ -244,7 +248,7 @@ func readOIDC(path string) (*auth.Config, error) {
 		return nil, errors.New("OIDC secret file is too large")
 	}
 	input.ClientSecret = strings.TrimSpace(string(b))
-	if err = input.Config.Validate(); err != nil {
+	if err = input.Validate(); err != nil {
 		return nil, err
 	}
 	return &input.Config, nil

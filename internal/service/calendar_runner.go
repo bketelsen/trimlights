@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -17,15 +16,19 @@ import (
 // native timer handoff require protocol evidence; there is no enabling flag/API.
 // Tests exercise this engine through the real worker, with synthetic hardware.
 type calendarRunner struct {
-	store    *storage.Store
-	worker   *Worker
-	now      func() time.Time
-	mu       sync.Mutex
-	failures int
+	store  *storage.Store
+	worker *Worker
+	now    func() time.Time
+	// Test seams: intent is calendarIntent and deliveryContext is
+	// context.WithTimeout. Tests replace them to inject read races and expiry.
+	intent          func(context.Context, *storage.Store, time.Time, *trimlight.Snapshot) (storage.SavedSchedule, schedule.Segment, trimlight.ControlRequest, error)
+	deliveryContext func(context.Context, time.Duration) (context.Context, context.CancelFunc)
+	mu              sync.Mutex
+	failures        int
 }
 
 func newCalendarRunner(s *storage.Store, w *Worker) *calendarRunner {
-	return &calendarRunner{store: s, worker: w, now: time.Now}
+	return &calendarRunner{store: s, worker: w, now: time.Now, intent: calendarIntent, deliveryContext: context.WithTimeout}
 }
 func (r *calendarRunner) Run(ctx context.Context) error {
 	for {
@@ -82,7 +85,7 @@ func calendarIntent(ctx context.Context, s *storage.Store, now time.Time, snap *
 		return saved, intent, trimlight.ControlRequest{}, errors.New("current calendar rules conflict")
 	}
 	for _, issue := range preview.Issues {
-		if strings.HasPrefix(issue.Message, "Skipped:") {
+		if issue.Skipped {
 			return saved, intent, trimlight.ControlRequest{}, errors.New("upcoming calendar occurrences are skipped; review the timeline")
 		}
 	}
@@ -181,7 +184,7 @@ func (r *calendarRunner) Step(ctx context.Context) (time.Duration, error) {
 	if snap.StableSHA256 != state.OwnedSHA256 || snap.Playback.Mode == "timer" {
 		return r.pause(ctx, state, "Controller state changed outside Calendar; review before resuming.")
 	}
-	saved, intent, command, err := calendarIntent(ctx, r.store, r.now().UTC(), snap)
+	saved, intent, command, err := r.intent(ctx, r.store, r.now().UTC(), snap)
 	if errors.Is(err, storage.ErrScheduleConflict) {
 		return time.Second, nil
 	}
@@ -198,7 +201,12 @@ func (r *calendarRunner) Step(ctx context.Context) (time.Duration, error) {
 		if now.Before(delivery.From) || !now.Before(delivery.Until) {
 			return storage.ErrCalendarOwnership
 		}
-		fresh, current, wanted, err := calendarIntent(ctx, r.store, now, before)
+		fresh, current, wanted, err := r.intent(ctx, r.store, now, before)
+		if errors.Is(err, storage.ErrScheduleConflict) {
+			// A calendar save between the guard's reads is a newer revision: stop
+			// this stale write and let the next pass evaluate it, as for any save.
+			return storage.ErrCalendarOwnership
+		}
 		if err != nil {
 			return err
 		}
@@ -213,7 +221,7 @@ func (r *calendarRunner) Step(ctx context.Context) (time.Duration, error) {
 	if remaining <= 0 {
 		return time.Second, nil
 	}
-	deliveryCtx, cancelDelivery := context.WithTimeout(ctx, remaining)
+	deliveryCtx, cancelDelivery := r.deliveryContext(ctx, remaining)
 	defer cancelDelivery()
 	_, done, err = r.worker.enqueue(deliveryCtx, "calendar", &command, delivery, nil, guard)
 	if err == nil {
@@ -229,6 +237,13 @@ func (r *calendarRunner) Step(ctx context.Context) (time.Duration, error) {
 		latest, e := r.store.CalendarRuntime(ctx)
 		if e != nil {
 			return 0, e
+		}
+		// Only the intent deadline stopped the request, before pending intent was
+		// journaled, so no write was possible: re-evaluate instead of pausing. Any
+		// other error pauses, also after the deadline. An unchanged version is a
+		// second check that no pending delivery was journaled.
+		if errors.Is(err, errCalendarExpired) && latest.Version == state.Version && latest.Status == "active" && latest.PendingID == "" {
+			return time.Second, nil
 		}
 		if latest.Status == "active" {
 			return r.pause(ctx, latest, fmt.Sprintf("Calendar command stopped: %v", err))

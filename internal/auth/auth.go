@@ -211,7 +211,7 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 	sealed, err := a.sealFlow(pendingFlow{StateHash: hash(state), Browser: browser, Nonce: nonce, Verifier: verifier, Expires: a.now().Add(flowLife).Unix()})
 	if err != nil {
 		a.log.ErrorContext(r.Context(), "sign-in flow unavailable", "status", 503, "error", err)
-		http.Error(w, "Login temporarily unavailable", 503)
+		http.Error(w, "Login temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	cookie(w, flowCookie, sealed, int(flowLife/time.Second))
@@ -253,19 +253,19 @@ func (a *Auth) callback(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.release(flow)
 		a.log.WarnContext(r.Context(), "sign-in token exchange failed", exchangeFailure(err)...)
-		http.Error(w, "Identity provider rejected login", 401)
+		http.Error(w, "Identity provider rejected login", http.StatusUnauthorized)
 		return
 	}
 	raw, ok := token.Extra("id_token").(string)
 	if !ok {
 		a.log.WarnContext(r.Context(), "sign-in verification failed", "reason", "missing_id_token")
-		http.Error(w, "Missing identity token", 401)
+		http.Error(w, "Missing identity token", http.StatusUnauthorized)
 		return
 	}
 	identity, err := a.verifier.Verify(ctx, raw)
 	if err != nil {
 		a.log.WarnContext(r.Context(), "sign-in verification failed", "reason", verifyFailure(err))
-		http.Error(w, "Invalid identity token", 401)
+		http.Error(w, "Invalid identity token", http.StatusUnauthorized)
 		return
 	}
 	if identity.Nonce != flow.Nonce {
@@ -283,14 +283,14 @@ func (a *Auth) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	if err = identity.Claims(&claims); err != nil {
 		a.log.WarnContext(r.Context(), "sign-in verification failed", "reason", "invalid_claims", "subject", identity.Subject)
-		http.Error(w, "Invalid identity claims", 401)
+		http.Error(w, "Invalid identity claims", http.StatusUnauthorized)
 		return
 	}
 	id := rand.Text()
 	session := storage.Session{Hash: a.sessionHash(id), Subject: identity.Subject, Name: claims.Name, CSRF: rand.Text(), Expires: a.now().Add(12 * time.Hour)}
 	if err = a.store.SaveSession(r.Context(), session); err != nil {
 		a.log.ErrorContext(r.Context(), "sign-in session not saved", "status", 503, "subject", identity.Subject, "error", err)
-		http.Error(w, "Could not save login", 503)
+		http.Error(w, "Could not save login", http.StatusServiceUnavailable)
 		return
 	}
 	a.log.InfoContext(r.Context(), "sign-in succeeded", "subject", identity.Subject)
@@ -315,7 +315,7 @@ func (a *Auth) Handler(next http.Handler) http.Handler {
 		}
 		if r.URL.Path == "/auth/login" || r.URL.Path == "/auth/callback" {
 			if r.Method != "GET" {
-				http.Error(w, "Method not allowed", 405)
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
 			if r.URL.Path == "/auth/login" {
@@ -341,7 +341,7 @@ func (a *Auth) Handler(next http.Handler) http.Handler {
 		}
 		if r.Method != "GET" && r.Method != "HEAD" {
 			if r.Header.Get("Origin") != a.config.Origin || subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(session.CSRF)) != 1 {
-				http.Error(w, "Invalid request origin or CSRF token", 403)
+				http.Error(w, "Invalid request origin or CSRF token", http.StatusForbidden)
 				return
 			}
 		}
@@ -353,7 +353,7 @@ func (a *Auth) Handler(next http.Handler) http.Handler {
 		if r.URL.Path == "/api/v1/logout" && r.Method == "POST" {
 			if err = a.store.DeleteSession(r.Context(), session.Hash); err != nil {
 				a.log.ErrorContext(r.Context(), "sign-out failed", "status", 503, "subject", session.Subject, "error", err)
-				http.Error(w, "Could not log out", 503)
+				http.Error(w, "Could not log out", http.StatusServiceUnavailable)
 				return
 			}
 			cookie(w, sessionCookie, "", -1)

@@ -10,6 +10,7 @@ Recovery procedure: [backup operations](backup-operations.md).
 Photo rationale: [ADR-0008](../adr/0008-private-photos-and-physical-mapping.md).
 Publication: [ADR-0007](../adr/0007-public-repository-and-private-deployment.md).
 Image releases: [ADR-0015](../adr/0015-versioned-attested-images.md).
+Repository gate: [ADR-0016](../adr/0016-adopt-the-frostyard-make-gate.md).
 Contracts: [local service](../specs/local-service.md),
 [household authentication](../specs/household-auth.md),
 [house mapping](../specs/house.md), [pattern library](../specs/patterns.md), [calendar](../specs/schedules.md),
@@ -63,10 +64,15 @@ flowchart LR
 - `internal/storage`: SQLite schema and atomic observation/audit persistence. A
   process lock prevents concurrent owners of one data directory; separate data
   directories or hosts can still compete and require operational isolation.
+  Database files are private (0600) regardless of the umask; startup tightens
+  database files the process owns, never changes the data directory, and warns
+  about the rest ([contract](../specs/local-service.md)).
 - `internal/auth`: OIDC state/nonce/PKCE, subject allowlist, opaque sessions and CSRF.
 - `internal/webui`: embedded browser build and restrictive content security policy.
-  It serves an allowlist with long-lived caching for hashed bundles and no
-  directory listings ([local service contract](../specs/local-service.md)).
+  It serves `/`, `/assets/` and a fixed list of root files for home-screen use
+  (`manifest.webmanifest`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`),
+  with long-lived caching only for hashed bundles and no directory listings
+  ([local service contract](../specs/local-service.md)).
 - `internal/pattern`: validated design schema and deterministic logical-pixel render.
 - `internal/schedule`: pure calendar validation, civil/solar intervals and precedence.
 - `internal/house`: bounded photo normalization and validated address/geometry model.
@@ -100,12 +106,28 @@ controls first and shows observation age as “Last checked.” Saved timer time
 the browser's local display format. The UI translates mode and operation names
 into household language; raw snapshots, wire parameters, revision numbers and
 transport errors remain in the service/API contracts rather than ordinary screens.
+As of 2026-10-30, a rejected entry (a 4xx JSON error) shows the service's own
+validation text, so the household can see what to fix; gateway pages and network
+failures show plain retry advice instead (see the [house contract](../specs/house.md#rules)).
 Calendar has one plain planning-only notice, with timer imports, file management,
 history and setup behind disclosures. House keeps wiring and precise corner fields
 behind setup controls. Preview labels state what the image is; research caveats
 belong in this documentation. Clock-update acknowledgement, duplicate-submission
 guards, stale-edit protection, authentication and production activation gates stay
 in place. Panels use consistent inner spacing and controls wrap at phone widths.
+
+As of 2026-10-30, the top-level page is in the URL hash (`#home`, `#library`,
+`#calendar`, `#house`, `#settings`), so reload keeps the page and browser Back,
+including Android Back, returns to the previous page. Back, Forward or a typed hash
+over unsaved edits asks first, like the navigation buttons. A refusal pushes the page
+still on screen after the entry the browser moved to. No earlier entry is overwritten
+or deleted; only forward entries are dropped, as on any navigation. Each page sets its document title and moves focus
+to its `h1`. Status messages render inside live regions that are always mounted, so
+screen readers announce them; alerts keep `role="alert"`. Text fields use 16 px text
+on narrow or touch screens so iOS Safari does not zoom, disclosure summaries and
+checkbox rows are at least 44 px high, and the page pads for device safe areas.
+A web app manifest and icons support home-screen shortcuts. The manifest keeps the
+default browser display mode: a standalone mode needs a phone sign-in check first.
 
 Use clix's reserved `--json`, `--verbose/-v`, `--dry-run/-n`, and `--silent/-s`
 without redefining them. `--dry-run` must not call the current snapshot request,
@@ -239,6 +261,9 @@ ownership version, last verified fingerprint and pending operation. Pending inte
 audit and baseline commit together; completion and observation advance ownership
 atomically. Calendar revision and interval guards reject stale queued commands.
 Transport deadlines also bound delivery to the intent's remaining lifetime.
+A benign stale-intent rejection (calendar save, ownership change or interval
+end) or a deadline-only expiry before pending intent is journaled cannot write,
+so it re-evaluates the next pass. Every other delivery error pauses.
 
 Read failures back off; reconnect evaluates now. Resolved DST intervals and
 absolute override expiry use the existing evaluator. Unsupported references,
@@ -344,11 +369,26 @@ Back up before database migrations; use versioned images and a documented rollba
 path. Credentials stay outside the image/repository. The initial release needs no
 Kubernetes, Redis, message broker or separate database server.
 
+### Repository gate
+
+Rationale: [ADR-0016](../adr/0016-adopt-the-frostyard-make-gate.md). Tools are
+pinned in `mise.toml` with checksums in `mise.lock`; Go comes from `go.mod`.
+
+| Target | Runs | Use |
+| --- | --- | --- |
+| `make verify` | `go mod tidy -diff`, `gofmt -l`, `go vet`, golangci-lint, race tests, doc links | Credential-free and non-mutating; no Node or pnpm |
+| `make ci` | `verify`, then frontend tests and build, then the static binary build | The Check workflow's `check` job |
+| `make check` | `gofmt -w`, then `make ci` | Developer gate before a change is done |
+| `make vulncheck` | Pinned govulncheck; needs the network | Separate workflow job, outside the gate |
+
+No gate target contacts lighting hardware. Set `IN_NSL` to a command prefix,
+such as `nsl run -m lodge`, to run pnpm in an nsl machine.
+
 ### Image releases
 
 Rationale: [ADR-0015](../adr/0015-versioned-attested-images.md). The Check
 workflow publishes `ghcr.io/bketelsen/trimlights` for linux/amd64 and
-linux/arm64 only after `make check` passes. A build job without write
+linux/arm64 only after `make ci` passes ([repository gate](#repository-gate)). A build job without write
 permissions compiles both static binaries and hands them over as an artifact.
 A separate publish job packages them with the copy-only Containerfile, pushes,
 and attests the pushed digest with GitHub build provenance. Only publish and

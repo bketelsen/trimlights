@@ -9,10 +9,13 @@ import (
 	"time"
 )
 
+// Issue is a preview notice. Skipped marks an occurrence that was dropped;
+// callers MUST test it, never the wording of Message.
 type Issue struct {
 	RuleID  string `json:"rule_id"`
 	Date    string `json:"date"`
 	Message string `json:"message"`
+	Skipped bool   `json:"skipped"`
 }
 type Candidate struct {
 	ID       string `json:"id"`
@@ -230,28 +233,28 @@ func Evaluate(p Plan, from, until time.Time) (Preview, error) {
 			// this preview; failures on dates in the preview are always visible.
 			inDate := endDay.Format("2006-01-02") >= start.Format("2006-01-02") && day.Format("2006-01-02") <= finish.Format("2006-01-02")
 			intersects := ae == nil && be == nil && b.After(from) && a.Before(until)
-			issue := func(message string) {
+			issue := func(message string, skipped bool) {
 				if inDate || intersects {
-					out.Issues = append(out.Issues, Issue{r.ID, day.Format("2006-01-02"), message})
+					out.Issues = append(out.Issues, Issue{RuleID: r.ID, Date: day.Format("2006-01-02"), Message: message, Skipped: skipped})
 				}
 			}
 			if ae != nil {
-				issue("Skipped: " + ae.Error())
+				issue("Skipped: "+ae.Error(), true)
 				continue
 			}
 			if be != nil {
-				issue("Skipped: " + be.Error())
+				issue("Skipped: "+be.Error(), true)
 				continue
 			}
 			if !b.After(a) {
-				issue("Skipped: end does not follow start on this date.")
+				issue("Skipped: end does not follow start on this date.", true)
 				continue
 			}
 			if an != "" {
-				issue(an)
+				issue(an, false)
 			}
 			if bn != "" {
-				issue(bn)
+				issue(bn, false)
 			}
 			add(occurrence{a, b, Candidate{r.ID, r.Name, r.Kind, r.Priority, r.Action}})
 		}

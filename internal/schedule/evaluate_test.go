@@ -257,6 +257,54 @@ func TestSolarGoldenAndOffsetAcrossMidnight(t *testing.T) {
 	}
 }
 
+// Callers rely on Issue.Skipped, not message wording. Cover every skip source
+// and confirm that adjustment notices for kept occurrences are not skips.
+func TestIssueSkippedIsTypedForEverySource(t *testing.T) {
+	polar := func(start, end Boundary) Plan {
+		p := Default()
+		p.Timezone = "Arctic/Longyearbyen"
+		p.Location = &Location{78.2232, 15.6469}
+		r := weekly()
+		r.Start, r.End = start, end
+		p.Rules = []Rule{r}
+		return p
+	}
+	clock := func(day, start, end, tz string) Plan {
+		p := Default()
+		p.Timezone = tz
+		r := weekly()
+		r.Kind, r.From, r.Through, r.Weekdays = "exception", day, day, nil
+		r.Start.Time, r.End.Time = start, end
+		p.Rules = []Rule{r}
+		return p
+	}
+	for _, tc := range []struct {
+		name        string
+		plan        Plan
+		from, until string
+		skipped     bool
+	}{
+		{"start-boundary", polar(Boundary{Kind: "sunset"}, Boundary{Kind: "clock", Time: "23:00"}), "2026-06-21T00:00:00Z", "2026-06-22T00:00:00Z", true},
+		{"end-boundary", polar(Boundary{Kind: "clock", Time: "18:00"}, Boundary{Kind: "sunset"}), "2026-06-21T00:00:00Z", "2026-06-22T00:00:00Z", true},
+		{"missing-civil-date", clock("2011-12-30", "12:00", "13:00", "Pacific/Apia"), "2011-12-29T00:00:00Z", "2011-12-31T12:00:00Z", true},
+		{"inverted", clock("2026-03-08", "02:30", "03:15", "America/New_York"), "2026-03-08T05:00:00Z", "2026-03-09T04:00:00Z", true},
+		{"gap-shift", clock("2026-03-08", "02:30", "04:00", "America/New_York"), "2026-03-08T00:00:00Z", "2026-03-08T12:00:00Z", false},
+		{"repeat", clock("2026-11-01", "01:15", "01:45", "America/New_York"), "2026-11-01T00:00:00Z", "2026-11-01T12:00:00Z", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := evaluate(t, tc.plan, tc.from, tc.until)
+			if len(out.Issues) == 0 {
+				t.Fatal("no issue", out)
+			}
+			for _, issue := range out.Issues {
+				if issue.Skipped != tc.skipped {
+					t.Fatal(issue)
+				}
+			}
+		})
+	}
+}
+
 func TestPlanValidationBounds(t *testing.T) {
 	located := func(p *Plan) { p.Location = &Location{40.7128, -74.006} }
 	manyRules := func(n int) func(*Plan) {
@@ -397,7 +445,7 @@ func TestMidnightDSTGapAndRepeatEndToEnd(t *testing.T) {
 		{From: instant("2026-03-08T05:00:00Z"), Until: instant("2026-03-08T06:00:00Z"), Action: patternAction("early")},
 		{From: instant("2026-03-08T06:00:00Z"), Until: instant("2026-03-09T04:00:00Z"), Action: off},
 	})
-	checkIssues(t, out, []Issue{{"early", "2026-03-08", "Missing clock time: shifted forward by 1h0m0s."}})
+	checkIssues(t, out, []Issue{{"early", "2026-03-08", "Missing clock time: shifted forward by 1h0m0s.", false}})
 
 	out, err = EvaluateDates(p, "2026-11-01", 1)
 	if err != nil {
@@ -408,7 +456,7 @@ func TestMidnightDSTGapAndRepeatEndToEnd(t *testing.T) {
 		{From: instant("2026-11-01T04:00:00Z"), Until: instant("2026-11-01T07:00:00Z"), Action: patternAction("early")},
 		{From: instant("2026-11-01T07:00:00Z"), Until: instant("2026-11-02T05:00:00Z"), Action: off},
 	})
-	checkIssues(t, out, []Issue{{"early", "2026-11-01", "Repeated clock time: using the first occurrence for the start."}})
+	checkIssues(t, out, []Issue{{"early", "2026-11-01", "Repeated clock time: using the first occurrence for the start.", false}})
 
 	// Lebanon also springs forward at midnight: 2026-03-29 00:00 EET becomes 01:00 EEST.
 	beirut := zone(t, "Asia/Beirut")
@@ -428,8 +476,8 @@ func TestMidnightDSTGapAndRepeatEndToEnd(t *testing.T) {
 		{From: instant("2026-03-28T22:30:00Z"), Until: instant("2026-03-29T00:00:00Z"), Action: off},
 	})
 	checkIssues(t, out, []Issue{
-		{"evening", "2026-03-28", "Missing clock time: shifted forward by 1h0m0s."},
-		{"early", "2026-03-29", "Missing clock time: shifted forward by 1h0m0s."},
+		{"evening", "2026-03-28", "Missing clock time: shifted forward by 1h0m0s.", false},
+		{"early", "2026-03-29", "Missing clock time: shifted forward by 1h0m0s.", false},
 	})
 }
 
@@ -460,7 +508,7 @@ func TestSkippedCivilDateEndToEnd(t *testing.T) {
 		{From: instant("2011-12-30T23:00:00Z"), Until: instant("2011-12-31T10:00:00Z"), Action: off},
 	})
 	skipped := "Skipped: civil date or clock time does not exist"
-	checkIssues(t, out, []Issue{{"daily", "2011-12-30", skipped}, {"skipped-day", "2011-12-30", skipped}})
+	checkIssues(t, out, []Issue{{"daily", "2011-12-30", skipped, true}, {"skipped-day", "2011-12-30", skipped, true}})
 
 	// Evaluate over the same instants agrees with the local-date form.
 	again := evaluate(t, p, "2011-12-29T10:00:00Z", "2011-12-31T10:00:00Z")

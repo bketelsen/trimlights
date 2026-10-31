@@ -1,9 +1,14 @@
-# Tool pins for this repository (frostyard/core ADR-0043). mise.lock carries
-# each tool's checksums: `mise install` provisions exactly these. Go comes from
-# go.mod's toolchain line; Node and pnpm versions are pinned in CI for now.
+# Tool pins for this repository (frostyard/core ADR-0043). Go comes from
+# go.mod's toolchain line (its go line is only the minimum); never pin it
+# here. mise.lock carries each tool's checksums: `mise install` provisions
+# exactly these. Node and pnpm versions are pinned in CI for now; a developer
+# can run the web targets in an nsl machine with IN_NSL (see the Makefile).
 [settings]
+idiomatic_version_file_enable_tools = ["go"]
 lockfile = true
 
 [tools]
+# make lint, and so make verify, check and ci; the Makefile checks this release.
+golangci-lint = "2.15.0"
 # make bump, via svu next (tags a release; ADR-0015).
 svu = "3.4.1"

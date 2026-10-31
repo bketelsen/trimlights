@@ -93,7 +93,10 @@ func (c *Client) verifyPlayback(ctx context.Context, fingerprint string, target 
 		var err error
 		if pending != nil {
 			select {
-			case <-pending:
+			case late := <-pending:
+				// The overrun call was reported when its deadline passed; its
+				// late result is dropped on purpose.
+				_ = late
 				pending = nil
 			default:
 				err = errors.New("skipped: an earlier evidence recorder call is still running")

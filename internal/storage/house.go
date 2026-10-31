@@ -33,7 +33,7 @@ func (s *Store) AddPhoto(ctx context.Context, p house.PhotoImage, actor string) 
 	if err != nil {
 		return Photo{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var count int
 	if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM photos").Scan(&count); err != nil {
 		return Photo{}, err
@@ -122,7 +122,7 @@ func (s *Store) SaveHouse(ctx context.Context, expected int, l house.Layout, act
 	if err != nil {
 		return SavedHouse{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var current int
 	if err = tx.QueryRowContext(ctx, "SELECT MAX(revision) FROM house_revisions").Scan(&current); err != nil {
 		return SavedHouse{}, err
@@ -164,7 +164,7 @@ func (s *Store) ValidateHouse(ctx context.Context, l house.Layout) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	return checkHousePhotos(ctx, tx, l)
 }
 func checkHousePhotos(ctx context.Context, tx *sql.Tx, l house.Layout) error {

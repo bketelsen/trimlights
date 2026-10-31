@@ -79,7 +79,7 @@ func (s *Store) SaveSchedule(ctx context.Context, expected int, p schedule.Plan,
 	if err != nil {
 		return SavedSchedule{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	current, err := scanSchedule(tx.QueryRowContext(ctx, "SELECT revision,body,actor,created FROM schedule_revisions ORDER BY revision DESC LIMIT 1"))
 	if err != nil {
 		return SavedSchedule{}, err
@@ -139,7 +139,7 @@ func (s *Store) ValidateSchedule(ctx context.Context, expected int, p schedule.P
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	current, err := scanSchedule(tx.QueryRowContext(ctx, "SELECT revision,body,actor,created FROM schedule_revisions ORDER BY revision DESC LIMIT 1"))
 	if err != nil {
 		return err

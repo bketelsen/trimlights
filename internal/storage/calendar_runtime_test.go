@@ -159,3 +159,28 @@ func TestRuntimeCleanRestartGateAndStaleClaim(t *testing.T) {
 		t.Fatal("stale claim accepted")
 	}
 }
+
+func TestRuntimePendingDeliveryActionMatchesControl(t *testing.T) {
+	s, _, o := runtimeFixture(t)
+	ctx := context.Background()
+	for _, mismatch := range []func(*Operation){
+		func(op *Operation) { op.Control.Request.Action, op.Control.Request.PatternID = "play", 1 },
+		func(op *Operation) { op.Control.Request.Action = "timer" },
+		func(op *Operation) {
+			op.Control.Calendar.Action = schedule.Action{Kind: "pattern", PatternID: "fixture", Revision: 1}
+		},
+	} {
+		op := pendingCalendar(o)
+		mismatch(&op)
+		if err := s.Record(ctx, o, op); err == nil {
+			t.Fatal("mismatched delivery accepted", op.Control.Request, op.Control.Calendar.Action)
+		}
+		state, _ := s.CalendarRuntime(ctx)
+		if state.Version != 2 || state.PendingID != "" {
+			t.Fatal("mismatched delivery committed", state)
+		}
+	}
+	if err := s.Record(ctx, o, pendingCalendar(o)); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -63,7 +63,7 @@ func clockQuery(now time.Time) ([]byte, error) {
 		return nil, errors.New("year outside wire range")
 	}
 	if now.Weekday() == time.Sunday {
-		return nil, errors.New("Sunday clock encoding has not been verified")
+		return nil, errors.New("clock encoding for Sunday has not been verified")
 	}
 	return []byte{0x15, 0, 7, byte(now.Year() - 2000), byte(now.Month()), byte(now.Day()), byte(now.Weekday()), byte(now.Hour()), byte(now.Minute()), byte(now.Second())}, nil
 }
