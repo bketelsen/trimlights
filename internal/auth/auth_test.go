@@ -249,3 +249,111 @@ func TestStateBindingExpiryAndAuthorizationRemoval(t *testing.T) {
 		t.Fatal(rr.Code)
 	}
 }
+
+func sessionFrom(w *httptest.ResponseRecorder) *http.Cookie {
+	for _, c := range w.Result().Cookies() {
+		if c.Name == sessionCookie && c.Value != "" {
+			return c
+		}
+	}
+	return nil
+}
+
+// flowCleared reports whether a callback response deletes the flow cookie.
+func flowCleared(w *httptest.ResponseRecorder) bool {
+	for _, c := range w.Result().Cookies() {
+		if c.Name == flowCookie && c.MaxAge < 0 && c.Value == "" {
+			return true
+		}
+	}
+	return false
+}
+
+func TestAnonymousLoginFloodDoesNotBlockSignIn(t *testing.T) {
+	a, f := authFixture(t)
+	for i := 0; i < 101; i++ {
+		if w := call(a, "GET", "/auth/login", nil, "", ""); w.Code != 303 {
+			t.Fatal("anonymous login", i, w.Code, w.Body.String())
+		}
+	}
+	path, flow := begin(t, a, f)
+	w := call(a, "GET", path, flow, "", "")
+	if w.Code != 303 || sessionFrom(w) == nil || !flowCleared(w) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+func TestSealedFlowCookieRefusals(t *testing.T) {
+	a, f := authFixture(t)
+	path, flow := begin(t, a, f)
+	f.mu.Lock()
+	nonce := f.nonce
+	f.mu.Unlock()
+	if strings.Contains(flow.Value, nonce) || len(flow.Value) > maxFlowCookie || flow.MaxAge != 600 {
+		t.Fatal("flow cookie exposes state or has a wrong life", flow)
+	}
+	otherPath, other := begin(t, a, f)
+	refused := func(name, path string, c *http.Cookie) {
+		t.Helper()
+		w := call(a, "GET", path, c, "", "")
+		if w.Code != 400 || sessionFrom(w) != nil || !flowCleared(w) {
+			t.Fatal(name, w.Code, w.Body.String())
+		}
+	}
+	tampered := *flow
+	raw := []byte(tampered.Value)
+	if raw[len(raw)/2] == 'A' {
+		raw[len(raw)/2] = 'B'
+	} else {
+		raw[len(raw)/2] = 'A'
+	}
+	tampered.Value = string(raw)
+	refused("tampered", path, &tampered)
+	refused("other browser", path, other)
+	refused("wrong state", otherPath+"x", other)
+	refused("missing", path, nil)
+	stamp := time.Now()
+	a.now = func() time.Time { return stamp.Add(10*time.Minute + time.Second) }
+	refused("expired", path, flow)
+	a.now = time.Now
+	// A cookie sealed by another process, such as before a restart, is refused.
+	b, _ := authFixture(t)
+	foreign, err := b.sealFlow(pendingFlow{StateHash: hash("state"), Browser: "b", Nonce: "n", Verifier: "v", Expires: time.Now().Add(time.Minute).Unix()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused("foreign key", "/auth/callback?code=valid&state=state", &http.Cookie{Name: flowCookie, Value: foreign})
+	f.mu.Lock()
+	calls := f.calls
+	f.mu.Unlock()
+	if calls != 0 {
+		t.Fatal("refused flow reached token endpoint", calls)
+	}
+	// The original flows still work, and each works once.
+	f.mu.Lock()
+	f.nonce, f.challenge = "", ""
+	f.mu.Unlock()
+	path, flow = begin(t, a, f)
+	if w := call(a, "GET", path, flow, "", ""); w.Code != 303 || sessionFrom(w) == nil || !flowCleared(w) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	refused("replay", path, flow)
+}
+
+func TestFailedExchangeDoesNotSpendFlow(t *testing.T) {
+	a, f := authFixture(t)
+	path, flow := begin(t, a, f)
+	bad := strings.Replace(path, "code=valid", "code=forged", 1)
+	if w := call(a, "GET", bad, flow, "", ""); w.Code != 401 || !flowCleared(w) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	a.spentMu.Lock()
+	entries := len(a.spent)
+	a.spentMu.Unlock()
+	if entries != 0 {
+		t.Fatal("failed exchange left a replay entry", entries)
+	}
+	if w := call(a, "GET", path, flow, "", ""); w.Code != 303 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}

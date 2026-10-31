@@ -120,7 +120,9 @@ lights, edit patterns/schedules and upload photos. Administrative functions incl
 controller topology, identity membership, backup/restore and deployment settings.
 
 The Go backend is a confidential OIDC client, with exact callback registration,
-state/nonce validation, PKCE, and secure HttpOnly session cookies. Mutations require
+state/nonce validation, PKCE, and secure HttpOnly session cookies. Pending login
+state is sealed in the flow cookie, so anonymous logins write nothing to SQLite
+([household auth contract](../specs/household-auth.md)). Mutations require
 CSRF protection and authorization. Use version checks on edited objects so one
 phone cannot silently overwrite the other. Audit human actions by stable subject
 and scheduler actions by rule ID. The scheduler does not depend on a user login
