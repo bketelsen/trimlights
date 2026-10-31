@@ -55,7 +55,7 @@ func commandRun(fn func(*cobra.Command, []string) error) func(*cobra.Command, []
 
 func rootCommand() *cobra.Command {
 	root := &cobra.Command{Use: "trimlight", Short: "Shared household lighting", SilenceUsage: true}
-	root.AddCommand(diagnosticCommand(false), diagnosticCommand(true), playbackVerificationCommand(), serveCommand(), apiCommand(false), apiCommand(true), backupCommand(false), backupCommand(true))
+	root.AddCommand(diagnosticCommand(false), diagnosticCommand(true), playbackVerificationCommand(), serveCommand(), apiCommand(false), apiCommand(true), backupCommand(false), backupCommand(true), healthcheckCommand())
 	return root
 }
 

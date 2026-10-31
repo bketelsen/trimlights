@@ -13,6 +13,7 @@ foundation, not the authenticated household web application in the v1 contract.
 | `snapshot` | `--host` or `TRIMLIGHT_CONTROLLER_HOST` | Direct diagnostic; optional new `--output` file |
 | `probe-schedule2` | controller host, `--output`, `--baseline-sha256` | Direct bounded experiment with restoration and evidence |
 | `verify-playback` | controller host, `--output`, `--baseline-sha256`, `--pattern-id` | Separate bounded OFF/saved-slot/TIMER [verification](playback-verification.md) |
+| `healthcheck` | none; optional `--url`, `--timeout` | One GET to a loopback URL (default `http://127.0.0.1:8787/readyz`, 3 s); exit 0 only on 200 ([ADR-0015](../adr/0015-versioned-attested-images.md)) |
 
 The service defaults to `127.0.0.1:8787`. CLI API commands accept a literal loopback
 HTTP URL with `--url`. Tokens are read from a file, contain at least 32 characters,
@@ -43,6 +44,10 @@ Refresh accepts exactly one JSON object, with `Content-Type: application/json`:
   Run-time command errors emit clix's `error`, `message`, `details` envelope and
   exit nonzero. Cobra parse/help/version output follows clix conventions.
 - `--silent` MUST suppress application result output. Errors still exit nonzero.
+- `healthcheck` MUST accept only an http(s) URL whose host is `localhost` or a
+  loopback IP address, without credentials. It MUST ignore proxy settings, MUST
+  NOT follow redirects, and MUST exit nonzero on a redirect, a non-200 status,
+  a refused connection, an incomplete body or the timeout (positive, at most 1 minute).
 - `status` MUST NOT synchronize the controller clock. `refresh` MUST explicitly
   acknowledge the potential clock mutation. Sundays remain refused by the driver.
 - The queue MUST serialize complete reads, admit at most eight waiting requests,
@@ -59,7 +64,10 @@ Refresh accepts exactly one JSON object, with `Content-Type: application/json`:
   the [pattern library](patterns.md), version 4 adds the [calendar](schedules.md), and version 5 adds
   [photos and layout history](house.md). Schema 6 adds [native control audits](native-controls.md). Upgrades back up
   the existing database with VACUUM INTO before a transactional migration.
-  SQLite uses WAL and FULL sync.
+  SQLite uses WAL and FULL sync. The store opens `trimlights.db` through an
+  escaped absolute `file:` URI, so `?`, `%` or `#` in a data directory name
+  stay part of the path. The URI applies a 5-second busy timeout, WAL, foreign
+  keys and FULL sync to every connection, including a replacement connection.
 - A process lock does not protect against another machine or another data directory
   owning the same hardware. Deployment MUST use a single active owner.
 - A restored data directory containing `controller-disabled` MUST disable controller
@@ -136,7 +144,8 @@ and [ADR-0011](../adr/0011-audited-household-native-controls.md).
 ## References
 
 - Rationale: [ADR-0003](../adr/0003-shared-homelab-application.md),
-  [ADR-0002](../adr/0002-agent-portable-instruction-surface.md).
+  [ADR-0002](../adr/0002-agent-portable-instruction-surface.md);
+  health check: [ADR-0015](../adr/0015-versioned-attested-images.md).
 - Context: [application design](../design/application.md).
 - Built in: [roadmap](../plans/roadmap.md).
 - Future household requirements: [v1 acceptance](v1-acceptance.md).
@@ -144,8 +153,19 @@ and [ADR-0011](../adr/0011-audited-household-native-controls.md).
 Public deployment and fixture policy follows
 [ADR-0007](../adr/0007-public-repository-and-private-deployment.md).
 A snapshot returns `stable_sha256`, the SHA-256 of all bytes except its seven-byte
-clock suffix. A non-dry diagnostic probe MUST require that reviewed fingerprint,
+clock suffix. Parsing MUST reject a snapshot whose pattern records or explicit
+schedule records reach into that suffix, so every parsed field is fingerprinted
+(added 2026-10-30). A non-dry diagnostic probe MUST require that reviewed fingerprint,
 match it against a fresh snapshot, and check its supported shape before entering
 edit mode. `probe-schedule2` retains its disabled-slot restriction; the separate
 [playback verification](playback-verification.md) requires a restorable TIMER
 baseline. A fingerprint mismatch MUST send no write.
+
+Before each `probe-schedule2` restoration write, including on a reconnect, the
+probe MUST read current state. Only snapshot offset 3319 (schedule 2 off-minute)
+MAY differ from the baseline non-clock bytes, and only with the probe value 4.
+Any other difference is an external change: cleanup MUST stop without a write and
+report `RESTORATION NOT VERIFIED`, with the observed state as `reconciled` in the
+report (added 2026-10-30). The restoration payload is unchanged. The probe MUST
+hold one client gate acquisition from its first exchange through cleanup, reconnect
+recovery and independent verification; fresh connections reuse that acquisition.

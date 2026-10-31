@@ -25,12 +25,12 @@ service cannot communicate with the controller until deliberately re-enabled.
 
 ## Operational notes
 
-Use the same image/version as the live app. Create an output directory private to
+Use the same image/version as the live app ([image releases](application.md#image-releases)). Create an output directory private to
 UID/GID 65532 when running in a container. Example host variables below represent
 local filesystem paths; do not put a live SQLite database on NFS/SMB.
 
 ```sh
-TRIMLIGHT_IMAGE=ghcr.io/bketelsen/trimlights:YOUR_PINNED_COMMIT_TAG
+TRIMLIGHT_IMAGE=ghcr.io/bketelsen/trimlights:vX.Y.Z  # the live app's pinned release
 TRIMLIGHT_DATA_PATH=/private/trimlights/data
 TRIMLIGHT_CONFIG_PATH=/private/trimlights/config
 TRIMLIGHT_BACKUP_PATH=/private/trimlights/backups
@@ -75,7 +75,8 @@ retention/off-host replication and an in-app backup download UI are not implemen
 
 ## References
 
-- Rationale: [ADR-0009](../adr/0009-consistent-portable-backups.md).
+- Rationale: [ADR-0009](../adr/0009-consistent-portable-backups.md);
+  image releases: [ADR-0015](../adr/0015-versioned-attested-images.md).
 - Contracts: [backup and restore](../specs/backups.md),
   [household acceptance](../specs/v1-acceptance.md).
 - Context: [application design](application.md).

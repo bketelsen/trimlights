@@ -21,6 +21,7 @@ import (
 	"golang.org/x/sys/unix"
 	_ "modernc.org/sqlite"
 	"trimlights/internal/auth"
+	"trimlights/internal/storage"
 )
 
 const DatabaseLimit int64 = 1 << 30
@@ -98,12 +99,7 @@ func syncDir(path string) error {
 	return errors.Join(f.Sync(), f.Close())
 }
 func openDB(path string, readonly bool) (*sql.DB, error) {
-	absolute, err := filepath.Abs(path)
-	if err != nil {
-		return nil, err
-	}
-	u := url.URL{Scheme: "file", Path: absolute}
-	q := u.Query()
+	q := url.Values{}
 	if readonly {
 		q.Set("mode", "ro")
 	} else {
@@ -111,8 +107,11 @@ func openDB(path string, readonly bool) (*sql.DB, error) {
 	}
 	q.Add("_pragma", "busy_timeout(5000)")
 	q.Add("_pragma", "trusted_schema(OFF)")
-	u.RawQuery = q.Encode()
-	db, err := sql.Open("sqlite", u.String())
+	dsn, err := storage.FileURL(path, q)
+	if err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}

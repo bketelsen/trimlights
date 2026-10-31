@@ -1,0 +1,9 @@
+# Tool pins for this repository (frostyard/core ADR-0043). mise.lock carries
+# each tool's checksums: `mise install` provisions exactly these. Go comes from
+# go.mod's toolchain line; Node and pnpm versions are pinned in CI for now.
+[settings]
+lockfile = true
+
+[tools]
+# make bump, via svu next (tags a release; ADR-0015).
+svu = "3.4.1"
