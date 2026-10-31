@@ -126,7 +126,7 @@ func newWithClient(ctx context.Context, c Config, store *storage.Store, client *
 		return nil, err
 	}
 	u, _ := url.Parse(c.Origin)
-	return &Auth{config: c, store: store, host: u.Host, client: client, now: time.Now, flowAEAD: aead, spent: map[string]time.Time{}, log: logger, verifier: provider.Verifier(&oidc.Config{ClientID: c.ClientID}), oauth: oauth2.Config{ClientID: c.ClientID, ClientSecret: c.ClientSecret, Endpoint: provider.Endpoint(), RedirectURL: c.Origin + "/auth/callback", Scopes: []string{oidc.ScopeOpenID, "profile", "email"}}}, nil
+	return &Auth{config: c, store: store, host: u.Host, client: client, now: time.Now, flowAEAD: aead, spent: map[string]time.Time{}, log: logger, verifier: provider.Verifier(&oidc.Config{ClientID: c.ClientID}), oauth: oauth2.Config{ClientID: c.ClientID, ClientSecret: c.ClientSecret, Endpoint: provider.Endpoint(), RedirectURL: c.Origin + "/auth/callback", Scopes: []string{oidc.ScopeOpenID, "profile"}}}, nil
 }
 func hash(value string) string { v := sha256.Sum256([]byte(value)); return hex.EncodeToString(v[:]) }
 func (a *Auth) sessionHash(value string) string {
