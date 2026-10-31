@@ -76,7 +76,13 @@ func fixture(t *testing.T) (*storage.Store, string) {
 	if err = s.SaveSession(ctx, storage.Session{Hash: "old-session", Subject: "one", CSRF: "fixture", Expires: now.Add(time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.SaveFlow(ctx, storage.LoginFlow{StateHash: "state", BrowserHash: "browser", Nonce: "nonce", Verifier: "verifier", Expires: now.Add(time.Hour)}); err != nil {
+	// Login flows now live in sealed cookies; a legacy row must still be cleared on restore.
+	db, err := openDB(filepath.Join(dir, "trimlights.db"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec("INSERT INTO login_flows VALUES('state','browser','nonce','verifier',?)", now.Add(time.Hour).Unix())
+	if err = errors.Join(err, db.Close()); err != nil {
 		t.Fatal(err)
 	}
 	return s, dir
@@ -184,8 +190,14 @@ func TestLiveBackupRestoresAllHouseholdStateAndClearsAuthentication(t *testing.T
 	if _, err = store.Session(ctx, "old-session", time.Now()); !errors.Is(err, storage.ErrMissing) {
 		t.Fatal(err)
 	}
-	if _, err = store.ConsumeFlow(ctx, "state", "browser", time.Now()); !errors.Is(err, storage.ErrMissing) {
+	db, err := openDB(filepath.Join(restored, "data", "trimlights.db"), true)
+	if err != nil {
 		t.Fatal(err)
+	}
+	var flows int
+	err = db.QueryRow("SELECT count(*) FROM login_flows").Scan(&flows)
+	if err = errors.Join(err, db.Close()); err != nil || flows != 0 {
+		t.Fatal("restored login flows", flows, err)
 	}
 	secret, err := os.ReadFile(filepath.Join(restored, "config/pocket-id.secret"))
 	if err != nil || string(secret) != configuration().ClientSecret {

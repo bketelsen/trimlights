@@ -22,6 +22,16 @@ not mutable email addresses. The client is confidential; its secret stays in Go.
 - Authorization flows MUST use independent cryptographic state, nonce, PKCE
   verifier and browser-binding tokens. State and browser binding MUST match once.
 - State MUST expire after 10 minutes, and a consumed callback MUST not replay.
+- An unauthenticated `/auth/login` MUST NOT write to SQLite or consume a shared
+  capacity. The pending flow (state hash, browser binding, nonce, PKCE verifier
+  and expiry) is sealed with AES-256-GCM into the `__Host-trimlight-flow` cookie,
+  with the cookie name as associated data. The key is random per process and is
+  never stored, so a restart invalidates only pending logins.
+- The callback MUST clear the flow cookie on success and failure, and MUST
+  refuse a tampered, foreign-key, expired or state-mismatched flow before the
+  token exchange. An in-memory guard holds each flow during its exchange and,
+  after the IdP accepts the code, until the flow expires; a refused exchange
+  releases it. The IdP's single-use code also bounds replay across restarts.
 - Signature, issuer, audience and expiry MUST be verified by go-oidc; nonce MUST
   match the original flow. No verification bypass flags are enabled in production.
 - Only configured subjects may receive or use a session. At least one subject
@@ -41,7 +51,9 @@ not mutable email addresses. The client is confidential; its secret stays in Go.
 
 ## Derived artifacts
 
-SQLite stores login flows and session hashes. Schema migrations back up existing
+SQLite stores session hashes. Pending login flows live only in the sealed
+browser cookie; the legacy `login_flows` table remains in the schema unused, and
+restore still clears it ([backup contract](backups.md)). Schema migrations back up existing
 databases before modifications. Runtime databases and secrets stay outside Git.
 
 ## References

@@ -1,0 +1,32 @@
+# Weekly dependency updates (issue #20). Minor and patch updates are grouped
+# per ecosystem; major updates arrive as single PRs. The Containerfile is FROM
+# scratch, so it has no base image to update. Dependabot alerts and security
+# updates are repository settings, not part of this file.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      go-minor-patch:
+        update-types: [minor, patch]
+
+  # npm covers pnpm: Dependabot updates web/pnpm-lock.yaml with package.json.
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    versioning-strategy: increase
+    groups:
+      web-minor-patch:
+        update-types: [minor, patch]
+
+  # Keeps the SHA pins and their version comments in .github/workflows current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]

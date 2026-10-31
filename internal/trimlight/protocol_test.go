@@ -73,7 +73,12 @@ func TestSnapshotAndBounds(t *testing.T) {
 	if s.Schedules[0].PatternName != "Example 18" || s.Schedules[0].Off != "21:00" || s.Schedules[1].Enabled || s.Schedules[1].Off != "00:03" {
 		t.Fatal(s.Schedules)
 	}
-	for _, offset := range []int{-2, 0, 3300, len(raw) - 13, int(^uint(0) >> 1)} {
+	// Schedule records must end before the seven-byte clock suffix that
+	// StableSHA256 excludes; the last accepted offset is len(raw)-21.
+	if _, e = ParseSnapshot(raw, len(raw)-21); e != nil {
+		t.Fatalf("rejected schedules that end at the clock suffix: %v", e)
+	}
+	for _, offset := range []int{-2, 0, 3300, len(raw) - 20, len(raw) - 14, len(raw) - 13, int(^uint(0) >> 1)} {
 		if _, e = ParseSnapshot(raw, offset); e == nil {
 			t.Fatalf("accepted offset %d", offset)
 		}
@@ -81,6 +86,20 @@ func TestSnapshotAndBounds(t *testing.T) {
 	for _, size := range []int{0, 2, 25, len(raw) - 1} {
 		if _, e = ParseSnapshot(raw[:size], 3306); e == nil {
 			t.Fatal("accepted truncated snapshot")
+		}
+	}
+	// Pattern records must also end before the clock suffix.
+	for _, tc := range []struct {
+		name   string
+		suffix int
+		ok     bool
+	}{{"complete suffix", 7, true}, {"suffix short by one", 6, false}, {"no suffix", 0, false}} {
+		short := make([]byte, 26+182+tc.suffix)
+		short[0], short[25] = 0x15, 1
+		binary.BigEndian.PutUint16(short[1:3], uint16(len(short)-3))
+		copy(short[26:26+182], raw[26:26+182])
+		if _, e := ParseSnapshot(short, -1); (e == nil) != tc.ok {
+			t.Fatalf("%s: pattern record bound error %v", tc.name, e)
 		}
 	}
 	raw[3313] = 1
@@ -183,8 +202,86 @@ func TestPlaybackRequiresReviewedLayout(t *testing.T) {
 func FuzzSnapshot(f *testing.F) {
 	b, _ := os.ReadFile("testdata/snapshot.bin")
 	f.Add(b, 3306)
+	f.Add(b, -1)
 	f.Add([]byte{}, 0)
-	f.Fuzz(func(t *testing.T, b []byte, offset int) { _, _ = ParseSnapshot(b, offset) })
+	// Truncated-suffix seeds: schedules or a pattern record reaching into the
+	// seven clock bytes that StableSHA256 excludes.
+	f.Add(b, len(b)-14)
+	f.Add(b, len(b)-20)
+	f.Add(b, len(b)-21)
+	short := make([]byte, 26+182+3)
+	short[0], short[25] = 0x15, 1
+	binary.BigEndian.PutUint16(short[1:3], uint16(len(short)-3))
+	f.Add(short, -1)
+	f.Fuzz(func(t *testing.T, b []byte, offset int) {
+		s, err := ParseSnapshot(b, offset)
+		if err != nil {
+			return
+		}
+		// Every parsed field must be covered by the stable fingerprint: a byte
+		// change inside it either fails parsing or changes StableSHA256.
+		for _, i := range parsedFieldOffsets(s, offset) {
+			changed := bytes.Clone(b)
+			changed[i] ^= 0x01
+			if c, err := ParseSnapshot(changed, offset); err == nil && c.StableSHA256 == s.StableSHA256 {
+				t.Fatalf("change at parsed offset %d kept fingerprint %s", i, s.StableSHA256)
+			}
+		}
+	})
+}
+
+// parsedFieldOffsets lists every snapshot byte that ParseSnapshot interprets.
+func parsedFieldOffsets(s *Snapshot, scheduleOffset int) []int {
+	end := 26 + len(s.Patterns)*182
+	var offsets []int
+	for i := 0; i < end; i++ {
+		offsets = append(offsets, i)
+	}
+	if scheduleOffset >= 0 {
+		for i := scheduleOffset; i < scheduleOffset+14; i++ {
+			offsets = append(offsets, i)
+		}
+	}
+	if s.Playback != nil {
+		for i := 3320; i < 3476; i++ {
+			offsets = append(offsets, i)
+		}
+	}
+	return offsets
+}
+
+func TestSyntheticSnapshotFramesParse(t *testing.T) {
+	b, err := os.ReadFile("testdata/frames.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vectors []struct {
+		Command byte
+		Payload string
+	}
+	if err = json.Unmarshal(b, &vectors); err != nil {
+		t.Fatal(err)
+	}
+	parsed := 0
+	for i, v := range vectors {
+		payload, err := hex.DecodeString(v.Payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v.Command != 4 || len(payload) != 3492 { // Skip clock queries and writes.
+			continue
+		}
+		if _, err = ParseSnapshot(payload, 3306); err != nil {
+			t.Fatalf("captured fixture frame %d no longer parses: %v", i, err)
+		}
+		parsed++
+	}
+	if _, err = ParseSnapshot(fixture(t), 3306); err != nil {
+		t.Fatal(err)
+	}
+	if parsed == 0 {
+		t.Fatal("no snapshot frames in fixtures")
+	}
 }
 
 func fixtureFingerprint(t *testing.T) string {
