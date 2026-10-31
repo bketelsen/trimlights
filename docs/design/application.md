@@ -65,6 +65,8 @@ flowchart LR
   directories or hosts can still compete and require operational isolation.
 - `internal/auth`: OIDC state/nonce/PKCE, subject allowlist, opaque sessions and CSRF.
 - `internal/webui`: embedded browser build and restrictive content security policy.
+  It serves `/`, `/assets/` and a fixed list of root files for home-screen use
+  (`manifest.webmanifest`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`).
 - `internal/pattern`: validated design schema and deterministic logical-pixel render.
 - `internal/schedule`: pure calendar validation, civil/solar intervals and precedence.
 - `internal/house`: bounded photo normalization and validated address/geometry model.
@@ -99,6 +101,17 @@ behind setup controls. Preview labels state what the image is; research caveats
 belong in this documentation. Clock-update acknowledgement, duplicate-submission
 guards, stale-edit protection, authentication and production activation gates stay
 in place. Panels use consistent inner spacing and controls wrap at phone widths.
+
+As of 2026-10-30, the top-level page is in the URL hash (`#home`, `#library`,
+`#calendar`, `#house`, `#settings`), so reload keeps the page and browser Back,
+including Android Back, returns to the previous page. Back over unsaved edits asks
+first, like the navigation buttons. Each page sets its document title and moves focus
+to its `h1`. Status messages render inside live regions that are always mounted, so
+screen readers announce them; alerts keep `role="alert"`. Text fields use 16 px text
+on narrow or touch screens so iOS Safari does not zoom, disclosure summaries and
+checkbox rows are at least 44 px high, and the page pads for device safe areas.
+A web app manifest and icons support home-screen shortcuts. The manifest keeps the
+default browser display mode: a standalone mode needs a phone sign-in check first.
 
 Use clix's reserved `--json`, `--verbose/-v`, `--dry-run/-n`, and `--silent/-s`
 without redefining them. `--dry-run` must not call the current snapshot request,

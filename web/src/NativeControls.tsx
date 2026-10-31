@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {request,SignedOut} from './api';
+import {LiveStatus} from './LiveRegion';
 
 export type NativeSnapshot={queried_at:string;stable_sha256:string;patterns:{id:number;name:string}[];playback?:{mode:string;matching_pattern_ids:number[]}};
 type Action='off'|'play'|'timer';
@@ -36,9 +37,9 @@ export function NativeControls({snapshot,available,busy,csrf,refreshVersion,onBu
   {!available&&<p className="notice">Refresh your lights to get started. If they’re still unavailable, check that they have power and Wi-Fi.</p>}
   <div className="native-play"><label className="field">Choose a pattern<select value={selected} disabled={busy} onChange={e=>setSelected(e.target.value)}><option value="">Choose a pattern</option>{patterns.map(p=><option key={p.id} value={p.id}>{p.name||`Pattern ${p.id}`}</option>)}</select></label><button className="button primary" disabled={disabled||!selectedPattern} onClick={()=>void send('play')}>Play pattern</button></div>
   <label className="native-ack"><input type="checkbox" checked={acknowledged} disabled={busy} onChange={e=>setAcknowledged(e.target.checked)}/><span>The Trimlight phone app is closed. Keep the lights’ clock up to date.</span></label>
-  <div className="card-actions"><button className="button secondary" disabled={disabled} onClick={()=>void send('off')}>Turn off</button><button className="button secondary" disabled={disabled} onClick={()=>void send('timer')}>Follow timers</button>{busy&&<span role="status">Updating lights…</span>}</div>
+  <div className="card-actions"><button className="button secondary" disabled={disabled} onClick={()=>void send('off')}>Turn off</button><button className="button secondary" disabled={disabled} onClick={()=>void send('timer')}>Follow timers</button><LiveStatus>{busy&&'Updating lights…'}</LiveStatus></div>
   {error&&<div className="error-banner" role="alert">{error}</div>}
-  {notice&&<p className="notice" role="status">{notice}</p>}
+  <LiveStatus>{notice&&<p className="notice">{notice}</p>}</LiveStatus>
   <p className="footnote">When you’re ready to return to your usual times, choose “Follow timers.”</p>
  </section>;
 }

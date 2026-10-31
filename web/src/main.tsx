@@ -7,12 +7,13 @@ import {Schedule} from './Schedule';
 import {House} from './House';
 import {clockTime,repeatLabel} from './uiText';
 import {NativeControls,type NativeSnapshot} from './NativeControls';
+import {LiveStatus} from './LiveRegion';
+import {pageFromHash,pageHash,pageLabel,pageTitle,pages,type Page} from './route';
 
 type Identity = {subject:string;name:string;csrf_token:string;expires:string};
 type NativeSchedule = {slot:number;enabled:boolean;pattern_name:string;repetition_interpretation:string;start_time:string;off_time:string};
 type Status = {calendar_runtime?:{status:string;reason?:string};observation:{snapshot?:NativeSnapshot&{daily_schedules?:NativeSchedule[]};last_attempt?:string;last_error?:string;source:string};worker:{enabled:boolean;queued:number;active_operation?:string;persistence_error?:string};snapshot_age_seconds:number|null;capabilities:{snapshot:boolean;native_controls:boolean;reason:string}};
 type Operation = {id:string;actor:string;started:string;finished:string;error?:string;control?:{request:{action:string;pattern_id?:number};outcome:string;transport_error?:string;calendar?:{calendar_revision:number;action:{kind:string;pattern_id?:string;revision?:number}}}};
-type Page = 'home'|'patterns'|'schedule'|'house'|'settings';
 function Logo(){return <svg viewBox="0 0 44 34" width="40" height="32" aria-hidden="true"><path d="M3 24 17 8l10 11 6-7 8 12" stroke="currentColor" strokeWidth="2" fill="none"/><circle cx="3" cy="24" r="2.5"/><circle cx="17" cy="8" r="2.5"/><circle cx="27" cy="19" r="2.5"/><circle cx="33" cy="12" r="2.5"/><circle cx="41" cy="24" r="2.5"/></svg>}
 function timeLabel(value:string){return new Date(value).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'});}
 function age(seconds:number|null){if(seconds===null)return 'Not checked yet';if(seconds<60)return 'just now';if(seconds<3600)return `${Math.floor(seconds/60)} minutes ago`;if(seconds<86400)return `${Math.floor(seconds/3600)} hours ago`;return `${Math.floor(seconds/86400)} days ago`;}
@@ -20,7 +21,7 @@ function App(){
  const [identity,setIdentity]=useState<Identity|null|undefined>(undefined);
  const [status,setStatus]=useState<Status|null>(null);
  const [operations,setOperations]=useState<Operation[]>([]);
- const [page,setPage]=useState<Page>('home');
+ const [page,setPage]=useState<Page>(()=>pageFromHash(location.hash));
  const [scheduleDirty,setScheduleDirty]=useState(false);
  const [houseDirty,setHouseDirty]=useState(false);
  const [patternDirty,setPatternDirty]=useState(false);
@@ -30,6 +31,18 @@ function App(){
  const [refreshVersion,setRefreshVersion]=useState(0);
  const [refreshDialog,setRefreshDialog]=useState(false);
  const dialogRef=useRef<HTMLDialogElement>(null);
+ const heading=useRef<HTMLHeadingElement>(null);
+ const dirty=scheduleDirty||houseDirty||patternDirty;
+ const pageRef=useRef(page);pageRef.current=page;
+ const dirtyRef=useRef(dirty);dirtyRef.current=dirty;
+ const shownPage=useRef(page);
+ const show=useCallback((next:Page)=>{pageRef.current=next;setPage(next);setError('');},[]);
+ // Back, Forward and edited URLs arrive as hash changes. Keep unsaved edits unless the person confirms.
+ useEffect(()=>{const changed=()=>{const next=pageFromHash(location.hash);if(next===pageRef.current)return;if(dirtyRef.current&&!window.confirm('Leave this page and discard unsaved changes?')){history.replaceState(history.state,'',pageHash(pageRef.current));return;}show(next);};window.addEventListener('hashchange',changed);return()=>window.removeEventListener('hashchange',changed);},[show]);
+ function navigate(next:Page){if(next===page||(dirty&&!window.confirm('Leave this page and discard unsaved changes?')))return;show(next);location.hash=pageHash(next);}
+ useEffect(()=>{document.title=pageTitle(identity?page:null);},[identity,page]);
+ // Move focus to the new page heading so that screen readers and keyboards start there.
+ useEffect(()=>{if(shownPage.current===page)return;shownPage.current=page;heading.current?.focus();},[page]);
  useEffect(()=>{const dialog=dialogRef.current;if(refreshDialog&&dialog){dialog.showModal();return()=>dialog.close();}},[refreshDialog]);
  const report=useCallback((error:unknown)=>{if(error instanceof SignedOut){setIdentity(null);setStatus(null);setOperations([]);}else setError(userMessage(error,'Could not reach the app. Try again.'));},[]);
  const load=useCallback(async()=>{try{const result=await request<Status>('/api/v1/status');setStatus(result);setError('');}catch(error){report(error);}},[report]);
@@ -45,12 +58,12 @@ function App(){
   <header><a className="brand" href="/" aria-label="Trimlights home"><Logo/><span>trimlights<span className="brand-dot">.</span></span></a><span className="household-label">OUR HOME · OUR LIGHTS</span>{identity&&<span className="avatar" title={identity.name}>{(identity.name||'H').slice(0,1)}</span>}</header>
   {error&&<div className="error-banner" role="alert">{error} <button onClick={()=>location.reload()}>Reconnect</button></div>}
   {identity===undefined?<main className="welcome"><span className="eyebrow">A LITTLE LIGHT, TOGETHER</span><h1>Welcome home.</h1><p>{error?'The app is unavailable. Try reconnecting.':'Opening your household…'}</p></main>:identity===null?<main className="welcome"><div className="welcome-mark"><Logo/></div><span className="eyebrow">A LITTLE LIGHT, TOGETHER</span><h1>Welcome home.</h1><p>One place for your lights, your favorite evenings,<br className="desktop"/> and the people you share them with.</p><a className="button primary" href="/auth/login">Sign in <span aria-hidden="true">↗</span></a><small>Private access for your household</small></main>:<>
-  <nav aria-label="Main navigation">{(['home','patterns','schedule','house','settings'] as Page[]).map(item=><button key={item} aria-current={page===item?'page':undefined} onClick={()=>{if(item!==page&&(scheduleDirty||houseDirty||patternDirty)&&!window.confirm('Leave this page and discard unsaved changes?'))return;setPage(item);setError('');}}><span aria-hidden="true">{item==='home'?'⌂':item==='patterns'?'◉':item==='schedule'?'▦':item==='house'?'⌂':'⚙'}</span>{item==='home'?'Home':item==='patterns'?'Library':item==='schedule'?'Calendar':item==='house'?'House':'Settings'}</button>)}</nav>
+  <nav aria-label="Main navigation">{pages.map(item=><button key={item} aria-current={page===item?'page':undefined} onClick={()=>navigate(item)}><span aria-hidden="true">{item==='home'?'⌂':item==='patterns'?'◉':item==='schedule'?'▦':item==='house'?'⌂':'⚙'}</span>{pageLabel(item)}</button>)}</nav>
   <main>
-   <div className="page-heading"><div><span className="eyebrow">{page==='home'?'HOUSEHOLD OVERVIEW':page==='patterns'?'YOUR SHARED LIBRARY':page==='schedule'?'YOUR EVENINGS, PLANNED':page==='house'?'YOUR HOUSE, IN LIGHTS':'YOUR HOUSEHOLD'}</span><h1>{page==='home'?'Home lights':page==='patterns'?'Pattern library':page==='schedule'?'Your calendar':page==='house'?'House preview':'Settings'}</h1></div></div>
+   <div className="page-heading"><div><span className="eyebrow">{page==='home'?'HOUSEHOLD OVERVIEW':page==='patterns'?'YOUR SHARED LIBRARY':page==='schedule'?'YOUR EVENINGS, PLANNED':page==='house'?'YOUR HOUSE, IN LIGHTS':'YOUR HOUSEHOLD'}</span><h1 ref={heading} tabIndex={-1}>{page==='home'?'Home lights':page==='patterns'?'Pattern library':page==='schedule'?'Your calendar':page==='house'?'House preview':'Settings'}</h1></div></div>
    {page==='home'&&<>
     <div className="home-update"><span className="muted">Last checked: {age(status?.snapshot_age_seconds??null)}</span><button className="button secondary" disabled={!status?.capabilities.snapshot||refreshing||controlling||!!status?.worker.active_operation} onClick={()=>setRefreshDialog(true)}>{refreshing?'Refreshing…':'Refresh'} <span aria-hidden="true">↻</span></button></div>
-    {(status?.observation.last_error||status?.worker.persistence_error)&&<div className="notice" role="status">{status.worker.persistence_error?'The app can’t save changes right now. Please try again later.':'We couldn’t check the lights. Refresh to try again.'}</div>}
+    <LiveStatus>{(status?.observation.last_error||status?.worker.persistence_error)&&<div className="notice">{status.worker.persistence_error?'The app can’t save changes right now. Please try again later.':'We couldn’t check the lights. Refresh to try again.'}</div>}</LiveStatus>
     <NativeControls refreshVersion={refreshVersion} snapshot={status?.observation.snapshot} available={status?.capabilities.native_controls??false} busy={refreshing||controlling||!!status?.worker.active_operation} csrf={identity.csrf_token} onBusy={setControlling} onComplete={load} onError={report}/>
     <div className="section-heading"><h2>Your light timers</h2><span>Saved on your lights</span></div>
     {schedules.length?<div className="schedule-grid">{schedules.map(schedule=><section className="panel schedule-card" key={schedule.slot}><div className="row"><span className="eyebrow">TIMER {schedule.slot}</span><span className={`status-pill ${schedule.enabled?'good':''}`}>{schedule.enabled?'On':'Off'}</span></div><h3>{schedule.pattern_name||'Unknown pattern'}</h3><p className="schedule-time">{clockTime(schedule.start_time)} <span>–</span> {clockTime(schedule.off_time)}</p><p className="muted">{repeatLabel(schedule.repetition_interpretation)}</p></section>)}</div>:<section className="panel empty"><h3>Your timers will appear here</h3><p>Refresh to see the times already set for your lights.</p></section>}

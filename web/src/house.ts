@@ -19,3 +19,4 @@ export type CanvasMode='draw'|'points'|'bulbs'|'pan';
 // Let a vertical swipe scroll the page unless the canvas needs the gesture:
 // drawing or dragging corners/bulbs, or moving a zoomed photo.
 export function canvasTouchAction(mode:CanvasMode,zoom:number):'none'|'pan-y'{return mode==='pan'&&zoom<=1?'pan-y':'none';}
+export function withAdjustment(adjustments:Mapping['adjustments'],index:number,point?:Point):Mapping['adjustments']{const rest=adjustments.filter(a=>a.index!==index);return point?[...rest,{index,point:{x:Math.max(0,Math.min(1,point.x)),y:Math.max(0,Math.min(1,point.y))}}]:rest;}

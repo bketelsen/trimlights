@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {request} from './api';
+import {LiveStatus} from './LiveRegion';
 import {clockTime,repeatLabel} from './uiText';
 import type {Action,Plan,Rule,Preview} from './Schedule';
 
@@ -48,7 +49,7 @@ export function CalendarPreparation({plan,revision,latestRevision,csrf,busy,setB
   <button className="button secondary" disabled={busy||!date} onClick={()=>void run('native-draft')}>{working?'Checking…':'Find my timers'}</button>
   {native&&<>
    <p className="footnote">{sourceLabel(native.source,native.timezone)}</p>
-   {staleNative&&<p role="status" className="notice">Your plan or date changed. Find your timers again to continue.</p>}
+   <LiveStatus>{staleNative&&<p className="notice">Your plan or date changed. Find your timers again to continue.</p>}</LiveStatus>
    <ul className="native-timer-entries">{native.entries.map(e=><li key={e.native.slot}>
     <strong>Timer {e.native.slot} · {e.native.enabled?'On':'Off'}</strong>
     <p>{e.native.pattern_name||'Saved pattern'} · {clockTime(e.native.start_time)}–{clockTime(e.native.off_time)} · {repeatLabel(e.native.repetition_interpretation)}</p>

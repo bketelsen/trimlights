@@ -694,3 +694,22 @@ Validation: `make check` passes, including frontend tests, Go race tests, vet,
 build and 376 documentation links. The private session worksheet and evidence
 metadata are prepared in ignored storage; public documentation contains no
 household addresses, pattern names, captures or credentials.
+
+### Accessibility and phone layout — 2026-10-30
+
+Review issues #16 and #24 are addressed in the
+[application UI](../design/application.md) and the
+[house contract](../specs/house.md), toward
+[v1 acceptance rule 2](../specs/v1-acceptance.md#rules). The house canvas no longer
+traps page scrolling outside drawing and dragging. Pages use URL hashes, titles and
+heading focus. Status messages use mounted live regions. Fields avoid iOS focus zoom,
+small targets reach 44 px, the page pads for safe areas, and a manifest and icons
+support home-screen shortcuts. Bulb adjustments have a keyboard route.
+
+Validation at commit time: Go tests cover the root-file allowlist; new frontend
+tests cover hash routes, titles, the canvas gesture rule and bulb adjustments.
+`make check` in CI builds the frontend and runs these tests. iPhone Safari,
+Android Back, screen-reader announcements and home-screen installation still need a
+physical check. Open: standalone display mode after a phone sign-in check, and an
+automated accessibility check in the web tests.
+

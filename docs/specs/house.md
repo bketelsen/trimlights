@@ -46,6 +46,9 @@ Layout schema 1 contains `runs` and `views`. Each run has a stable `id`, `name`,
 - The photo canvas MUST leave vertical page scrolling to the browser
   (`touch-action: pan-y`) unless a gesture belongs to the canvas: drawing, dragging
   corners or bulbs, or moving a zoomed photo (`touch-action: none`).
+- Every pointer edit MUST have a keyboard route. Fine-tune corners edits corner
+  X/Y percentages. Fine-tune bulbs selects a bulb by its physical number, as shown
+  by the Numbers labels, and writes or resets the same adjustment as dragging.
 - Reduced-motion preference MUST prevent automatic house animation, while an
   explicit Play animation action MUST work. Pause/resume uses the shared
   [preview clock contract](patterns.md#rules).

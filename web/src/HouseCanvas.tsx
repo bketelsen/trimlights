@@ -45,7 +45,7 @@ export function HouseCanvas({photo,view,layout,design,selectedRun,mode='pan',onP
  function down(event:ReactPointerEvent<HTMLCanvasElement>){if(drag.current)return;const p=point(event),mapping=view.mappings.find(m=>m.run_id===selectedRun),run=layout.runs.find(r=>r.id===selectedRun);
   if(mode==='draw'){if(p.x>=0&&p.x<=1&&p.y>=0&&p.y<=1)onPoint?.(p);return;}
   let index=-1;
-  if(mode!=='pan'&&mapping&&run){const rect=event.currentTarget.getBoundingClientRect();const options=mode==='bulbs'?positions(mapping,run.count,width,height):mapping.points;let closest=28;options.forEach((v,i)=>{const distance=Math.hypot((v.x-p.x)*rect.width*zoom,(v.y-p.y)*rect.height*zoom);if(distance<closest){closest=distance;index=i}});if(index<0)return;onStart?.();if(mode==='points')onSelect?.(index);}
+  if(mode!=='pan'&&mapping&&run){const rect=event.currentTarget.getBoundingClientRect();const options=mode==='bulbs'?positions(mapping,run.count,width,height):mapping.points;let closest=28;options.forEach((v,i)=>{const distance=Math.hypot((v.x-p.x)*rect.width*zoom,(v.y-p.y)*rect.height*zoom);if(distance<closest){closest=distance;index=i}});if(index<0)return;onStart?.();onSelect?.(index);}
   else if(mode!=='pan')return;
   event.currentTarget.setPointerCapture(event.pointerId);drag.current={pointer:event.pointerId,index,start:{x:event.clientX,y:event.clientY},pan};
  }
@@ -53,7 +53,7 @@ export function HouseCanvas({photo,view,layout,design,selectedRun,mode='pan',onP
  function end(event:ReactPointerEvent<HTMLCanvasElement>){if(drag.current?.pointer===event.pointerId)drag.current=null;}
  return <div className="house-canvas-wrap">
   {imageError&&<p role="alert">Photo could not load. Check your connection or sign in again.</p>}
-  <canvas ref={canvas} className={`house-canvas${canvasTouchAction(mode,zoom)==='none'?' gesture-locked':''}`} style={{aspectRatio:`${width}/${height}`}} aria-label="House photo with mapped roofline bulbs. Use the point coordinate fields for keyboard editing." onPointerDown={down} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}/>
+  <canvas ref={canvas} className={`house-canvas${canvasTouchAction(mode,zoom)==='none'?' gesture-locked':''}`} style={{aspectRatio:`${width}/${height}`}} aria-label="House photo with mapped roofline bulbs. Use Fine-tune corners and Fine-tune bulbs for keyboard editing." onPointerDown={down} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}/>
   <div className="house-toolbar"><button type="button" className="button secondary" onClick={()=>setZoom(z=>Math.max(1,z/1.5))} aria-label="Zoom out">−</button><span>{Math.round(zoom*100)}%</span><button type="button" className="button secondary" onClick={()=>setZoom(z=>Math.min(8,z*1.5))} aria-label="Zoom in">+</button><button type="button" className="button secondary" onClick={()=>{setZoom(1);setPan({x:0,y:0})}}>Fit photo</button><label><input type="checkbox" checked={numbers} onChange={e=>setNumbers(e.target.checked)}/> Numbers</label></div>
   {design?.effect==='chase'&&<button type="button" className="button secondary" disabled={design.speed===0} onClick={()=>setPlaying(p=>!p)}>{playing&&design.speed>0?'Pause animation':'Play animation'}</button>}
   {design?.effect==='chase'&&design.speed===0&&<p className="muted">Increase the speed to see your colors move.</p>}
