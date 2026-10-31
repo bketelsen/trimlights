@@ -89,7 +89,7 @@ func TestPatternAPIValidationAndConflicts(t *testing.T) {
 func TestControllerImportErrorsAreClientErrors(t *testing.T) {
 	store, w := setup(t, nil)
 	token := strings.Repeat("x", 32)
-	h := Handler(store, w, token)
+	h := Handler(store, w, token, nil)
 	stamp := time.Now().UTC()
 	snap := &trimlight.Snapshot{QueriedAt: stamp, Patterns: []trimlight.Pattern{{ID: 1, Name: "", ParametersHex: strings.Repeat("00", 156)}, {ID: 2, Name: "Broken", ParametersHex: "bad"}}}
 	if err := store.Record(context.Background(), storage.Observation{Snapshot: snap}, storage.Operation{ID: "fixture", Started: stamp, Finished: stamp}); err != nil {
@@ -108,7 +108,7 @@ func TestControllerImportErrorsAreClientErrors(t *testing.T) {
 func TestCreateRejectsForgedNativeDesign(t *testing.T) {
 	store, w := setup(t, nil)
 	token := strings.Repeat("x", 32)
-	h := Handler(store, w, token)
+	h := Handler(store, w, token, nil)
 	body := `{"schema":1,"name":"Forged","favorite":false,"effect":"native","brightness":100,"speed":0,"reverse":false,"palette":[],"native":{"id":1,"name":"Forged","parameters_hex":"` + strings.Repeat("00", 156) + `","snapshot_at":"2026-10-30T12:00:00Z"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/patterns", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
