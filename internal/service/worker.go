@@ -14,6 +14,40 @@ import (
 var ErrQueueFull = errors.New("controller queue is full")
 var ErrDisabled = errors.New("controller access is disabled")
 
+// errCalendarExpired marks a calendar delivery that only its own intent deadline
+// stopped, before pending intent was journaled: no write was possible. Any other
+// error, also one returned after the deadline, is not marked.
+var errCalendarExpired = errors.New("calendar intent expired before delivery")
+
+func calendarExpired(r request, err error) error {
+	if r.calendar != nil && errors.Is(r.ctx.Err(), context.DeadlineExceeded) && isContextError(err) {
+		return errors.Join(errCalendarExpired, err)
+	}
+	return err
+}
+
+// isContextError is true only when every error in err's tree that has no
+// children is a context cancellation or deadline, so a joined or wrapped
+// controller/storage error is never classified as deadline-only.
+func isContextError(err error) bool {
+	switch e := err.(type) {
+	case nil:
+		return false
+	case interface{ Unwrap() []error }:
+		for _, inner := range e.Unwrap() {
+			if inner != nil && !isContextError(inner) {
+				return false
+			}
+		}
+		return true
+	case interface{ Unwrap() error }:
+		if inner := e.Unwrap(); inner != nil {
+			return isContextError(inner)
+		}
+	}
+	return err == context.DeadlineExceeded || err == context.Canceled
+}
+
 type Controller interface {
 	Snapshot(context.Context, int) (*trimlight.Snapshot, error)
 }
@@ -89,10 +123,10 @@ func (w *Worker) enqueue(ctx context.Context, actor string, control *trimlight.C
 	if w.controller == nil {
 		return "", nil, ErrDisabled
 	}
-	if err := ctx.Err(); err != nil {
-		return "", nil, err
-	}
 	r := request{id: rand.Text(), actor: actor, ctx: ctx, done: make(chan error, 1), control: control, calendar: calendar, handoff: handoff, guard: guard}
+	if err := ctx.Err(); err != nil {
+		return "", nil, calendarExpired(r, err)
+	}
 	select {
 	case w.queue <- r:
 		return r.id, r.done, nil
@@ -131,7 +165,7 @@ func (w *Worker) Run(ctx context.Context) {
 			return
 		case r := <-w.queue:
 			if err := r.ctx.Err(); err != nil {
-				r.done <- err
+				r.done <- calendarExpired(r, err)
 				continue
 			}
 			timer := time.NewTimer(time.Until(next))
@@ -142,7 +176,7 @@ func (w *Worker) Run(ctx context.Context) {
 				return
 			case <-r.ctx.Done():
 				timer.Stop()
-				r.done <- r.ctx.Err()
+				r.done <- calendarExpired(r, r.ctx.Err())
 				continue
 			case <-timer.C:
 			}
@@ -234,7 +268,11 @@ func (w *Worker) Run(ctx context.Context) {
 				w.controlsBlocked = true
 			}
 			w.mu.Unlock()
-			r.done <- errors.Join(readErr, persistErr)
+			result := errors.Join(readErr, persistErr)
+			if !pending && persistErr == nil {
+				result = calendarExpired(r, result)
+			}
+			r.done <- result
 		}
 	}
 }

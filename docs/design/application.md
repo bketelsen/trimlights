@@ -229,8 +229,9 @@ ownership version, last verified fingerprint and pending operation. Pending inte
 audit and baseline commit together; completion and observation advance ownership
 atomically. Calendar revision and interval guards reject stale queued commands.
 Transport deadlines also bound delivery to the intent's remaining lifetime.
-A rejection before pending intent is journaled cannot write, so it re-evaluates
-the next pass instead of pausing.
+A benign stale-intent rejection (calendar save, ownership change or interval
+end) or a deadline-only expiry before pending intent is journaled cannot write,
+so it re-evaluates the next pass. Every other delivery error pauses.
 
 Read failures back off; reconnect evaluates now. Resolved DST intervals and
 absolute override expiry use the existing evaluator. Unsupported references,

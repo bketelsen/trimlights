@@ -19,14 +19,16 @@ type calendarRunner struct {
 	store  *storage.Store
 	worker *Worker
 	now    func() time.Time
-	// intent is calendarIntent; tests replace it to inject read races.
-	intent   func(context.Context, *storage.Store, time.Time, *trimlight.Snapshot) (storage.SavedSchedule, schedule.Segment, trimlight.ControlRequest, error)
-	mu       sync.Mutex
-	failures int
+	// Test seams: intent is calendarIntent and deliveryContext is
+	// context.WithTimeout. Tests replace them to inject read races and expiry.
+	intent          func(context.Context, *storage.Store, time.Time, *trimlight.Snapshot) (storage.SavedSchedule, schedule.Segment, trimlight.ControlRequest, error)
+	deliveryContext func(context.Context, time.Duration) (context.Context, context.CancelFunc)
+	mu              sync.Mutex
+	failures        int
 }
 
 func newCalendarRunner(s *storage.Store, w *Worker) *calendarRunner {
-	return &calendarRunner{store: s, worker: w, now: time.Now, intent: calendarIntent}
+	return &calendarRunner{store: s, worker: w, now: time.Now, intent: calendarIntent, deliveryContext: context.WithTimeout}
 }
 func (r *calendarRunner) Run(ctx context.Context) error {
 	for {
@@ -219,7 +221,7 @@ func (r *calendarRunner) Step(ctx context.Context) (time.Duration, error) {
 	if remaining <= 0 {
 		return time.Second, nil
 	}
-	deliveryCtx, cancelDelivery := context.WithTimeout(ctx, remaining)
+	deliveryCtx, cancelDelivery := r.deliveryContext(ctx, remaining)
 	defer cancelDelivery()
 	_, done, err = r.worker.enqueue(deliveryCtx, "calendar", &command, delivery, nil, guard)
 	if err == nil {
@@ -236,11 +238,11 @@ func (r *calendarRunner) Step(ctx context.Context) (time.Duration, error) {
 		if e != nil {
 			return 0, e
 		}
-		// The intent deadline ended the request before pending intent was journaled,
-		// so the driver's pre-write gate never opened and no write was possible.
-		// The intent is stale: re-evaluate the present instant instead of pausing.
-		// A journaled delivery changes the version, and its completion pauses.
-		if errors.Is(deliveryCtx.Err(), context.DeadlineExceeded) && latest.Version == state.Version && latest.Status == "active" && latest.PendingID == "" {
+		// Only the intent deadline stopped the request, before pending intent was
+		// journaled, so no write was possible: re-evaluate instead of pausing. Any
+		// other error pauses, also after the deadline. An unchanged version is a
+		// second check that no pending delivery was journaled.
+		if errors.Is(err, errCalendarExpired) && latest.Version == state.Version && latest.Status == "active" && latest.PendingID == "" {
 			return time.Second, nil
 		}
 		if latest.Status == "active" {

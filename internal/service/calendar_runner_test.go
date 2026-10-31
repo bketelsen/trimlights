@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -27,6 +28,8 @@ type calendarController struct {
 	beforeControl   func()
 	uncertain       bool
 	waitForDeadline bool
+	expire          func()
+	deadlineErr     error
 	reads           int
 	dataDir         string
 }
@@ -44,7 +47,13 @@ func (c *calendarController) Snapshot(ctx context.Context, offset int) (*trimlig
 }
 func (c *calendarController) Control(ctx context.Context, in trimlight.ControlRequest, record func(*trimlight.Snapshot) error) (*trimlight.ControlResult, error) {
 	if c.waitForDeadline {
+		if c.expire != nil {
+			c.expire()
+		}
 		<-ctx.Done()
+		if c.deadlineErr != nil {
+			return nil, c.deadlineErr
+		}
 	}
 	if c.beforeControl != nil {
 		c.beforeControl()
@@ -352,28 +361,64 @@ func TestCalendarRunnerCancellationAndPendingOwnership(t *testing.T) {
 	}
 }
 
+// expiringContext reaches its deadline when the test closes expired, so the
+// intent deadline is controlled by a channel instead of a real timer.
+type expiringContext struct {
+	context.Context
+	expired chan struct{}
+}
+
+func (c expiringContext) Done() <-chan struct{} { return c.expired }
+func (c expiringContext) Err() error {
+	select {
+	case <-c.expired:
+		return context.DeadlineExceeded
+	default:
+		return nil
+	}
+}
+
+// expireDuringControl makes the delivery deadline pass while the driver holds
+// the request, before it journals pending intent.
+func expireDuringControl(r *calendarRunner, c *calendarController) {
+	expired := make(chan struct{})
+	r.deliveryContext = func(ctx context.Context, _ time.Duration) (context.Context, context.CancelFunc) {
+		return expiringContext{ctx, expired}, func() {}
+	}
+	c.waitForDeadline = true
+	c.expire = func() { close(expired) }
+}
+
 func TestCalendarRunnerBoundsDeliveryByIntentLifetime(t *testing.T) {
 	r, c, clock, plan := runnerFixture(t)
-	plan.Override = &schedule.Override{ID: "short", Action: plan.Rules[0].Action, StartsAt: clock.Now(), ExpiresAt: clock.Now().Add(100 * time.Millisecond)}
+	plan.Override = &schedule.Override{ID: "short", Action: plan.Rules[0].Action, StartsAt: clock.Now(), ExpiresAt: clock.Now().Add(time.Minute)}
 	if _, err := r.store.SaveSchedule(context.Background(), 2, plan, "owner"); err != nil {
 		t.Fatal(err)
 	}
-	c.waitForDeadline = true
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if _, err := r.Step(ctx); err != nil {
-		t.Fatal(err)
-	}
-	// No pending intent was journaled, so no write was possible: the stale
-	// intent is re-evaluated instead of pausing household ownership.
+	expireDuringControl(r, c)
+	step(t, r)
+	// Only the deadline stopped the request and no pending intent was journaled,
+	// so no write was possible: the stale intent is re-evaluated, not paused.
 	if state := runtimeState(t, r); c.writes != 0 || state.Status != "active" || state.PendingID != "" {
 		t.Fatal("expired transport sent a command or paused ownership", c.writes, state)
 	}
-	c.waitForDeadline = false
+	c.waitForDeadline, r.deliveryContext = false, context.WithTimeout
 	clock.Set(plan.Override.ExpiresAt)
 	step(t, r)
 	if c.writes != 1 || c.raw[3] != 1 || runtimeState(t, r).Status != "active" {
 		t.Fatal("did not re-evaluate the current intent", c.writes, runtimeState(t, r))
+	}
+}
+
+func TestCalendarRunnerPausesOnErrorAfterDeadline(t *testing.T) {
+	r, c, _, _ := runnerFixture(t)
+	expireDuringControl(r, c)
+	// An external change seen by the driver is not a deadline-only rejection,
+	// even when it is returned after the delivery deadline.
+	c.deadlineErr = trimlight.ErrStaleBaseline
+	step(t, r)
+	if state := runtimeState(t, r); c.writes != 0 || state.Status != "paused" || state.PendingID != "" {
+		t.Fatal("error after the deadline did not pause ownership", c.writes, state)
 	}
 }
 
@@ -473,5 +518,32 @@ func TestCalendarRunnerPausesOnSkippedOccurrence(t *testing.T) {
 	step(t, r)
 	if state := runtimeState(t, r); c.writes != 0 || state.Status != "paused" || !strings.Contains(state.Reason, "skipped") {
 		t.Fatal("skipped occurrence did not pause", c.writes, state)
+	}
+}
+
+func TestCalendarExpiredClassifiesOnlyContextErrors(t *testing.T) {
+	expired := expiringContext{context.Background(), make(chan struct{})}
+	close(expired.expired)
+	r := request{ctx: expired, calendar: &storage.CalendarDelivery{}}
+	for _, tc := range []struct {
+		err  error
+		want bool
+	}{
+		{context.Canceled, true},
+		{fmt.Errorf("read: %w", context.DeadlineExceeded), true},
+		{errors.Join(context.Canceled, nil), true},
+		{trimlight.ErrStaleBaseline, false},
+		{errors.Join(context.Canceled, trimlight.ErrStaleBaseline), false},
+		{errors.New("simulated transport failure"), false},
+		{nil, false},
+	} {
+		if got := errors.Is(calendarExpired(r, tc.err), errCalendarExpired); got != tc.want {
+			t.Fatal(tc.err, got)
+		}
+	}
+	// Ordinary controls and live requests are never classified as expired.
+	if errors.Is(calendarExpired(request{ctx: expired}, context.Canceled), errCalendarExpired) ||
+		errors.Is(calendarExpired(request{ctx: context.Background(), calendar: r.calendar}, context.Canceled), errCalendarExpired) {
+		t.Fatal("classified a request that the intent deadline did not stop")
 	}
 }
