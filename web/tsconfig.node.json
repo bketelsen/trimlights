@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "types": ["node"]
+  },
+  "include": ["vite.config.ts", "scripts/*.mjs", "src/*.test.mjs"],
+  // components.test.mjs imports the untyped .test-build output, which exists only
+  // after scripts/build-component-tests.mjs runs.
+  "exclude": ["src/components.test.mjs"]
+}

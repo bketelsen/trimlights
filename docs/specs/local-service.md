@@ -104,6 +104,15 @@ error text never reaches the client.
 - All API responses MUST use `Cache-Control: no-store`. No credentialed CORS or
   cookie authentication exists in this development mode. Use the separate
   [household OIDC mode](household-auth.md) through Caddy instead.
+- The embedded UI serves only `/` (as `index.html`), regular files under
+  `/assets/`, and the root files `manifest.webmanifest`
+  (`application/manifest+json`), `apple-touch-icon.png`, `icon-192.png` and
+  `icon-512.png` (detected type). It MUST NOT list directories: a directory or
+  a missing file answers 404, and another file system error answers 500.
+  Content-hashed `/assets/` files use
+  `Cache-Control: public, max-age=31536000, immutable`. `/` and the root files
+  keep fixed names, so they use `no-cache` and revalidate. Every error status,
+  including 412, 416 and the 503 for a missing build, uses `no-store`.
 
 ## Service logs
 
@@ -167,7 +176,7 @@ and [ADR-0011](../adr/0011-audited-household-native-controls.md).
 | `build/trimlight` | Static Go binary with clix build metadata and timezone data |
 | `trimlights.db` | Local SQLite storage; generated runtime state, never committed |
 | `make verify` | Tidy, formatting, vet, lint, race tests, protocol fixtures and doc links; non-mutating, no pnpm |
-| `make ci` | `make verify`, frontend tests and build, and the static binary build; run by CI |
+| `make ci` | `make verify`, frontend lint/format/type checks, tests and build, and the static binary build; run by CI |
 | `make check` | Go formatting (`gofmt -w`), then `make ci` |
 
 ## References

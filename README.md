@@ -43,12 +43,13 @@ Trimlight application or a general-purpose controller driver.
 
 Run `mise install` for the pinned tools: Go 1.27.3 from go.mod's toolchain line,
 golangci-lint and svu from `mise.toml` (checksums in `mise.lock`). Use Node 24.19.0
-and pnpm 11.25.0 (versions pinned in CI). The minimum Go version in go.mod is
-1.26.6. Node is only a build dependency.
+and pnpm 11.25.0 (versions pinned in CI). `web/package.json` also pins pnpm
+(`packageManager`, with its hash) and requires Node 24.19.0 or later (`engines`).
+The minimum Go version in go.mod is 1.26.6. Node is only a build dependency.
 
 ```sh
 make verify   # tidy, gofmt -l, vet, lint, race tests, doc links; no pnpm, no writes
-make ci       # verify, then frontend tests/build and the static binary (CI runs this)
+make ci       # verify, then frontend checks/tests/build and the static binary (CI runs this)
 make check    # gofmt -w, then make ci: run before declaring a change done
 ./build/trimlight --help
 ```
@@ -61,6 +62,13 @@ with no test framework. They first compile a few components with the project's
 TypeScript compiler into the ignored `web/.test-build` directory, then render them
 to static HTML with `react-dom/server` as smoke tests
 ([frontend design](docs/design/application.md#application-boundaries)).
+`make ci` (and so `make check`) also runs `web-check`, which runs `pnpm run check`
+in `web/`: ESLint (typescript-eslint, React hooks, jsx-a11y, no
+`dangerouslySetInnerHTML`), the Prettier check and TypeScript checks of the app,
+the `.mjs` tests, the build scripts and the Vite config. Run
+`pnpm run format` in `web/` to apply Prettier. ESLint uses the TypeScript 6 API
+(`typescript` is an alias of `@typescript/typescript6`); `tsc` is TypeScript 7
+(`@typescript/native`), because TypeScript 7.0 ships no compiler API.
 The binary is written to `build/trimlight` and `build/<architecture>/trimlight`.
 All public protocol fixtures are synthetic; no original household captures are
 included. Python is not required to build, test or run the application.

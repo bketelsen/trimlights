@@ -70,7 +70,9 @@ flowchart LR
 - `internal/auth`: OIDC state/nonce/PKCE, subject allowlist, opaque sessions and CSRF.
 - `internal/webui`: embedded browser build and restrictive content security policy.
   It serves `/`, `/assets/` and a fixed list of root files for home-screen use
-  (`manifest.webmanifest`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`).
+  (`manifest.webmanifest`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`),
+  with long-lived caching only for hashed bundles and no directory listings
+  ([local service contract](../specs/local-service.md)).
 - `internal/pattern`: validated design schema and deterministic logical-pixel render.
 - `internal/schedule`: pure calendar validation, civil/solar intervals and precedence.
 - `internal/house`: bounded photo normalization and validated address/geometry model.
@@ -82,6 +84,8 @@ flowchart LR
   selected `.tsx` components with `tsc` and `web/tsconfig.test.json` into the
   ignored `web/.test-build` directory as CommonJS, and `components.test.mjs`
   renders them with `react-dom/server`. This adds no test dependency.
+  ESLint, Prettier and TypeScript checks run in `make check`
+  ([Build](../../README.md#build)).
 - CLI commands proposed: `serve`, `status`, `doctor`, `patterns`, `schedules`,
   `layout`, `backup`, and `restore`. Keep the current snapshot/probe commands as
   explicit diagnostic operations during migration.
@@ -385,7 +389,7 @@ pinned in `mise.toml` with checksums in `mise.lock`; Go comes from `go.mod`.
 | Target | Runs | Use |
 | --- | --- | --- |
 | `make verify` | `go mod tidy -diff`, `gofmt -l`, `go vet`, golangci-lint, race tests, doc links | Credential-free and non-mutating; no Node or pnpm |
-| `make ci` | `verify`, then frontend tests and build, then the static binary build | The Check workflow's `check` job |
+| `make ci` | `verify`, then frontend lint/format/type checks (`web-check`), tests and build, then the static binary build | The Check workflow's `check` job |
 | `make check` | `gofmt -w`, then `make ci` | Developer gate before a change is done |
 | `make vulncheck` | Pinned govulncheck; needs the network | Separate workflow job, outside the gate |
 
