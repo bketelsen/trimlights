@@ -2,15 +2,18 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"trimlights/internal/pattern"
 	"trimlights/internal/storage"
+	"trimlights/internal/trimlight"
 )
 
 func TestPatternAPIValidationAndConflicts(t *testing.T) {
@@ -80,5 +83,24 @@ func TestPatternAPIValidationAndConflicts(t *testing.T) {
 	}
 	if w.Status().Enabled {
 		t.Fatal("library unexpectedly enabled controller")
+	}
+}
+
+func TestControllerImportErrorsAreClientErrors(t *testing.T) {
+	store, w := setup(t, nil)
+	token := strings.Repeat("x", 32)
+	h := Handler(store, w, token)
+	stamp := time.Now().UTC()
+	snap := &trimlight.Snapshot{QueriedAt: stamp, Patterns: []trimlight.Pattern{{ID: 1, Name: "", ParametersHex: strings.Repeat("00", 156)}, {ID: 2, Name: "Broken", ParametersHex: "bad"}}}
+	if err := store.Record(context.Background(), storage.Observation{Snapshot: snap}, storage.Operation{ID: "fixture", Started: stamp, Finished: stamp}); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/patterns/import-controller", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	h.ServeHTTP(response, req)
+	if response.Code != 400 || !strings.Contains(response.Body.String(), "invalid captured native pattern") {
+		t.Fatal(response.Code, response.Body.String())
 	}
 }

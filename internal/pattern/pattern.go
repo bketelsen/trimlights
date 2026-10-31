@@ -37,6 +37,15 @@ type Design struct {
 
 var colorPattern = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
+// ErrInvalid matches every error from Design.Validate, so callers can answer a
+// client error with the validation message.
+var ErrInvalid = errors.New("invalid pattern")
+
+type invalidError string
+
+func (e invalidError) Error() string        { return string(e) }
+func (e invalidError) Is(target error) bool { return target == ErrInvalid }
+
 // ValidName reports whether s is a household display name: 1–80 characters of
 // valid UTF-8, no outer white space, no control (Cc) and no format (Cf)
 // characters. Zero-width joiner and non-joiner stay allowed for emoji sequences
@@ -56,36 +65,36 @@ func ValidName(s string) bool {
 
 func (d Design) Validate() error {
 	if d.Schema != 1 {
-		return errors.New("unsupported pattern schema")
+		return invalidError("unsupported pattern schema")
 	}
 	if !ValidName(d.Name) {
-		return errors.New("name must contain 1–80 characters without leading or trailing spaces, control or invisible format characters")
+		return invalidError("name must contain 1–80 characters without leading or trailing spaces, control or invisible format characters")
 	}
 	if d.Effect == "native" {
 		if d.Native == nil || len(d.Palette) != 0 || d.Brightness != 100 || d.Speed != 0 || d.Reverse {
-			return errors.New("native patterns retain opaque parameters; palette and effect settings cannot be edited")
+			return invalidError("native patterns retain opaque parameters; palette and effect settings cannot be edited")
 		}
 		raw, err := hex.DecodeString(d.Native.ParametersHex)
 		if err != nil || len(raw) != 156 || d.Native.SnapshotAt.IsZero() || !utf8.ValidString(d.Native.Name) || utf8.RuneCountInString(d.Native.Name) > 80 {
-			return errors.New("invalid captured native pattern")
+			return invalidError("invalid captured native pattern")
 		}
 		return nil
 	}
 	if d.Native != nil {
-		return errors.New("custom design cannot contain native parameters")
+		return invalidError("custom design cannot contain native parameters")
 	}
 	if d.Effect != "static" && d.Effect != "chase" {
-		return errors.New("unsupported effect; choose static or chase")
+		return invalidError("unsupported effect; choose static or chase")
 	}
 	if d.Brightness < 0 || d.Brightness > 100 || d.Speed < 0 || d.Speed > 100 {
-		return errors.New("brightness and speed must be between 0 and 100")
+		return invalidError("brightness and speed must be between 0 and 100")
 	}
 	if len(d.Palette) < 1 || len(d.Palette) > 30 {
-		return errors.New("palette must contain 1–30 color runs")
+		return invalidError("palette must contain 1–30 color runs")
 	}
 	for _, run := range d.Palette {
 		if !colorPattern.MatchString(run.Color) || run.Count < 1 || run.Count > 60 {
-			return errors.New("each color run needs a #RRGGBB color and 1–60 bulbs")
+			return invalidError("each color run needs a #RRGGBB color and 1–60 bulbs")
 		}
 	}
 	return nil

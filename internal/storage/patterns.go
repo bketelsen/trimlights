@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -224,9 +225,15 @@ func (s *Store) ImportControllerPatterns(ctx context.Context, actor string) (Imp
 		if !errors.Is(err, sql.ErrNoRows) {
 			return result, err
 		}
-		d := pattern.Design{Schema: 1, Name: strings.TrimSpace(native.Name), Effect: "native", Brightness: 100, Palette: []pattern.Run{}, Native: &pattern.Native{ID: native.ID, Name: native.Name, ParametersHex: native.ParametersHex, SnapshotAt: result.SnapshotAt}}
+		// A blank or hidden-character slot name must not block the batch. The
+		// display name falls back to the slot; Native.Name keeps the raw bytes.
+		name := strings.TrimSpace(native.Name)
+		if !pattern.ValidName(name) {
+			name = fmt.Sprintf("Controller pattern %d", native.ID)
+		}
+		d := pattern.Design{Schema: 1, Name: name, Effect: "native", Brightness: 100, Palette: []pattern.Run{}, Native: &pattern.Native{ID: native.ID, Name: native.Name, ParametersHex: native.ParametersHex, SnapshotAt: result.SnapshotAt}}
 		if err = d.Validate(); err != nil {
-			return ImportResult{}, err
+			return ImportResult{}, fmt.Errorf("controller slot %d: %w", native.ID, err)
 		}
 		p, err := createPattern(ctx, tx, d, actor)
 		if err != nil {

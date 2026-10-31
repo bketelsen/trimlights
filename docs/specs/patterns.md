@@ -56,6 +56,13 @@ and capture timestamp. A native design has no simulated color output.
   remain editable. Convert by creating a separate design, not changing provenance.
 - Controller import MUST use cached state only. It MUST preserve raw parameters,
   be atomic, and skip previously imported slots without overwriting edits.
+- Import trims the slot name for display. A slot name that is then empty or breaks
+  the name rule (for example blank, control or format characters) MUST NOT block
+  the batch: its display name becomes `Controller pattern N`, where N is the slot
+  ID. `native.name` keeps the original slot name exactly, for provenance; matching
+  uses slot ID and parameters, never names.
+- A design that fails validation, on create, update or import, MUST answer 400
+  with the validation message, never a generic 500.
 - Export/import MUST use only the design schema, excluding IDs and credentials.
 - List views SHOULD refresh shared state while visible. An active editor MUST
   retain unsaved changes when a newer server revision arrives and report conflicts.

@@ -154,6 +154,35 @@ func TestInvalidControllerImportRollsBackWholeBatch(t *testing.T) {
 	}
 }
 
+func TestControllerImportReplacesInvalidSlotNames(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	stamp := time.Now().UTC()
+	params := strings.Repeat("00", 156)
+	raw := []string{"", "bad\x01name", "\ufeffMark", "  ", " Porch ", "Good"}
+	snap := &trimlight.Snapshot{QueriedAt: stamp}
+	for i, name := range raw {
+		snap.Patterns = append(snap.Patterns, trimlight.Pattern{ID: byte(i + 1), Name: name, ParametersHex: params})
+	}
+	if err = s.Record(ctx, Observation{Snapshot: snap}, Operation{ID: "fixture", Started: stamp, Finished: stamp}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := s.ImportControllerPatterns(ctx, "owner")
+	if err != nil || len(result.Imported) != len(raw) {
+		t.Fatal(result, err)
+	}
+	want := []string{"Controller pattern 1", "Controller pattern 2", "Controller pattern 3", "Controller pattern 4", "Porch", "Good"}
+	for i, p := range result.Imported {
+		if p.Design.Name != want[i] || p.Design.Native.Name != raw[i] || p.Design.Native.ID != byte(i+1) {
+			t.Fatalf("slot %d: %+v %+v", i+1, p.Design, p.Design.Native)
+		}
+	}
+}
+
 func TestSchemaTwoUpgradeRetainsSessionsAndCreatesPatterns(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Open(dir)

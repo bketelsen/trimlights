@@ -2,6 +2,7 @@ package pattern
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"reflect"
 	"testing"
@@ -36,8 +37,8 @@ func TestInvalidDesignsAndRenderBounds(t *testing.T) {
 	for _, mutate := range []func(*Design){func(d *Design) { d.Schema = 2 }, func(d *Design) { d.Name = " Test" }, func(d *Design) { d.Name = "bad\nname" }, func(d *Design) { d.Brightness = 101 }, func(d *Design) { d.Speed = -1 }, func(d *Design) { d.Effect = "unknown" }, func(d *Design) { d.Palette = []Run{{"#ff00ff", 0}} }, func(d *Design) { d.Palette = []Run{{"red", 2}} }} {
 		d := valid
 		mutate(&d)
-		if err := d.Validate(); err == nil {
-			t.Fatal(d)
+		if err := d.Validate(); !errors.Is(err, ErrInvalid) {
+			t.Fatal(d, err)
 		}
 	}
 	for _, v := range [][2]int{{0, 0}, {2049, 0}, {10, -1}, {10, 86400001}} {
