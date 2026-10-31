@@ -42,18 +42,46 @@ func decodeBytes(raw []byte, kind string, cfg image.Config) int64 {
 		}
 		return pixels * per
 	case "webp":
-		switch cfg.ColorModel {
-		case color.YCbCrModel:
-			// 4:2:0 planes, padded to 16-pixel macroblocks.
-			return pixels * 2
-		case color.NYCbCrAModel:
-			// Alpha can decode through a 4-byte lossless image first.
-			return pixels * 7
-		}
-		// Lossless: 4-byte pixels plus transform work.
-		return pixels * 8
+		return webpDecodeBytes(raw, pixels)
 	}
 	return pixels * 24
+}
+
+// webpDecodeBytes walks the RIFF chunks to the image chunk, because a VP8X
+// header reports YCbCr or NYCbCrA even when the image chunk is VP8L.
+func webpDecodeBytes(b []byte, pixels int64) int64 {
+	alpha := int64(0)
+	for i, n := 12, 0; i+8 <= len(b) && n < 64; n++ {
+		size := uint64(binary.LittleEndian.Uint32(b[i+4 : i+8]))
+		if size > uint64(len(b)-i-8) {
+			break
+		}
+		data := b[i+8 : i+8+int(size)]
+		switch string(b[i : i+4]) {
+		case "ALPH":
+			// One byte per pixel; compression method 1 decodes through a
+			// lossless image first.
+			alpha = pixels
+			if len(data) > 0 && data[0]&0x03 == 1 {
+				alpha += vp8lDecodeBytes(pixels)
+			}
+		case "VP8 ":
+			// 4:2:0 planes padded to 16-pixel macroblocks, plus the partitions
+			// that the decoder reads into memory.
+			return pixels*2 + int64(len(b)) + alpha
+		case "VP8L":
+			return vp8lDecodeBytes(pixels)
+		}
+		i += 8 + int(size) + int(size%2)
+	}
+	// No image chunk: the decode fails, but budget the worst case.
+	return pixels*3 + int64(len(b)) + 2*vp8lDecodeBytes(pixels)
+}
+
+// vp8lDecodeBytes covers a lossless image: 4-byte pixels and an expanded
+// copy from the color-indexing transform.
+func vp8lDecodeBytes(pixels int64) int64 {
+	return pixels * 8
 }
 
 // jpegDecodeBytes reads the SOF0/1/2 frame header and sums what image/jpeg

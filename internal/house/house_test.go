@@ -244,6 +244,46 @@ func withChunk(raw []byte, name string, data []byte) []byte {
 	return append(out, raw[ihdrEnd:]...)
 }
 
+// riff wraps chunks in a RIFF WEBP container.
+func riff(chunks ...[]byte) []byte {
+	var body []byte
+	for _, c := range chunks {
+		body = append(body, c...)
+		if len(c)%2 == 1 {
+			body = append(body, 0)
+		}
+	}
+	b := append([]byte("RIFF"), binary.LittleEndian.AppendUint32(nil, uint32(4+len(body)))...)
+	return append(append(b, "WEBP"...), body...)
+}
+
+func webpChunk(id string, data []byte) []byte {
+	return append(append([]byte(id), binary.LittleEndian.AppendUint32(nil, uint32(len(data)))...), data...)
+}
+
+// vp8x is an extended header; flag 0x10 announces alpha.
+func vp8x(w, h uint32, flags byte) []byte {
+	d := []byte{flags, 0, 0, 0}
+	d = append(d, byte(w-1), byte((w-1)>>8), byte((w-1)>>16), byte(h-1), byte((h-1)>>8), byte((h-1)>>16))
+	return webpChunk("VP8X", d)
+}
+
+// vp8lHeader is the 5-byte VP8L signature and size header.
+func vp8lHeader(w, h uint32, alpha bool) []byte {
+	bits := (w - 1) | (h-1)<<14
+	if alpha {
+		bits |= 1 << 28
+	}
+	return append([]byte{0x2f}, binary.LittleEndian.AppendUint32(nil, bits)...)
+}
+
+// vp8Header is a lossy key-frame header.
+func vp8Header(w, h uint16) []byte {
+	d := []byte{0x10, 0, 0, 0x9d, 0x01, 0x2a}
+	d = binary.LittleEndian.AppendUint16(d, w)
+	return binary.LittleEndian.AppendUint16(d, h)
+}
+
 func jpegHeader(w, h uint16, sof byte, factors ...byte) []byte {
 	b := []byte{0xff, 0xd8, 0xff, sof}
 	b = binary.BigEndian.AppendUint16(b, uint16(8+3*len(factors)))
@@ -272,6 +312,10 @@ func TestDecodeMemoryBudget(t *testing.T) {
 		{"8-bit RGBA PNG at the budget", pngHeader(5792, 5792, 8, 6, 0), false},
 		{"8-bit RGBA PNG over the budget", pngHeader(5793, 5793, 8, 6, 0), true},
 		{"interlaced 8-bit RGBA PNG", pngHeader(5000, 4000, 8, 6, 1), true},
+		{"lossy WebP, 24 MP", riff(webpChunk("VP8 ", vp8Header(6000, 4000))), false},
+		{"lossless WebP over the budget", riff(webpChunk("VP8L", vp8lHeader(4100, 4100, false))), true},
+		{"extended lossless WebP without alpha", riff(vp8x(4100, 4100, 0), webpChunk("VP8L", vp8lHeader(4100, 4100, false))), true},
+		{"extended lossless WebP with alpha", riff(vp8x(4100, 4100, 0x10), webpChunk("VP8L", vp8lHeader(4100, 4100, true))), true},
 		{"baseline 4:2:0 JPEG, 48 MP", jpegHeader(8000, 6000, 0xc0, 0x22, 0x11, 0x11), false},
 		{"baseline 4:4:4 JPEG, 24 MP", jpegHeader(6000, 4000, 0xc0, 0x11, 0x11, 0x11), false},
 		{"progressive 4:2:0 JPEG, 12 MP", jpegHeader(4000, 3000, 0xc2, 0x22, 0x11, 0x11), false},
@@ -283,7 +327,8 @@ func TestDecodeMemoryBudget(t *testing.T) {
 			t.Fatal(c.name, "header-only image accepted")
 		}
 		memory := strings.Contains(err.Error(), "memory")
-		if memory != c.refused {
+		// An accepted header must pass DecodeConfig and fail only in Decode.
+		if memory != c.refused || !c.refused && !strings.Contains(err.Error(), "damaged") {
 			t.Fatal(c.name, err)
 		}
 	}
