@@ -212,6 +212,7 @@ type ProbeReport struct {
 	Changed             *Snapshot `json:"changed,omitempty"`
 	Restored            *Snapshot `json:"restored,omitempty"`
 	Independent         *Snapshot `json:"independent,omitempty"`
+	Reconciled          *Snapshot `json:"reconciled,omitempty"` // latest read before a restoration write
 	ChangedVerified     bool      `json:"changed_verified"`
 	RestoredVerified    bool      `json:"restored_verified"`
 	IndependentVerified bool      `json:"independent_reconnect_verified"`
@@ -228,13 +229,29 @@ func (c *Client) ProbeSchedule2(ctx context.Context, expectedFingerprint string,
 		return nil, errors.New("a snapshot recorder is required")
 	}
 	r := &ProbeReport{}
-	attempted := false
+	attempted, refused := false, false
 	var restoreErr error
-	restore := func(s *session, clean context.Context) error {
-		if err := s.writeProbe(clean, 3); err != nil {
+	// Reconcile before each restoration write. Only the probe's off-minute byte
+	// may differ from the baseline; any other change stops cleanup unwritten.
+	restore := func(s *session, clean context.Context, edit bool) error {
+		state, err := s.snapshot(clean, 3306)
+		if err != nil {
 			return err
 		}
-		state, err := s.snapshot(clean, 3306)
+		r.Reconciled = state
+		if err = validateProbeRestoration(r.Before, state); err != nil {
+			refused = true
+			return err
+		}
+		if edit {
+			if err = s.enterEdit(clean); err != nil {
+				return err
+			}
+		}
+		if err = s.writeProbe(clean, 3); err != nil {
+			return err
+		}
+		state, err = s.snapshot(clean, 3306)
 		if err != nil {
 			return err
 		}
@@ -263,7 +280,7 @@ func (c *Client) ProbeSchedule2(ctx context.Context, expectedFingerprint string,
 			if attempted {
 				clean, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 				defer cancel()
-				restoreErr = restore(s, clean)
+				restoreErr = restore(s, clean, false)
 			}
 		}()
 		attempted = true // Also restore after a partial/ambiguous send failure.
@@ -275,7 +292,7 @@ func (c *Client) ProbeSchedule2(ctx context.Context, expectedFingerprint string,
 			return err
 		}
 		expected := bytes.Clone(stable(r.Before))
-		expected[3319] = 4
+		expected[probeOffMinuteOffset] = 4
 		if !bytes.Equal(stable(r.Changed), expected) {
 			return errors.New("read-back differs from intended single-byte change")
 		}
@@ -285,16 +302,8 @@ func (c *Client) ProbeSchedule2(ctx context.Context, expectedFingerprint string,
 	// A broken socket must not prevent a bounded restoration on a fresh session.
 	if attempted && !r.RestoredVerified {
 		clean, cancel := context.WithTimeout(context.Background(), 35*time.Second)
-		for i := 0; i < 2 && !r.RestoredVerified; i++ {
-			restoreErr = c.withSession(clean, func(s *session) error {
-				if _, e := s.snapshot(clean, 3306); e != nil {
-					return e
-				}
-				if e := s.enterEdit(clean); e != nil {
-					return e
-				}
-				return restore(s, clean)
-			})
+		for i := 0; i < 2 && !r.RestoredVerified && !refused; i++ {
+			restoreErr = c.withSession(clean, func(s *session) error { return restore(s, clean, true) })
 		}
 		cancel()
 	}

@@ -226,6 +226,26 @@ func validateProbeBaseline(s *Snapshot, expectedFingerprint string) error {
 	return nil
 }
 
+// probeOffMinuteOffset is schedule 2's off-minute byte (offset 3306 + 7 + 6),
+// the only byte that the supported probe changes.
+const probeOffMinuteOffset = 3319
+
+// validateProbeRestoration permits a restoration write only when the current
+// non-clock state equals the baseline, except that the probe byte may hold the
+// probe value 4. Any other difference is an external change: do not overwrite it.
+func validateProbeRestoration(before, current *Snapshot) error {
+	if before == nil || current == nil || len(current.raw) != len(before.raw) {
+		return errors.New("restoration refused: controller snapshot layout changed; no restoration write sent")
+	}
+	want, got := stable(before), stable(current)
+	for i := range want {
+		if got[i] != want[i] && (i != probeOffMinuteOffset || got[i] != 4) {
+			return fmt.Errorf("restoration refused: controller state changed outside the probe byte (first difference at offset %d: %d, baseline %d); no restoration write sent", i, got[i], want[i])
+		}
+	}
+	return nil
+}
+
 func playbackModePayload(mode byte) ([]byte, error) {
 	if mode != 0 && mode != 2 {
 		return nil, errors.New("only captured OFF and TIMER commands are supported")

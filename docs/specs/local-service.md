@@ -124,3 +124,10 @@ match it against a fresh snapshot, and check its supported shape before entering
 edit mode. `probe-schedule2` retains its disabled-slot restriction; the separate
 [playback verification](playback-verification.md) requires a restorable TIMER
 baseline. A fingerprint mismatch MUST send no write.
+
+Before each `probe-schedule2` restoration write, including on a reconnect, the
+probe MUST read current state. Only snapshot offset 3319 (schedule 2 off-minute)
+MAY differ from the baseline non-clock bytes, and only with the probe value 4.
+Any other difference is an external change: cleanup MUST stop without a write and
+report `RESTORATION NOT VERIFIED`, with the observed state as `reconciled` in the
+report (added 2026-10-30). The restoration payload is unchanged.

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ type emulator struct {
 	cancelOnWrite  context.CancelFunc
 	controlWrites  [][]byte
 	onControl      func(int, []byte) bool // called under mu; true disconnects
+	onProbe        func(byte, []byte)     // called under mu after a schedule write
 	timerPatternID byte
 	connections    int
 	dialFailure    bool
@@ -136,6 +138,9 @@ func (e *emulator) serve(conn net.Conn) {
 			e.mu.Lock()
 			copy(e.raw[3313:3320], payload[4:11])
 			e.writes = append(e.writes, payload[10])
+			if e.onProbe != nil {
+				e.onProbe(payload[10], e.raw)
+			}
 			closeNow := e.disconnectOnce && payload[10] == 4
 			e.disconnectOnce = false
 			cancel := e.cancelOnWrite
@@ -282,5 +287,57 @@ func TestProbeRejectsUnreviewedFreshState(t *testing.T) {
 	defer e.mu.Unlock()
 	if len(e.writes) != 0 {
 		t.Fatal("changed controller baseline was written")
+	}
+}
+
+// An external change after the probe write (for example, the official app
+// enabling schedule 2) must not be overwritten by cleanup or reported as restored.
+func TestProbeCleanupDoesNotOverwriteExternalChanges(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		offset     int
+		value      byte
+		disconnect bool
+	}{
+		{"slot2-enabled-after-readback", 3313, 1, false},
+		{"slot2-off-minute-after-readback", 3319, 5, false},
+		{"slot2-start-after-readback", 3317, 7, false},
+		{"library-after-readback", 80, 0x7f, false},
+		{"slot2-enabled-before-reconnect", 3313, 1, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, e := testClient(t)
+			change := func(raw []byte) { raw[tc.offset] = tc.value }
+			if tc.disconnect {
+				e.disconnectOnce = true
+				e.onProbe = func(minute byte, raw []byte) {
+					if minute == 4 {
+						change(raw)
+					}
+				}
+			}
+			r, err := c.ProbeSchedule2(context.Background(), fixtureFingerprint(t), func(stage string, _ *Snapshot) error {
+				if stage == "changed" && !tc.disconnect {
+					e.mu.Lock()
+					change(e.raw)
+					e.mu.Unlock()
+				}
+				return nil
+			})
+			if err == nil || !strings.Contains(err.Error(), "RESTORATION NOT VERIFIED") || r.RestoredVerified || r.IndependentVerified {
+				t.Fatalf("external change hidden: %+v %v", r, err)
+			}
+			if r.Reconciled == nil || r.Reconciled.raw[tc.offset] != tc.value {
+				t.Fatalf("observed state not reported: %+v", r.Reconciled)
+			}
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			if !bytes.Equal(e.writes, []byte{4}) {
+				t.Fatalf("cleanup wrote over an external change: %v", e.writes)
+			}
+			if e.raw[tc.offset] != tc.value {
+				t.Fatal("external change was overwritten")
+			}
+		})
 	}
 }
