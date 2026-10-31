@@ -340,7 +340,7 @@ pnpm, Node or Go.
 
 | Trigger | Tags | Embedded version |
 | --- | --- | --- |
-| Push to main | `:main`, `:sha-<full commit>` | `main` |
+| Push to main | `:sha-<full commit>`; `:main` only if the commit is still the head of main | `main` |
 | `vX.Y.Z` tag from `make bump` | `:vX.Y.Z` | `vX.Y.Z` |
 
 Deploy a release tag, or `vX.Y.Z@sha256:<digest>` to fix the exact image; `:main`

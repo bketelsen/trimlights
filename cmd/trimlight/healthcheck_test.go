@@ -67,6 +67,30 @@ func TestHealthcheckFailsOnTimeout(t *testing.T) {
 	}
 }
 
+func TestHealthcheckFailsWhenBodyStalls(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("{"))
+		w.(http.Flusher).Flush()
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer srv.Close()
+	defer close(release)
+	start := time.Now()
+	_, _, err := execute(t, "healthcheck", "--url", srv.URL+"/readyz", "--timeout", "100ms")
+	if err == nil {
+		t.Fatal("stalled body accepted")
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("timeout not enforced: %s", elapsed)
+	}
+}
+
 func TestHealthcheckNeverFollowsRedirects(t *testing.T) {
 	var followed atomic.Int32
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

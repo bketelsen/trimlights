@@ -32,7 +32,11 @@ them with the copy-only Containerfile, pushes, and runs
 `push-to-registry: true`. It runs no pnpm, Node, Go or repository build code.
 
 Main pushes keep `:main` and `:sha-<full commit>`, now attested, so the live app
-keeps working. A release is a `vX.Y.Z` tag that only `make bump` creates, with
+keeps working. Each non-PR run has its own concurrency group, because GitHub
+cancels all but 1 pending run in a group, so main runs can publish at the same
+time. Each run always pushes its `:sha-<full commit>` tag. It moves `:main` to
+that digest only when its commit is still the head of main; an older run that
+finishes later skips `:main`. A release is a `vX.Y.Z` tag that only `make bump` creates, with
 the svu release pinned in `mise.toml`. A tag run passes the same check gate,
 builds with `VERSION=vX.Y.Z`, and pushes and attests `:vX.Y.Z`. Deployments pin
 a release tag, optionally with its digest, and verify it with
@@ -51,7 +55,9 @@ bound to this workflow run by the attestation. Rollback means choosing an older
 `vX.Y.Z` tag. Releases need svu (`mise install`) and a passing local gate.
 Dependabot adds weekly pull requests to review. A tag pushed outside
 `make bump` still publishes if it is `vX.Y.Z` and passes the gate.
-The `:main` tag stays mutable until the live deployment moves to release tags;
+A narrow race remains: if main advances between a run's head check and its
+retag, `:main` can briefly point to the older commit until the newer run retags
+it. The `:main` tag stays mutable until the live deployment moves to release tags;
 removing it is a separate change, coordinated with the TrueNAS app owner.
 Images built before this decision have no `healthcheck` command, so a Compose
 health check needs an image from this change or later.

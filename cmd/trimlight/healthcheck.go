@@ -76,9 +76,15 @@ func checkHealth(ctx context.Context, u *url.URL, timeout time.Duration) (int, e
 		return 0, fmt.Errorf("health request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 	if resp.StatusCode != http.StatusOK {
 		return resp.StatusCode, fmt.Errorf("unhealthy: %s answered %d", u, resp.StatusCode)
+	}
+	// A 200 counts only when the whole (bounded) body arrives in time.
+	if _, err = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10)); err != nil {
+		return resp.StatusCode, fmt.Errorf("health response body failed: %w", err)
+	}
+	if err = ctx.Err(); err != nil {
+		return resp.StatusCode, fmt.Errorf("health request failed: %w", err)
 	}
 	return resp.StatusCode, nil
 }

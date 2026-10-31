@@ -11,8 +11,11 @@ on:
 
 permissions: {}
 
+# Pull requests share one group per PR and cancel superseded runs. Every other
+# run gets its own group: GitHub keeps only 1 pending run per group and cancels
+# the rest, so a shared group could drop a main run before it publishes.
 concurrency:
-  group: check-${{ github.event.pull_request.number || github.ref }}
+  group: check-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -123,7 +126,9 @@ jobs:
             tags="$IMAGE:$VERSION"
           else
             # The live app pulls :main and :sha-<commit> today; keep both.
-            tags="$IMAGE:main,$IMAGE:sha-$GITHUB_SHA"
+            # :sha-<commit> is pushed here; :main moves later, only if this
+            # commit is still the head of main.
+            tags="$IMAGE:sha-$GITHUB_SHA"
           fi
           echo "tags=$tags" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
@@ -151,6 +156,27 @@ jobs:
           push-to-registry: true
           # Storage records need an organization-owned repository.
           create-storage-record: false
+      # Main runs can publish at the same time, so an older run must not move
+      # :main back. Remaining race: if main advances between the head check and
+      # the retag (seconds), this run can still move :main to its older commit.
+      # The newer run's own check and retag then come later and correct it,
+      # unless this run stalls in that window for longer than the newer run's
+      # whole check, build and push. :sha-<commit> tags are never affected.
+      - name: Move :main if this commit is still the head of main
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          head=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "Skipped :main: main is now $head, not $GITHUB_SHA." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          docker buildx imagetools create --tag "$IMAGE:main" "$IMAGE@$DIGEST"
+          moved=$(docker buildx imagetools inspect "$IMAGE:main" | awk '/^Digest:/ { print $2; exit }')
+          [ "$moved" = "$DIGEST" ] || { echo ":main is $moved, expected $DIGEST" >&2; exit 1; }
+          echo "Moved :main to $DIGEST." >> "$GITHUB_STEP_SUMMARY"
       - name: Summary
         env:
           TAGS: ${{ steps.tags.outputs.tags }}

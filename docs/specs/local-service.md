@@ -47,7 +47,7 @@ Refresh accepts exactly one JSON object, with `Content-Type: application/json`:
 - `healthcheck` MUST accept only an http(s) URL whose host is `localhost` or a
   loopback IP address, without credentials. It MUST ignore proxy settings, MUST
   NOT follow redirects, and MUST exit nonzero on a redirect, a non-200 status,
-  a refused connection or the timeout (positive, at most 1 minute).
+  a refused connection, an incomplete body or the timeout (positive, at most 1 minute).
 - `status` MUST NOT synchronize the controller clock. `refresh` MUST explicitly
   acknowledge the potential clock mutation. Sundays remain refused by the driver.
 - The queue MUST serialize complete reads, admit at most eight waiting requests,
