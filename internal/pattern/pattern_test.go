@@ -46,3 +46,27 @@ func TestInvalidDesignsAndRenderBounds(t *testing.T) {
 		}
 	}
 }
+
+// TestSharedNameVectors keeps Go name validation equal to web/src/pattern.ts.
+func TestSharedNameVectors(t *testing.T) {
+	raw, err := os.ReadFile("../../web/src/name-vectors.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vectors []struct {
+		Name  string
+		Value string
+		Valid bool
+	}
+	if err = json.Unmarshal(raw, &vectors); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range vectors {
+		t.Run(v.Name, func(t *testing.T) {
+			d := Design{Schema: 1, Name: v.Value, Effect: "static", Brightness: 50, Palette: []Run{{"#ff0000", 1}}}
+			if err := d.Validate(); (err == nil) != v.Valid {
+				t.Fatalf("%q valid=%v: %v", v.Value, v.Valid, err)
+			}
+		})
+	}
+}

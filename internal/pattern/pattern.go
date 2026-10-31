@@ -37,17 +37,29 @@ type Design struct {
 
 var colorPattern = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
+// ValidName reports whether s is a household display name: 1–80 characters of
+// valid UTF-8, no outer white space, no control (Cc) and no format (Cf)
+// characters. Zero-width joiner and non-joiner stay allowed for emoji sequences
+// and joined scripts. web/src/pattern.ts applies the same rule; both must pass
+// web/src/name-vectors.json.
+func ValidName(s string) bool {
+	if s == "" || !utf8.ValidString(s) || utf8.RuneCountInString(s) > 80 || strings.TrimSpace(s) != s {
+		return false
+	}
+	for _, r := range s {
+		if unicode.IsControl(r) || (unicode.Is(unicode.Cf, r) && r != '\u200c' && r != '\u200d') {
+			return false
+		}
+	}
+	return true
+}
+
 func (d Design) Validate() error {
 	if d.Schema != 1 {
 		return errors.New("unsupported pattern schema")
 	}
-	if strings.TrimSpace(d.Name) != d.Name || d.Name == "" || utf8.RuneCountInString(d.Name) > 80 || !utf8.ValidString(d.Name) {
-		return errors.New("name must contain 1–80 characters without leading or trailing spaces")
-	}
-	for _, r := range d.Name {
-		if unicode.IsControl(r) {
-			return errors.New("name cannot contain control characters")
-		}
+	if !ValidName(d.Name) {
+		return errors.New("name must contain 1–80 characters without leading or trailing spaces, control or invisible format characters")
 	}
 	if d.Effect == "native" {
 		if d.Native == nil || len(d.Palette) != 0 || d.Brightness != 100 || d.Speed != 0 || d.Reverse {

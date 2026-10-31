@@ -28,7 +28,13 @@ application ID, never imports identity or overwrites an existing pattern.
 {"schema":1,"name":"Porch warmth","favorite":false,"effect":"static","brightness":60,"speed":0,"reverse":false,"palette":[{"color":"#ffb05a","count":3},{"color":"#000000","count":1}]}
 ```
 
-Names contain 1–80 Unicode characters without control characters or outer spaces.
+Names contain 1–80 Unicode characters without outer white space, control (`Cc`)
+or format (`Cf`) characters; U+FEFF is rejected. Zero-width joiner (U+200D) and
+non-joiner (U+200C) remain allowed for emoji sequences and joined scripts. Go
+(`pattern.ValidName`) and TypeScript (`validName`) MUST agree on the shared name
+vectors; calendar rule names use the same rule. Since 2026-10-30 the format-character
+rule also applies to names saved earlier: such a pattern or calendar keeps its
+retained revisions, but it must be renamed before its next save or preview.
 Custom effects are `static` or `chase`; brightness and speed are integers 0–100.
 Palettes contain 1–30 runs, each a #RRGGBB color and count 1–60. Native designs use
 `effect: native`, empty palette, brightness 100, speed 0, reverse false, plus a
@@ -80,6 +86,7 @@ and capture timestamp. A native design has no simulated color output.
 | --- | --- |
 | SQLite schema 3 | Pattern heads, immutable revisions and controller-import registry |
 | `web/src/pattern-vectors.json` | Shared expected logical-pixel colors for Go and browser tests |
+| `web/src/name-vectors.json` | Shared name validation cases for Go pattern/calendar and browser tests |
 | Browser strip preview | Canonical design and renderer; photo mapping reuses these colors |
 
 ## References

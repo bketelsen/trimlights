@@ -6,11 +6,10 @@ import (
 	"fmt"
 	"math"
 	"regexp"
-	"strings"
 	"time"
 	_ "time/tzdata" // Required by the scratch image, including DST transitions.
-	"unicode"
-	"unicode/utf8"
+
+	"trimlights/internal/pattern"
 )
 
 type Action struct {
@@ -69,17 +68,9 @@ func (a Action) Validate() error {
 var idPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}$`)
 
 func validID(s string) bool { return idPattern.MatchString(s) }
-func validName(s string) bool {
-	if strings.TrimSpace(s) != s || s == "" || !utf8.ValidString(s) || utf8.RuneCountInString(s) > 80 {
-		return false
-	}
-	for _, r := range s {
-		if unicode.IsControl(r) {
-			return false
-		}
-	}
-	return true
-}
+
+// validName uses the shared household name rule of the pattern library.
+func validName(s string) bool { return pattern.ValidName(s) }
 func date(s string) (time.Time, error) {
 	d, err := time.Parse("2006-01-02", s)
 	if err != nil || len(s) != 10 || d.Year() < 1970 || d.Year() > 2199 {

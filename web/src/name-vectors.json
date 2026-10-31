@@ -1,0 +1,22 @@
+[
+ {"name":"plain words","value":"Porch warmth","valid":true},
+ {"name":"inner ideographic space","value":"Porch\u3000warmth","valid":true},
+ {"name":"emoji joined by ZWJ","value":"Pride \ud83c\udff3\ufe0f\u200d\ud83c\udf08","valid":true},
+ {"name":"ZWNJ in a joined script","value":"\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645","valid":true},
+ {"name":"80 characters","value":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx","valid":true},
+ {"name":"81 characters","value":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx","valid":false},
+ {"name":"empty","value":"","valid":false},
+ {"name":"leading space","value":" Porch","valid":false},
+ {"name":"trailing no-break space","value":"Porch\u00a0","valid":false},
+ {"name":"trailing ideographic space","value":"Porch\u3000","valid":false},
+ {"name":"trailing line separator","value":"Porch\u2028","valid":false},
+ {"name":"leading byte order mark","value":"\ufeffPorch","valid":false},
+ {"name":"trailing byte order mark","value":"Porch\ufeff","valid":false},
+ {"name":"inner byte order mark","value":"Por\ufeffch","valid":false},
+ {"name":"inner zero width space","value":"Por\u200bch","valid":false},
+ {"name":"inner soft hyphen","value":"Por\u00adch","valid":false},
+ {"name":"inner bidi isolate","value":"Por\u2066ch","valid":false},
+ {"name":"inner newline","value":"Por\nch","valid":false},
+ {"name":"inner delete","value":"Por\u007fch","valid":false},
+ {"name":"inner next line","value":"Por\u0085ch","valid":false}
+]
