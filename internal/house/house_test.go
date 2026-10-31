@@ -316,6 +316,9 @@ func TestDecodeMemoryBudget(t *testing.T) {
 		{"lossless WebP over the budget", riff(webpChunk("VP8L", vp8lHeader(4100, 4100, false))), true},
 		{"extended lossless WebP without alpha", riff(vp8x(4100, 4100, 0), webpChunk("VP8L", vp8lHeader(4100, 4100, false))), true},
 		{"extended lossless WebP with alpha", riff(vp8x(4100, 4100, 0x10), webpChunk("VP8L", vp8lHeader(4100, 4100, true))), true},
+		{"lossless WebP, 1 MP", riff(webpChunk("VP8L", vp8lHeader(1000, 1000, false))), true},
+		{"lossless WebP, 128x128", riff(webpChunk("VP8L", vp8lHeader(128, 128, false))), false},
+		{"lossy WebP with lossless alpha, 1 MP", riff(vp8x(1000, 1000, 0x10), webpChunk("ALPH", []byte{1}), webpChunk("VP8 ", vp8Header(1000, 1000))), true},
 		{"baseline 4:2:0 JPEG, 48 MP", jpegHeader(8000, 6000, 0xc0, 0x22, 0x11, 0x11), false},
 		{"baseline 4:4:4 JPEG, 24 MP", jpegHeader(6000, 4000, 0xc0, 0x11, 0x11, 0x11), false},
 		{"progressive 4:2:0 JPEG, 12 MP", jpegHeader(4000, 3000, 0xc2, 0x22, 0x11, 0x11), false},
@@ -432,4 +435,104 @@ func TestSanitizeAllocationBudget(t *testing.T) {
 	if allocated := int64(after.TotalAlloc - before.TotalAlloc); allocated > budget {
 		t.Fatal("allocated", allocated, "budget", budget)
 	}
+}
+
+func TestVP8LHuffmanBound(t *testing.T) {
+	// Per group: 5 trees of 536 bytes, 2*3136-5 nodes of 8 bytes and 3136
+	// 4-byte codes; per decoded group: 3136 code lengths and 5 small trees.
+	if vp8lGroupBytes != 65360 || vp8lScratchBytes != 17664 {
+		t.Fatal(vp8lGroupBytes, vp8lScratchBytes)
+	}
+	tiles := int64(1024 * 1024)
+	want := int64(4096*4096*8) + 2600*65360 + 2600*17666 + 4*tiles + 1<<20
+	if got := vp8lDecodeBytes(4096, 4096); got != want {
+		t.Fatal(got, want)
+	}
+	// Small images keep only the groups that their tiles can reference.
+	if got := vp8lDecodeBytes(8, 8); got != 8*8*8+4*65360+2600*17666+16+1<<20 {
+		t.Fatal(got)
+	}
+	// The largest square lossless WebP that fits the budget is tiny.
+	n := int64(1)
+	for vp8lDecodeBytes(n+1, n+1) <= MaxDecodeBytes {
+		n++
+	}
+	if n < 100 || n > 200 {
+		t.Fatal(n)
+	}
+}
+
+// bitWriter writes the least significant bit first, as VP8L reads.
+type bitWriter struct {
+	b []byte
+	n uint
+}
+
+func (w *bitWriter) put(v uint32, bits uint) {
+	for i := range bits {
+		if w.n%8 == 0 {
+			w.b = append(w.b, 0)
+		}
+		w.b[len(w.b)-1] |= byte(v>>i&1) << (w.n % 8)
+		w.n++
+	}
+}
+
+// simpleTree writes a one-symbol Huffman tree; reading its symbol takes no bits.
+func (w *bitWriter) simpleTree(symbol uint32) {
+	w.put(1, 1) // simple code
+	w.put(0, 1) // one symbol
+	w.put(1, 1) // 8-bit symbol
+	w.put(symbol, 8)
+}
+
+// TestVP8LManyGroups decodes a lossless stream whose meta image references
+// Huffman group 999, so the decoder builds 1000 groups for 128x128 pixels.
+func TestVP8LManyGroups(t *testing.T) {
+	var w bitWriter
+	w.put(0x2f, 8)
+	w.put(127, 14)
+	w.put(127, 14)
+	w.put(0, 4)       // no alpha, version 0
+	w.put(0, 1)       // no transform
+	w.put(0, 1)       // no color cache
+	w.put(1, 1)       // meta image
+	w.put(0, 3)       // 4x4 tiles: 32x32 meta pixels
+	w.put(0, 1)       // meta image: no color cache
+	w.simpleTree(231) // green: low byte of group 999
+	w.simpleTree(3)   // red: high byte of group 999
+	w.simpleTree(0)
+	w.simpleTree(0)
+	w.simpleTree(0)
+	for range 1000 * 5 {
+		w.simpleTree(0)
+	}
+	raw := riff(webpChunk("VP8L", w.b))
+	cfg, kind, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil || kind != "webp" {
+		t.Fatal(kind, err)
+	}
+	estimate := decodeBytes(raw, kind, cfg)
+	allocated, err := measureAlloc(func() error {
+		_, _, err := image.Decode(bytes.NewReader(raw))
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 1000 stored groups of 2680 bytes need more than 2.6 MB.
+	if allocated < 1000*2680 || allocated > estimate {
+		t.Fatal("allocated", allocated, "estimated", estimate)
+	}
+}
+
+// measureAlloc runs f alone after a collection and returns the bytes that the
+// whole process allocated meanwhile. Callers must not run in parallel.
+func measureAlloc(f func() error) (int64, error) {
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	err := f()
+	runtime.ReadMemStats(&after)
+	return int64(after.TotalAlloc - before.TotalAlloc), err
 }

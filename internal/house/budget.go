@@ -42,14 +42,15 @@ func decodeBytes(raw []byte, kind string, cfg image.Config) int64 {
 		}
 		return pixels * per
 	case "webp":
-		return webpDecodeBytes(raw, pixels)
+		return webpDecodeBytes(raw, int64(cfg.Width), int64(cfg.Height))
 	}
 	return pixels * 24
 }
 
 // webpDecodeBytes walks the RIFF chunks to the image chunk, because a VP8X
 // header reports YCbCr or NYCbCrA even when the image chunk is VP8L.
-func webpDecodeBytes(b []byte, pixels int64) int64 {
+func webpDecodeBytes(b []byte, w, h int64) int64 {
+	pixels := w * h
 	alpha := int64(0)
 	for i, n := 12, 0; i+8 <= len(b) && n < 64; n++ {
 		size := uint64(binary.LittleEndian.Uint32(b[i+4 : i+8]))
@@ -63,25 +64,44 @@ func webpDecodeBytes(b []byte, pixels int64) int64 {
 			// lossless image first.
 			alpha = pixels
 			if len(data) > 0 && data[0]&0x03 == 1 {
-				alpha += vp8lDecodeBytes(pixels)
+				alpha += vp8lDecodeBytes(w, h)
 			}
 		case "VP8 ":
 			// 4:2:0 planes padded to 16-pixel macroblocks, plus the partitions
 			// that the decoder reads into memory.
 			return pixels*2 + int64(len(b)) + alpha
 		case "VP8L":
-			return vp8lDecodeBytes(pixels)
+			return vp8lDecodeBytes(w, h)
 		}
 		i += 8 + int(size) + int(size%2)
 	}
 	// No image chunk: the decode fails, but budget the worst case.
-	return pixels*3 + int64(len(b)) + 2*vp8lDecodeBytes(pixels)
+	return pixels*3 + int64(len(b)) + 2*vp8lDecodeBytes(w, h)
 }
 
-// vp8lDecodeBytes covers a lossless image: 4-byte pixels and an expanded
-// copy from the color-indexing transform.
-func vp8lDecodeBytes(pixels int64) int64 {
-	return pixels * 8
+// Caps of golang.org/x/image/vp8l (v0.47.0): at most 2600 Huffman groups
+// (maxHuffImageSize), 5 trees per group, a color cache of at most 2^11
+// entries, and meta tiles of at least 4x4 pixels.
+const (
+	vp8lMaxGroups = 2600
+	// Symbols over the 5 trees of one group with the largest color cache.
+	vp8lSymbols = (256 + 24 + 1<<11) + 3*256 + 40
+	// A stored group: 5 trees of 536 bytes, 2n-1 nodes of 8 bytes, and the
+	// 4-byte canonical codes built for each tree.
+	vp8lGroupBytes = 5*536 + 8*(2*vp8lSymbols-5) + 4*vp8lSymbols
+	// Each decoded group, referenced or not: 4-byte code lengths and a
+	// code-length tree for each of its 5 trees.
+	vp8lScratchBytes = 4*vp8lSymbols + 5*1024
+)
+
+// vp8lDecodeBytes covers a lossless image: 4-byte pixels, an expanded copy
+// from the color-indexing transform, and the worst-case Huffman groups. Only
+// groups that tiles reference are kept, but all 2600 can be decoded. The
+// groups alone need about 206 MiB at the cap, so a lossless WebP fits the
+// budget only when it is very small.
+func vp8lDecodeBytes(w, h int64) int64 {
+	tiles := ((w + 3) / 4) * ((h + 3) / 4)
+	return w*h*8 + min(tiles, vp8lMaxGroups)*vp8lGroupBytes + vp8lMaxGroups*(vp8lScratchBytes+2) + 4*tiles + 1<<20
 }
 
 // jpegDecodeBytes reads the SOF0/1/2 frame header and sums what image/jpeg

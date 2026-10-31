@@ -36,6 +36,9 @@ func Sanitize(raw []byte) (PhotoImage, error) {
 		return PhotoImage{}, errors.New("photo exceeds 50 million pixels or 16384 pixels per edge; resize before uploading")
 	}
 	if decodeBytes(raw, kind, cfg) > MaxDecodeBytes {
+		if kind == "webp" {
+			return PhotoImage{}, errors.New("this WebP photo needs too much memory to decode (lossless WebP is not supported); save the photo as JPEG or PNG")
+		}
 		return PhotoImage{}, errors.New("photo needs too much memory to decode (for example a 16-bit PNG or a large progressive JPEG); export it as a standard JPEG")
 	}
 	src, _, err := image.Decode(bytes.NewReader(raw))
