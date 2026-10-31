@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -84,7 +83,7 @@ func calendarIntent(ctx context.Context, s *storage.Store, now time.Time, snap *
 		return saved, intent, trimlight.ControlRequest{}, errors.New("current calendar rules conflict")
 	}
 	for _, issue := range preview.Issues {
-		if strings.HasPrefix(issue.Message, "Skipped:") {
+		if issue.Skipped {
 			return saved, intent, trimlight.ControlRequest{}, errors.New("upcoming calendar occurrences are skipped; review the timeline")
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -454,5 +455,23 @@ func TestProductionStartupCannotActivatePersistedCalendar(t *testing.T) {
 	}
 	if accesses.Load() != 0 {
 		t.Fatal("production startup reached hardware")
+	}
+}
+
+func TestCalendarRunnerPausesOnSkippedOccurrence(t *testing.T) {
+	r, c, _, plan := runnerFixture(t)
+	// Polar night: no sunset near the fixture date, so occurrences are skipped.
+	plan.Location = &schedule.Location{Latitude: 78.2232, Longitude: 15.6469}
+	polar := plan.Rules[0]
+	polar.ID, polar.Name = "polar", "Polar"
+	polar.Start = schedule.Boundary{Kind: "sunset"}
+	polar.Action = schedule.Action{Kind: "off"}
+	plan.Rules = append(plan.Rules, polar)
+	if _, err := r.store.SaveSchedule(context.Background(), 2, plan, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	step(t, r)
+	if state := runtimeState(t, r); c.writes != 0 || state.Status != "paused" || !strings.Contains(state.Reason, "skipped") {
+		t.Fatal("skipped occurrence did not pause", c.writes, state)
 	}
 }

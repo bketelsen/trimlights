@@ -7,6 +7,7 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -79,7 +80,7 @@ func TestCalendarHandoffReviewTakeoverAndReturn(t *testing.T) {
 		t.Fatal(err)
 	}
 	state = runtimeState(t, r)
-	if c.writes != 2 || c.raw[3] != 2 || state.Status != "disabled" || state.PendingID != "" || !bytes.Equal(native, c.raw[26:3320]) {
+	if c.writes != 2 || c.raw[3] != 2 || state.Status != "disabled" || state.PendingID != "" || state.OwnedSHA256 != "" || state.Actor != "" || !bytes.Equal(native, c.raw[26:3320]) {
 		t.Fatal("native return failed or changed saved timers/library", state)
 	}
 	reads = c.reads
@@ -288,5 +289,23 @@ func TestCalendarHandoffConcurrentPauseWinsCompletion(t *testing.T) {
 	state := runtimeState(t, r)
 	if c.writes != 1 || state.Status != "paused" || state.PendingID != "" || state.Reason != "owner paused during transfer" {
 		t.Fatal(c.writes, state)
+	}
+}
+
+func TestCalendarHandoffBindsReviewedNativeSchedules(t *testing.T) {
+	for _, direction := range []string{"calendar", "timer"} {
+		t.Run(direction, func(t *testing.T) {
+			h, r, c, _, _ := handoffFixture(t)
+			review := reviewed(t, h, direction)
+			// Same fingerprint, but not the native schedules the owner reviewed.
+			review.schedules = slices.Clone(review.schedules)
+			review.schedules[0].Enabled = !review.schedules[0].Enabled
+			if err := h.apply(context.Background(), "owner", review); !errors.Is(err, trimlight.ErrStaleBaseline) {
+				t.Fatal("review with different native schedules accepted", err)
+			}
+			if state := runtimeState(t, r); c.writes != 0 || state.Status == "active" || state.PendingID != "" {
+				t.Fatal("unreviewed schedules reached hardware", c.writes, state)
+			}
+		})
 	}
 }
