@@ -1,4 +1,4 @@
-.PHONY: build web-build web-test test vet fmt-check docs-check check svu-version-check bump
+.PHONY: build web-build web-check web-test test vet fmt-check docs-check check svu-version-check bump
 
 PNPM ?= pnpm
 
@@ -24,6 +24,11 @@ build: web-build
 web-test: web/node_modules/.install-stamp
 	$(PNPM) --dir web test
 
+# Lint (ESLint), formatting (Prettier) and type checks of the app, the tests
+# and the Vite config. The web build itself runs only vite build.
+web-check: web/node_modules/.install-stamp
+	$(PNPM) --dir web run check
+
 test:
 	go test -race ./...
 
@@ -36,7 +41,7 @@ fmt-check:
 docs-check:
 	go run ./internal/doccheck
 
-check: web-build web-test fmt-check vet test docs-check build
+check: web-build web-check web-test fmt-check vet test docs-check build
 
 # svu's release, read from mise.toml; make bump checks it (ADR-0015).
 SVU_VERSION := $(strip $(shell sed -n 's/^svu = "\(.*\)"/\1/p' mise.toml))

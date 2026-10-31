@@ -56,19 +56,23 @@ export function PatternLibrary({csrf,onError,onDirty}:{csrf:string;onError:(erro
  const file=useRef<HTMLInputElement>(null);
  const loadSequence=useRef(0);
  const mounted=useRef(true),editorSequence=useRef(0),draftRef=useRef(draft),editingRef=useRef(editing);
- draftRef.current=draft;editingRef.current=editing;
+ /* eslint-disable react-hooks/refs -- async callbacks read the latest render state; syncing in an effect changes timing. */draftRef.current=draft;editingRef.current=editing;/* eslint-enable react-hooks/refs */
  const dirty=!!draft&&(!editing||JSON.stringify(draft)!==JSON.stringify(editing.design));
  const replaceDraft=(value:Design|null)=>{draftRef.current=value;setDraft(value)};
  const discardDraft=()=>!draftRef.current||(!!editingRef.current&&JSON.stringify(draftRef.current)===JSON.stringify(editingRef.current.design))||window.confirm('Leave without saving your pattern?');
  useEffect(()=>{onDirty(dirty)},[dirty,onDirty]);
  useEffect(()=>()=>onDirty(false),[onDirty]);
- useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;editorSequence.current++}},[]);
+ useEffect(()=>{mounted.current=true;const sequence=editorSequence;return()=>{mounted.current=false;sequence.current++}},[]);
  useEffect(()=>{if(!dirty)return;const warn=(e:BeforeUnloadEvent)=>e.preventDefault();window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn)},[dirty]);
  const report=useCallback((e:unknown)=>{if(e instanceof SignedOut)onError(e);else setError(userMessage(e,'Could not update your library. Please try again.'));},[onError]);
  const load=useCallback(async()=>{const sequence=++loadSequence.current;try{const result=await request<{patterns:SavedPattern[]}>('/api/v1/patterns?include_archived=1');if(sequence===loadSequence.current)setPatterns(result.patterns);}catch(e){report(e);}finally{setLoading(false);}},[report]);
- useEffect(()=>{void load();const timer=setInterval(()=>{if(!document.hidden)void load();},5000);return()=>{clearInterval(timer);loadSequence.current++};},[load]);
+ useEffect(()=>{const sequence=loadSequence;
+ // eslint-disable-next-line react-hooks/set-state-in-effect -- the first load starts with the effect; changing the load flow changes behaviour.
+ void load();const timer=setInterval(()=>{if(!document.hidden)void load();},5000);return()=>{clearInterval(timer);sequence.current++};},[load]);
  useEffect(()=>{if(archiveTarget&&dialog.current){const el=dialog.current;el.showModal();return()=>el.close();}},[archiveTarget]);
- useEffect(()=>{if(!referenceID){setReferences(null);return;}let live=true;setReferences(null);const loadRefs=async()=>{try{const result=await request<{references:Reference[]}>(`/api/v1/patterns/${referenceID}/schedule-references`);if(live)setReferences({id:referenceID,values:result.references})}catch(e){if(live)report(e)}};void loadRefs();const timer=setInterval(()=>{if(!document.hidden)void loadRefs()},5000);return()=>{live=false;clearInterval(timer)}},[referenceID,report]);
+ useEffect(()=>{if(!referenceID){
+ // eslint-disable-next-line react-hooks/set-state-in-effect -- resets view state when the input changes; a keyed remount changes behaviour.
+ setReferences(null);return;}let live=true;setReferences(null);const loadRefs=async()=>{try{const result=await request<{references:Reference[]}>(`/api/v1/patterns/${referenceID}/schedule-references`);if(live)setReferences({id:referenceID,values:result.references})}catch(e){if(live)report(e)}};void loadRefs();const timer=setInterval(()=>{if(!document.hidden)void loadRefs()},5000);return()=>{live=false;clearInterval(timer)}},[referenceID,report]);
  const currentReferences=references&&references.id===referenceID?references.values:null;
  const open=(p:SavedPattern|null,copy=false)=>{editorSequence.current++;setEditing(copy?null:p);replaceDraft(p?structuredClone({...p.design,name:copy?copyName(p.design.name):p.design.name}):newDesign());setError('');setNotice('');setConflict(false);setHistory(null)};
  const update=(change:Partial<Design>)=>{replaceDraft(draftRef.current?{...draftRef.current,...change}:null);setNotice('');};
@@ -115,6 +119,8 @@ export function PatternLibrary({csrf,onError,onDirty}:{csrf:string;onError:(erro
    {filtered.length?<div className="pattern-grid">{filtered.map(p=><article key={p.id} className="panel pattern saved-pattern"><div className="row"><span className="eyebrow">{p.design.effect==='native'?'SAVED ON YOUR LIGHTS':p.design.effect==='chase'?'CHASE':'STEADY COLORS'}</span><button className="icon-button favorite" aria-label={`${p.design.favorite?'Unfavorite':'Favorite'} ${p.design.name}`} aria-pressed={p.design.favorite} disabled={busy||p.archived} onClick={()=>void toggleFavorite(p)}>{p.design.favorite?'★':'☆'}</button></div><h2>{p.design.name}</h2>{p.design.effect!=='native'&&<div className="mini-palette" aria-hidden="true">{p.design.palette.map((r,i)=><span key={i} style={{backgroundColor:r.color,flexGrow:r.count}}/>)}</div>}{p.archived&&<span className="muted">Archived</span>}<div className="card-actions">{p.archived?<button className="button secondary" disabled={busy} onClick={()=>void restore(p)}>Restore</button>:<button className="button secondary" onClick={()=>open(p)}>Edit</button>}<button className="button secondary" onClick={()=>open(p,true)}>Duplicate</button><button className="icon-button" aria-label={`Download ${p.design.name}`} onClick={()=>download(p.design)}>↓</button>{!p.archived&&<button className="icon-button" aria-label={`Archive ${p.design.name}`} disabled={busy} onClick={()=>setArchiveTarget(p)}>×</button>}</div></article>)}</div>:<section className="panel empty"><h2>{loading?'Loading your library…':archived?'No archived patterns':search?'No matching patterns':'Make it your kind of evening.'}</h2><p>{archived?'You can restore archived patterns at any time.':'Design your own colors or add the patterns already saved on your lights.'}</p></section>}
    <p className="footnote">Create and save designs here. To play a pattern already on your lights, go to Home.</p>
   </>}
-  {archiveTarget&&<dialog ref={dialog} className="panel modal" aria-labelledby="archive-title" onCancel={()=>setArchiveTarget(null)}><h2 id="archive-title">Archive {archiveTarget.design.name}?</h2><p>You can find it in Archived and restore it whenever you like.</p><ReferenceNotice references={currentReferences}/><div className="modal-actions"><button autoFocus className="button secondary" onClick={()=>setArchiveTarget(null)}>Cancel</button><button className="button primary" disabled={busy||currentReferences===null} onClick={()=>void confirmArchive()}>Archive pattern</button></div></dialog>}
+  {archiveTarget&&<dialog ref={dialog} className="panel modal" aria-labelledby="archive-title" onCancel={()=>setArchiveTarget(null)}><h2 id="archive-title">Archive {archiveTarget.design.name}?</h2><p>You can find it in Archived and restore it whenever you like.</p><ReferenceNotice references={currentReferences}/><div className="modal-actions"><button
+// eslint-disable-next-line jsx-a11y/no-autofocus -- the confirmation dialog focuses the safe Cancel action.
+autoFocus className="button secondary" onClick={()=>setArchiveTarget(null)}>Cancel</button><button className="button primary" disabled={busy||currentReferences===null} onClick={()=>void confirmArchive()}>Archive pattern</button></div></dialog>}
  </section>;
 }

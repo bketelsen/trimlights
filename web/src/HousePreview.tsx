@@ -6,7 +6,9 @@ import type {Photo,SavedHouse} from './house';
 import {HouseCanvas} from './HouseCanvas';
 export function HousePreview({design,patternID,revision}:{design?:Design;patternID?:string;revision?:number}){
  const [open,setOpen]=useState(false),[house,setHouse]=useState<SavedHouse>(),[photos,setPhotos]=useState<Photo[]>([]),[photoID,setPhotoID]=useState(''),[pinned,setPinned]=useState<Design>(),[error,setError]=useState('');
- useEffect(()=>{if(!open)return;let live=true;setError('');setPinned(undefined);
+ useEffect(()=>{if(!open)return;let live=true;
+ // eslint-disable-next-line react-hooks/set-state-in-effect -- resets view state when the input changes; a keyed remount changes behaviour.
+ setError('');setPinned(undefined);
  Promise.all([request<SavedHouse>('/api/v1/house'),request<{photos:Photo[]}>('/api/v1/photos'),patternID?request<{revisions:SavedPattern[]}>(`/api/v1/patterns/${patternID}/revisions`):Promise.resolve(undefined)]).then(([h,p,history])=>{if(!live)return;setHouse(h);setPhotos(p.photos);setPhotoID(id=>id||h.layout.views.find(v=>v.mappings.length)?.photo_id||'');if(history){const match=history.revisions.find(p=>p.revision===revision);if(!match)throw new Error('This saved pattern is unavailable');setPinned(match.design)}}).catch(e=>{if(live)setError(userMessage(e,'Could not load your house. Please try again.'))});return()=>{live=false};
  },[open,patternID,revision]);
  const current=design??pinned,photo=photos.find(p=>p.id===photoID),view=house?.layout.views.find(v=>v.photo_id===photoID);

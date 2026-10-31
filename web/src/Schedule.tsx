@@ -34,7 +34,7 @@ export function Schedule({csrf,onError,onDirty}:{csrf:string;onError:(error:unkn
  const [history,setHistory]=useState<Saved[]|null>(null);const [overrideAction,setOverrideAction]=useState<Action>({kind:'off'});const [overrideHours,setOverrideHours]=useState(1);
  const importing=useRef(false);const mounted=useRef(true);const draftRef=useRef<Plan|null>(null);const savedRef=useRef<Saved|null>(null);const loadSequence=useRef(0);const previewSequence=useRef(0);
  const dirty=!!draft&&JSON.stringify(draft)!==JSON.stringify(saved?.plan);
- draftRef.current=draft;savedRef.current=saved;
+ /* eslint-disable react-hooks/refs -- async callbacks read the latest render state; syncing in an effect changes timing. */draftRef.current=draft;savedRef.current=saved;/* eslint-enable react-hooks/refs */
  const report=useCallback((e:unknown)=>{if(e instanceof SignedOut)onError(e);else setError(userMessage(e,'Could not update your calendar. Please try again.'));},[onError]);
  useEffect(()=>{onDirty(dirty);return()=>onDirty(false)},[dirty,onDirty]);
  useEffect(()=>{if(!dirty)return;const warn=(e:BeforeUnloadEvent)=>e.preventDefault();window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn)},[dirty]);
@@ -51,7 +51,9 @@ export function Schedule({csrf,onError,onDirty}:{csrf:string;onError:(error:unkn
    }
   }catch(e){if(mounted.current)report(e)}
  },[report]);
- useEffect(()=>{mounted.current=true;void load();const timer=setInterval(()=>{if(!document.hidden)void load()},5000);return()=>{mounted.current=false;loadSequence.current++;previewSequence.current++;clearInterval(timer)}},[load]);
+ useEffect(()=>{mounted.current=true;const loads=loadSequence;const previews=previewSequence;
+ // eslint-disable-next-line react-hooks/set-state-in-effect -- the first load starts with the effect; changing the load flow changes behaviour.
+ void load();const timer=setInterval(()=>{if(!document.hidden)void load()},5000);return()=>{mounted.current=false;loads.current++;previews.current++;clearInterval(timer)}},[load]);
  const update=(change:Partial<Plan>)=>{if(draft)setDraft({...draft,...change});setNotice('')};
  const updateRule=(change:Partial<Rule>)=>{if(draft)update({rules:draft.rules.map(r=>r.id===selected?{...r,...change}:r)})};
  const addRule=()=>{if(!draft)return;const id=crypto.randomUUID();update({rules:[...draft.rules,{id,name:'Evening lights',enabled:true,kind:'weekly',priority:0,weekdays:[0,1,2,3,4,5,6],start:{kind:'clock',time:'19:30'},end:{kind:'clock',time:'22:59'},end_next_day:false,action:patterns.find(p=>!p.archived)?{kind:'pattern',pattern_id:patterns.find(p=>!p.archived)!.id,revision:patterns.find(p=>!p.archived)!.revision}:{kind:'off'}}]});setSelected(id);setError('')};

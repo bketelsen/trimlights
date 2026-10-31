@@ -70,7 +70,8 @@ flowchart LR
 - `internal/house`: bounded photo normalization and validated address/geometry model.
   SQLite holds sanitized JPEG blobs and versioned layout references atomically.
 - `web/`: compiled browser assets. Go embeds release assets; development may use
-  a frontend dev server. No Node process is required in production.
+  a frontend dev server. No Node process is required in production. ESLint,
+  Prettier and TypeScript checks run in `make check` ([Build](../../README.md#build)).
 - CLI commands proposed: `serve`, `status`, `doctor`, `patterns`, `schedules`,
   `layout`, `backup`, and `restore`. Keep the current snapshot/probe commands as
   explicit diagnostic operations during migration.

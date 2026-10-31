@@ -4,7 +4,7 @@ import {PreviewClock} from './previewClock.ts';
 import {newDesign,renderPattern} from './pattern.ts';
 
 test('first and repeated frame timestamps always produce valid renderer ticks',()=>{
- const clock=new PreviewClock(),design={...newDesign(),effect:'chase',speed:73};
+ const clock=new PreviewClock(),design={...newDesign(),effect:/** @type {const} */('chase'),speed:73};
  // A frame can have started before the React effect, or share a timestamp.
  for(const now of [12.5,12.5,12.3,28.9,45.6]){
   const tick=clock.tick(now,true);
@@ -13,7 +13,7 @@ test('first and repeated frame timestamps always produce valid renderer ticks',(
  }
 });
 test('play changes colors, pause retains them, resume excludes time away',()=>{
- const clock=new PreviewClock(),design={...newDesign(),effect:'chase',speed:100};
+ const clock=new PreviewClock(),design={...newDesign(),effect:/** @type {const} */('chase'),speed:100};
  const first=renderPattern(design,48,clock.tick(100,true));
  const moving=renderPattern(design,48,clock.tick(200,true));
  assert.notDeepEqual(moving,first);

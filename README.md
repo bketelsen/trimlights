@@ -42,6 +42,8 @@ Trimlight application or a general-purpose controller driver.
 ## Build
 
 Use Go 1.27.3, Node 24.19.0 and pnpm 11.25.0 (versions pinned in CI).
+`web/package.json` also pins pnpm (`packageManager`, with its hash) and
+requires Node 24.19.0 or later (`engines`).
 The minimum Go version in go.mod is 1.26.6. Node is only a build dependency.
 
 ```sh
@@ -51,6 +53,12 @@ make check
 
 `make check` runs the frontend build/tests, formatting, vet, Go race tests,
 documentation links and a static binary build. It never contacts lighting hardware.
+Its `web-check` step runs `pnpm run check` in `web/`: ESLint (typescript-eslint,
+React hooks, jsx-a11y, no `dangerouslySetInnerHTML`), the Prettier check and
+TypeScript checks of the app, the `.mjs` tests and the Vite config. Run
+`pnpm run format` in `web/` to apply Prettier. ESLint uses the TypeScript 6 API
+(`typescript` is an alias of `@typescript/typescript6`); `tsc` is TypeScript 7
+(`@typescript/native`), because TypeScript 7.0 ships no compiler API.
 The binary is written to `build/trimlight` and `build/<architecture>/trimlight`.
 All public protocol fixtures are synthetic; no original household captures are
 included. Python is not required to build, test or run the application.
