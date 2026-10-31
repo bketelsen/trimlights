@@ -232,6 +232,18 @@ func pngHeader(w, h uint32, depth, kind, interlace byte) []byte {
 	return b
 }
 
+// withChunk inserts a PNG chunk after IHDR.
+func withChunk(raw []byte, name string, data []byte) []byte {
+	const ihdrEnd = 8 + 12 + 13
+	chunk := binary.BigEndian.AppendUint32(nil, uint32(len(data)))
+	chunk = append(chunk, name...)
+	chunk = append(chunk, data...)
+	chunk = binary.BigEndian.AppendUint32(chunk, crc32.ChecksumIEEE(chunk[4:]))
+	out := append([]byte{}, raw[:ihdrEnd]...)
+	out = append(out, chunk...)
+	return append(out, raw[ihdrEnd:]...)
+}
+
 func jpegHeader(w, h uint16, sof byte, factors ...byte) []byte {
 	b := []byte{0xff, 0xd8, 0xff, sof}
 	b = binary.BigEndian.AppendUint16(b, uint16(8+3*len(factors)))
@@ -253,7 +265,10 @@ func TestDecodeMemoryBudget(t *testing.T) {
 		refused bool
 	}{
 		{"16-bit RGBA PNG at the pixel limit", pngHeader(7071, 7071, 16, 6, 0), true},
-		{"8-bit gray PNG at the pixel limit", pngHeader(7071, 7071, 8, 0, 0), false},
+		{"8-bit gray PNG at the budget", pngHeader(5792, 5792, 8, 0, 0), false},
+		{"8-bit gray PNG over the budget (a later tRNS makes it NRGBA)", pngHeader(5793, 5793, 8, 0, 0), true},
+		{"16-bit gray PNG at the budget", pngHeader(4096, 4096, 16, 0, 0), false},
+		{"16-bit gray PNG over the budget", pngHeader(4097, 4097, 16, 0, 0), true},
 		{"8-bit RGBA PNG at the budget", pngHeader(5792, 5792, 8, 6, 0), false},
 		{"8-bit RGBA PNG over the budget", pngHeader(5793, 5793, 8, 6, 0), true},
 		{"interlaced 8-bit RGBA PNG", pngHeader(5000, 4000, 8, 6, 1), true},
@@ -293,6 +308,14 @@ func TestDecodeEstimateCoversAllocation(t *testing.T) {
 			return b.Bytes(), err
 		}
 	}
+	for name, img := range map[string]image.Image{"gray": image.NewGray(r), "gray16": image.NewGray16(r)} {
+		// DecodeConfig reports Gray or Gray16, but tRNS decodes to NRGBA or NRGBA64.
+		encodings["png tRNS "+name] = func() ([]byte, error) {
+			var b bytes.Buffer
+			err := png.Encode(&b, img)
+			return withChunk(b.Bytes(), "tRNS", []byte{0, 0}), err
+		}
+	}
 	for name, img := range map[string]image.Image{"gray": image.NewGray(r), "ycbcr 4:2:0": image.NewRGBA(r)} {
 		encodings["jpeg "+name] = func() ([]byte, error) {
 			var b bytes.Buffer
@@ -313,12 +336,20 @@ func TestDecodeEstimateCoversAllocation(t *testing.T) {
 		var before, after runtime.MemStats
 		runtime.GC()
 		runtime.ReadMemStats(&before)
-		if _, _, err = image.Decode(bytes.NewReader(raw)); err != nil {
+		decoded, _, err := image.Decode(bytes.NewReader(raw))
+		if err != nil {
 			t.Fatal(name, err)
+		}
+		if strings.Contains(name, "tRNS") {
+			switch decoded.(type) {
+			case *image.NRGBA, *image.NRGBA64:
+			default:
+				t.Fatalf("%s decoded as %T", name, decoded)
+			}
 		}
 		runtime.ReadMemStats(&after)
 		allocated := int64(after.TotalAlloc - before.TotalAlloc)
-		if allocated > estimate+256<<10 || estimate > 2*allocated {
+		if allocated > estimate+256<<10 || estimate > 4*allocated {
 			t.Fatal(name, "allocated", allocated, "estimated", estimate)
 		}
 	}

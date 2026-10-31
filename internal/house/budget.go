@@ -23,21 +23,21 @@ func decodeBytes(raw []byte, kind string, cfg image.Config) int64 {
 		// Worst case: 4 progressive components plus a converted copy.
 		return pixels * 24
 	case "png":
-		per := int64(8)
-		if _, ok := cfg.ColorModel.(color.Palette); ok {
-			per = 1
-		} else {
-			switch cfg.ColorModel {
-			case color.GrayModel:
-				per = 1
-			case color.Gray16Model:
-				per = 2
-			case color.RGBAModel, color.NRGBAModel:
-				per = 4
-			}
+		// Use the IHDR bit depth and color type, not cfg.ColorModel: DecodeConfig
+		// stops after IHDR, and a later tRNS chunk turns gray or truecolor into
+		// NRGBA or NRGBA64. Budget that worst case for every non-paletted PNG.
+		if len(raw) < 29 {
+			return pixels * 16
 		}
-		// IHDR interlace method: Adam7 holds pass images beside the result.
-		if len(raw) > 28 && raw[28] != 0 {
+		depth, colorType, interlace := raw[24], raw[25], raw[28]
+		per := int64(4)
+		if colorType == 3 {
+			per = 1
+		} else if depth == 16 {
+			per = 8
+		}
+		// Adam7 holds pass images beside the result.
+		if interlace != 0 {
 			per *= 2
 		}
 		return pixels * per
