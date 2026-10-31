@@ -65,7 +65,7 @@ func (s *Store) ClaimCalendar(ctx context.Context, version int, fingerprint, act
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	state, err := runtimeIn(ctx, tx)
 	if err != nil {
 		return err
@@ -96,7 +96,7 @@ func (s *Store) PauseCalendar(ctx context.Context, version int, reason string) e
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	state, err := runtimeIn(ctx, tx)
 	if err != nil {
 		return err
@@ -117,7 +117,7 @@ func (s *Store) SuspendCalendar(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	state, err := runtimeIn(ctx, tx)
 	if err != nil {
 		return err
@@ -161,6 +161,12 @@ func calendarControl(ctx context.Context, tx *sql.Tx, o Observation, op Operatio
 		}
 		if err = d.Action.Validate(); err != nil {
 			return err
+		}
+		if err = op.Control.Request.Validate(); err != nil {
+			return err
+		}
+		if want := map[string]string{"off": "off", "pattern": "play"}[d.Action.Kind]; want != op.Control.Request.Action {
+			return errors.New("calendar delivery action does not match its control")
 		}
 		if !d.Until.After(d.From) {
 			return errors.New("invalid calendar delivery interval")

@@ -41,26 +41,31 @@ Trimlight application or a general-purpose controller driver.
 
 ## Build
 
-Use Go 1.27.3, Node 24.19.0 and pnpm 11.25.0 (versions pinned in CI).
-`web/package.json` also pins pnpm (`packageManager`, with its hash) and
-requires Node 24.19.0 or later (`engines`).
+Run `mise install` for the pinned tools: Go 1.27.3 from go.mod's toolchain line,
+golangci-lint and svu from `mise.toml` (checksums in `mise.lock`). Use Node 24.19.0
+and pnpm 11.25.0 (versions pinned in CI). `web/package.json` also pins pnpm
+(`packageManager`, with its hash) and requires Node 24.19.0 or later (`engines`).
 The minimum Go version in go.mod is 1.26.6. Node is only a build dependency.
 
 ```sh
-make check
+make verify   # tidy, gofmt -l, vet, lint, race tests, doc links; no pnpm, no writes
+make ci       # verify, then frontend checks/tests/build and the static binary (CI runs this)
+make check    # gofmt -w, then make ci: run before declaring a change done
 ./build/trimlight --help
 ```
 
-`make check` runs the frontend build/tests, formatting, vet, Go race tests,
-documentation links and a static binary build. It never contacts lighting hardware.
+`make vulncheck` runs the pinned govulncheck and needs the network. Set
+`IN_NSL='nsl run -m <machine>'` to run pnpm in an nsl machine. No target contacts
+lighting hardware ([repository gate](docs/design/application.md#repository-gate)).
 The frontend tests (`pnpm --dir web test`, run by `make web-test`) use `node:test`
 with no test framework. They first compile a few components with the project's
 TypeScript compiler into the ignored `web/.test-build` directory, then render them
 to static HTML with `react-dom/server` as smoke tests
 ([frontend design](docs/design/application.md#application-boundaries)).
-`make check` also runs `web-check`, which runs `pnpm run check` in `web/`: ESLint (typescript-eslint,
-React hooks, jsx-a11y, no `dangerouslySetInnerHTML`), the Prettier check and
-TypeScript checks of the app, the `.mjs` tests and the Vite config. Run
+`make ci` (and so `make check`) also runs `web-check`, which runs `pnpm run check`
+in `web/`: ESLint (typescript-eslint, React hooks, jsx-a11y, no
+`dangerouslySetInnerHTML`), the Prettier check and TypeScript checks of the app,
+the `.mjs` tests, the build scripts and the Vite config. Run
 `pnpm run format` in `web/` to apply Prettier. ESLint uses the TypeScript 6 API
 (`typescript` is an alias of `@typescript/typescript6`); `tsc` is TypeScript 7
 (`@typescript/native`), because TypeScript 7.0 ships no compiler API.
@@ -121,6 +126,9 @@ See the [service log contract](docs/specs/local-service.md#service-logs).
 
 The container runs as UID/GID 65532 with a read-only root filesystem. Give that
 user write access to the data dataset and read access to the config/secret files.
+The service keeps its database files at mode 0600. It does not change the data
+directory: when the directory has group or world access, it logs a `data
+permissions` warning, so restrict that directory to the service user.
 Use a local filesystem for the live SQLite database, not an NFS/SMB share.
 Timezone data and public CA roots are embedded. No privileged network access,
 Kubernetes, Redis or Node server is needed.

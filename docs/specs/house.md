@@ -64,6 +64,12 @@ Layout schema 1 contains `runs` and `views`. Each run has a stable `id`, `name`,
   If-Match returns 428. An editor MUST retain its conflicted draft.
 - Software previews MUST use the canonical pattern renderer and never contact the
   controller. Opaque native effects MUST display an unavailable-preview explanation.
+- The photo canvas MUST leave vertical page scrolling to the browser
+  (`touch-action: pan-y`) unless a gesture belongs to the canvas: drawing, dragging
+  corners or bulbs, or moving a zoomed photo (`touch-action: none`).
+- Every pointer edit MUST have a keyboard route. Fine-tune corners edits corner
+  X/Y percentages. Fine-tune bulbs selects a bulb by its physical number, as shown
+  by the Numbers labels, and writes or resets the same adjustment as dragging.
 - Reduced-motion preference MUST prevent automatic house animation, while an
   explicit Play animation action MUST work. Pause/resume uses the shared
   [preview clock contract](patterns.md#rules).
@@ -71,6 +77,10 @@ Layout schema 1 contains `runs` and `views`. Each run has a stable `id`, `name`,
   rendering. Import MUST preserve the current draft on validation failure, require
   explicit replacement of unsaved edits, and load a reviewable draft without saving.
   Photos are excluded; missing photo IDs require restoring the matching full backup.
+- Upload, validation and save failures MUST answer with JSON `{"error": text}`, where
+  4xx text is safe to show the household. The browser MUST show that text for a 4xx
+  answer, and its own wording for 409 conflicts, the 409 photo limit, 403 and gateway
+  pages that are not this JSON (for example a proxy's 413, 429 or 502 HTML).
 - Upload originals MUST NOT be retained or copied into the public repository.
   Physical calibration MUST NOT be inferred from uploaded photos or user geometry.
 

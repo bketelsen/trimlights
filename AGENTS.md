@@ -21,8 +21,11 @@ Reusable procedures belong in `.agents/skills/`, starting from its TEMPLATE.
   `internal/trimlight/client.go`. Preserve paced exchanges and cancellation-safe
   restoration in `ProbeSchedule2`. A snapshot can synchronize the device clock.
 - Use captured protocol fixtures and the simulated controller for ordinary tests.
-  Never add hardware access to CI or `make check`.
-- Run `make check` before declaring a change done. CI uses the same gate.
+  Never add hardware access to CI or the make gates.
+- Run `make check` (formats, then `make ci`) before declaring a change done. CI
+  runs `make ci`; `make verify` is the non-mutating gate without pnpm. Fix lint
+  findings; never loosen `.golangci.yml`
+  ([ADR-0016](docs/adr/0016-adopt-the-frostyard-make-gate.md)).
 - Pin workflow actions by full commit SHA with a version comment. Images pass
   through 3 jobs: build (read-only; runs pnpm and Go), publish and promote. Only
   publish and promote hold `packages: write`; only publish holds `id-token` and

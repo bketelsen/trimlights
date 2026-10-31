@@ -52,7 +52,9 @@ bounds. Timezones are embedded in the Go binary for scratch-container deployment
 2. A spring DST gap shifts the requested time forward by that gap. A repeated
    start uses the earlier instant; a repeated end uses the later instant. A whole
    skipped civil date is not translated to a different date. Adjustments and
-   skipped occurrences appear in preview issues.
+   skipped occurrences appear in preview issues. Each issue has a boolean
+   `skipped`, true only for a dropped occurrence; consumers MUST test it, not
+   the wording of `message`.
 3. Missing sunrise/sunset skips that occurrence with an issue, never fabricates a
    clock fallback. Solar times are local astronomical estimates from pinned
    [go-sunrise v1.1.0](https://github.com/nathan-osman/go-sunrise/tree/v1.1.0),

@@ -29,7 +29,7 @@ func Sanitize(raw []byte) (PhotoImage, error) {
 		return PhotoImage{}, errors.New("photo exceeds 12 MiB; export a smaller JPEG")
 	}
 	cfg, kind, err := image.DecodeConfig(bytes.NewReader(raw))
-	if err != nil || !(kind == "jpeg" || kind == "png" || kind == "webp") {
+	if err != nil || (kind != "jpeg" && kind != "png" && kind != "webp") {
 		return PhotoImage{}, ErrFormat
 	}
 	if cfg.Width < 1 || cfg.Height < 1 || cfg.Width > 16384 || cfg.Height > 16384 || int64(cfg.Width)*int64(cfg.Height) > MaxPixels {

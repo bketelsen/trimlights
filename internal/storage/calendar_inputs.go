@@ -27,7 +27,7 @@ func (s *Store) CalendarInputs(ctx context.Context, expected int, plan schedule.
 	if err != nil {
 		return out, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	current, err := scanSchedule(tx.QueryRowContext(ctx, "SELECT revision,body,actor,created FROM schedule_revisions ORDER BY revision DESC LIMIT 1"))
 	if err != nil {
 		return out, err

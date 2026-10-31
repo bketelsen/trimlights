@@ -40,7 +40,9 @@ and [CLI acceptance](../specs/v1-acceptance.md#interface).
   Create repeatable skills for protocol capture, bounded hardware validation and
   homelab release/restore as those procedures stabilize.
 - Create a non-hardware `make check` used identically by CI: formatting check,
-  vet/lint, unit/race/protocol tests, docs links and build. Keep hardware experiments
+  vet/lint, unit/race/protocol tests, docs links and build. Since 2026-10-30 CI
+  runs `make ci` and reviewers run `make verify`
+  ([ADR-0016](../adr/0016-adopt-the-frostyard-make-gate.md)). Keep hardware experiments
   explicitly separate. Organize Python under research when links are migrated;
   production builds/tests must not require it.
 - Replace the ad-hoc flag CLI with clix/Cobra. Start from **clix v0.5.0**, verify
@@ -694,3 +696,22 @@ Validation: `make check` passes, including frontend tests, Go race tests, vet,
 build and 376 documentation links. The private session worksheet and evidence
 metadata are prepared in ignored storage; public documentation contains no
 household addresses, pattern names, captures or credentials.
+
+### Accessibility and phone layout — 2026-10-30
+
+Review issues #16 and #24 are addressed in the
+[application UI](../design/application.md) and the
+[house contract](../specs/house.md), toward
+[v1 acceptance rule 2](../specs/v1-acceptance.md#rules). The house canvas no longer
+traps page scrolling outside drawing and dragging. Pages use URL hashes, titles and
+heading focus. Status messages use mounted live regions. Fields avoid iOS focus zoom,
+small targets reach 44 px, the page pads for safe areas, and a manifest and icons
+support home-screen shortcuts. Bulb adjustments have a keyboard route.
+
+Validation at commit time: Go tests cover the root-file allowlist; new frontend
+tests cover hash routes, titles, the canvas gesture rule and bulb adjustments.
+`make check` in CI builds the frontend and runs these tests. iPhone Safari,
+Android Back, screen-reader announcements and home-screen installation still need a
+physical check. Open: standalone display mode after a phone sign-in check, and an
+automated accessibility check in the web tests.
+
