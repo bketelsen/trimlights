@@ -60,5 +60,7 @@ backups remain separate and do not replace a full bundle with private configurat
   [calendar handoff](calendar-handoff.md).
 - Context: [application design](../design/application.md),
   [backup operations](../design/backup-operations.md).
+- Login flows: [household auth](household-auth.md). Since 2026-10-30 they live in a
+  sealed cookie; restore still clears the unused legacy `login_flows` table.
 - Delivery: [roadmap](../plans/roadmap.md).
 - Acceptance: [household v1](v1-acceptance.md).

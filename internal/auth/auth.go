@@ -3,15 +3,19 @@ package auth
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -21,6 +25,8 @@ import (
 
 const sessionCookie = "__Host-trimlight-session"
 const flowCookie = "__Host-trimlight-flow"
+const flowLife = 10 * time.Minute
+const maxFlowCookie = 1024
 
 type Config struct {
 	Origin          string   `json:"origin"`
@@ -63,6 +69,22 @@ type Auth struct {
 	host     string
 	client   *http.Client
 	now      func() time.Time
+	// flowAEAD seals pending login state into the flow cookie. Its key exists only
+	// in memory, so a restart invalidates pending logins and nothing anonymous is stored.
+	flowAEAD cipher.AEAD
+	// spent holds state hashes of flows that a callback holds or exchanged, until
+	// the flow expires. An entry stays only after the IdP accepts the code.
+	spentMu sync.Mutex
+	spent   map[string]time.Time
+}
+
+// pendingFlow is the sealed content of the flow cookie.
+type pendingFlow struct {
+	StateHash string `json:"s"`
+	Browser   string `json:"b"`
+	Nonce     string `json:"n"`
+	Verifier  string `json:"v"`
+	Expires   int64  `json:"e"`
 }
 
 func New(ctx context.Context, c Config, store *storage.Store) (*Auth, error) {
@@ -83,8 +105,20 @@ func newWithClient(ctx context.Context, c Config, store *storage.Store, client *
 			return nil, errors.New("OIDC endpoints must use HTTPS")
 		}
 	}
+	key := make([]byte, 32)
+	if _, err = rand.Read(key); err != nil {
+		return nil, err
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
 	u, _ := url.Parse(c.Origin)
-	return &Auth{config: c, store: store, host: u.Host, client: client, now: time.Now, verifier: provider.Verifier(&oidc.Config{ClientID: c.ClientID}), oauth: oauth2.Config{ClientID: c.ClientID, ClientSecret: c.ClientSecret, Endpoint: provider.Endpoint(), RedirectURL: c.Origin + "/auth/callback", Scopes: []string{oidc.ScopeOpenID, "profile", "email"}}}, nil
+	return &Auth{config: c, store: store, host: u.Host, client: client, now: time.Now, flowAEAD: aead, spent: map[string]time.Time{}, verifier: provider.Verifier(&oidc.Config{ClientID: c.ClientID}), oauth: oauth2.Config{ClientID: c.ClientID, ClientSecret: c.ClientSecret, Endpoint: provider.Endpoint(), RedirectURL: c.Origin + "/auth/callback", Scopes: []string{oidc.ScopeOpenID, "profile", "email"}}}, nil
 }
 func hash(value string) string { v := sha256.Sum256([]byte(value)); return hex.EncodeToString(v[:]) }
 func (a *Auth) sessionHash(value string) string {
@@ -101,17 +135,81 @@ func (a *Auth) allowed(sub string) bool {
 	}
 	return false
 }
+func (a *Auth) sealFlow(f pendingFlow) (string, error) {
+	plain, err := json.Marshal(f)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, a.flowAEAD.NonceSize())
+	if _, err = rand.Read(nonce); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(a.flowAEAD.Seal(nonce, nonce, plain, []byte(flowCookie))), nil
+}
+
+// openFlow authenticates and decodes a flow cookie. It refuses tampered, foreign
+// and expired values.
+func (a *Auth) openFlow(value string) (pendingFlow, error) {
+	var f pendingFlow
+	invalid := errors.New("invalid login flow")
+	if len(value) > maxFlowCookie {
+		return f, invalid
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(value)
+	size := a.flowAEAD.NonceSize()
+	if err != nil || len(raw) < size+a.flowAEAD.Overhead() {
+		return f, invalid
+	}
+	plain, err := a.flowAEAD.Open(nil, raw[:size], raw[size:], []byte(flowCookie))
+	if err != nil || json.Unmarshal(plain, &f) != nil || f.StateHash == "" || f.Browser == "" || f.Nonce == "" || f.Verifier == "" {
+		return pendingFlow{}, invalid
+	}
+	if !time.Unix(f.Expires, 0).After(a.now()) {
+		return pendingFlow{}, invalid
+	}
+	return f, nil
+}
+
+// claim reserves a flow for one token exchange. It refuses a flow that another
+// callback holds or already exchanged, and prunes expired entries.
+func (a *Auth) claim(f pendingFlow) bool {
+	a.spentMu.Lock()
+	defer a.spentMu.Unlock()
+	now := a.now()
+	for k, expires := range a.spent {
+		if !expires.After(now) {
+			delete(a.spent, k)
+		}
+	}
+	if _, ok := a.spent[f.StateHash]; ok {
+		return false
+	}
+	a.spent[f.StateHash] = time.Unix(f.Expires, 0)
+	return true
+}
+
+// release drops a claim after the IdP refused the exchange, so that a failed
+// anonymous callback leaves no entry behind.
+func (a *Auth) release(f pendingFlow) {
+	a.spentMu.Lock()
+	defer a.spentMu.Unlock()
+	delete(a.spent, f.StateHash)
+}
+
+// login keeps the pending flow in a sealed cookie, so an anonymous request
+// writes nothing to SQLite and cannot exhaust a shared capacity.
 func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 	state, browser, nonce, verifier := rand.Text(), rand.Text(), rand.Text(), oauth2.GenerateVerifier()
-	f := storage.LoginFlow{StateHash: hash(state), BrowserHash: hash(browser), Nonce: nonce, Verifier: verifier, Expires: a.now().Add(10 * time.Minute)}
-	if err := a.store.SaveFlow(r.Context(), f); err != nil {
+	sealed, err := a.sealFlow(pendingFlow{StateHash: hash(state), Browser: browser, Nonce: nonce, Verifier: verifier, Expires: a.now().Add(flowLife).Unix()})
+	if err != nil {
 		http.Error(w, "Login temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	cookie(w, flowCookie, browser, 600)
+	cookie(w, flowCookie, sealed, int(flowLife/time.Second))
 	http.Redirect(w, r, a.oauth.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)), http.StatusSeeOther)
 }
 func (a *Auth) callback(w http.ResponseWriter, r *http.Request) {
+	cookie(w, flowCookie, "", -1)
 	q := r.URL.Query()
 	state, code := q.Get("state"), q.Get("code")
 	browser, err := r.Cookie(flowCookie)
@@ -123,15 +221,15 @@ func (a *Auth) callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unexpected identity provider", 400)
 		return
 	}
-	flow, err := a.store.ConsumeFlow(r.Context(), hash(state), hash(browser.Value), a.now())
-	cookie(w, flowCookie, "", -1)
-	if err != nil {
+	flow, err := a.openFlow(browser.Value)
+	if err != nil || subtle.ConstantTimeCompare([]byte(flow.StateHash), []byte(hash(state))) != 1 || !a.claim(flow) {
 		http.Error(w, "Login expired or already used", 400)
 		return
 	}
 	ctx := oidc.ClientContext(r.Context(), a.client)
 	token, err := a.oauth.Exchange(ctx, code, oauth2.VerifierOption(flow.Verifier))
 	if err != nil {
+		a.release(flow)
 		http.Error(w, "Identity provider rejected login", http.StatusUnauthorized)
 		return
 	}
