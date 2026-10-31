@@ -213,3 +213,32 @@ func TestHandlerReportsMissingBuild(t *testing.T) {
 	}
 }
 
+func TestRootFilesRevalidate(t *testing.T) {
+	h := handler(fstest.MapFS{
+		"index.html":           {Data: []byte("<!doctype html>")},
+		"manifest.webmanifest": {Data: []byte(`{"name":"Trimlights"}`)},
+		"apple-touch-icon.png": {Data: []byte("\x89PNG\r\n\x1a\n")},
+		"icon-192.png":         {Data: []byte("\x89PNG\r\n\x1a\n")},
+		"icon-512.png":         {Data: []byte("\x89PNG\r\n\x1a\n")},
+		"assets/dir/inner.png": {Data: []byte("\x89PNG\r\n\x1a\n")},
+	}, quiet)
+	// Root files keep fixed names, so they revalidate instead of the immutable
+	// policy of hashed bundles.
+	for path, kind := range map[string]string{
+		"/manifest.webmanifest": "application/manifest+json",
+		"/apple-touch-icon.png": "image/png",
+		"/icon-192.png":         "image/png",
+		"/icon-512.png":         "image/png",
+	} {
+		rr := serve(t, h, "GET", path)
+		if rr.Code != 200 || rr.Header().Get("Content-Type") != kind || rr.Header().Get("Cache-Control") != "no-cache" {
+			t.Fatalf("%s: %d %q %q", path, rr.Code, rr.Header().Get("Content-Type"), rr.Header().Get("Cache-Control"))
+		}
+	}
+	// A missing root file is an error: no-store, and not the manifest type.
+	missing := handler(fstest.MapFS{"index.html": {Data: []byte("<!doctype html>")}}, quiet)
+	rr := serve(t, missing, "GET", "/manifest.webmanifest")
+	if rr.Code != 404 || rr.Header().Get("Cache-Control") != "no-store" || rr.Header().Get("Content-Type") == "application/manifest+json" {
+		t.Fatal(rr.Code, rr.Header())
+	}
+}
