@@ -31,7 +31,8 @@ and review validity interval. A control audit cannot be both delivery and handof
   A calendar save or competing transfer before this commit rejects the transfer.
 - Verified or reconciled completion with the expected ownership version changes
   status to active for takeover or disabled for TIMER. Completion stores the
-  resulting canonical fingerprint with the audit. A concurrent pause MUST win.
+  resulting canonical fingerprint with the audit. A concurrent pause MUST win in
+  both directions.
 - Unverified completion leaves Calendar paused. Persistence failure, interruption
   or cancellation MUST NOT trigger retry, replay or a compensating command.
   Startup recovery and backup restore preserve audit provenance and pause ownership.

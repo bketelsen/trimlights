@@ -70,8 +70,14 @@ flowchart LR
 - `internal/house`: bounded photo normalization and validated address/geometry model.
   SQLite holds sanitized JPEG blobs and versioned layout references atomically.
 - `web/`: compiled browser assets. Go embeds release assets; development may use
-  a frontend dev server. No Node process is required in production. ESLint,
-  Prettier and TypeScript checks run in `make check` ([Build](../../README.md#build)).
+  a frontend dev server. No Node process is required in production. As of
+  2026-10-31, `pnpm test` runs `node:test` files in `web/src`: plain modules load
+  through Node type stripping. `web/scripts/build-component-tests.mjs` compiles
+  selected `.tsx` components with `tsc` and `web/tsconfig.test.json` into the
+  ignored `web/.test-build` directory as CommonJS, and `components.test.mjs`
+  renders them with `react-dom/server`. This adds no test dependency.
+  ESLint, Prettier and TypeScript checks run in `make check`
+  ([Build](../../README.md#build)).
 - CLI commands proposed: `serve`, `status`, `doctor`, `patterns`, `schedules`,
   `layout`, `backup`, and `restore`. Keep the current snapshot/probe commands as
   explicit diagnostic operations during migration.
@@ -106,8 +112,11 @@ without redefining them. `--dry-run` must not call the current snapshot request,
 because that request can synchronize the controller clock. Use cached state for
 planning, report its age, and refuse operations requiring an unavailable baseline.
 Emit one documented JSON result for ordinary commands; do not mix reporter JSON
-events into that result. Controller operations currently use persisted audit
-records; structured operational logging remains to be added.
+events into that result. Controller operations use persisted audit records, and
+`serve` also writes structured JSON [service logs](../specs/local-service.md#service-logs)
+to standard error: a startup line, the cause of each 5xx response, controller
+operation results and [sign-in outcomes](../specs/household-auth.md#service-log-events).
+Logs never carry the controller address or login credentials.
 
 The worker serializes whole operations, retains the validated pauses, bounds
 timeouts/retries and verifies resulting state. An ambiguous write triggers a
@@ -271,9 +280,12 @@ The browser polls the shared library while visible and retains a draft on confli
 The editor supports names, favorites, color runs, brightness, reverse, static and
 chase software preview, duplicate, JSON import/export and revision history.
 Captured native patterns import atomically from the cached snapshot, retaining raw
-parameters and capture time. Reimport skips previously imported slots. Their
-palette controls and previews remain unavailable until decoding is verified.
-Go and TypeScript render the same shared golden logical-pixel vectors. Custom
+parameters and capture time. Reimport skips previously imported slots. A slot
+with an unusable name imports as `Controller pattern N`. Duplicates and file
+imports of native designs must match a cached slot exactly. Their palette controls
+and previews remain unavailable until decoding is verified. Go and TypeScript
+render the same shared golden logical-pixel vectors and validate names with
+shared vectors. Custom
 pattern writes remain unavailable; verified saved-slot playback uses the household
 worker. Scheduling pins retained revisions and shows reference impacts before changes.
 Photo uploads, roofline editing and software previews are implemented under the
@@ -325,7 +337,8 @@ share. Export transactionally consistent database backups (including sanitized p
 plus required private configuration
 and manifests; exercise restoration on an isolated instance with hardware disabled.
 
-Provide separate process health and controller connectivity, structured logs,
+Provide separate process health and controller connectivity, structured logs
+(`docker logs`; implemented, see [service logs](../specs/local-service.md#service-logs)),
 operation history, last successful read/write, queue status and stale-state age.
 Back up before database migrations; use versioned images and a documented rollback
 path. Credentials stay outside the image/repository. The initial release needs no

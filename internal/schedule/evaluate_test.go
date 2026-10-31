@@ -1,7 +1,9 @@
 package schedule
 
 import (
+	"math"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -252,5 +254,221 @@ func TestSolarGoldenAndOffsetAcrossMidnight(t *testing.T) {
 	set, _, err := boundary(day, Boundary{Kind: "sunset", OffsetMinutes: 180}, p, loc, false)
 	if err != nil || set.In(loc).Format("2006-01-02") != "2026-06-22" {
 		t.Fatal(set, err)
+	}
+}
+
+func TestPlanValidationBounds(t *testing.T) {
+	located := func(p *Plan) { p.Location = &Location{40.7128, -74.006} }
+	manyRules := func(n int) func(*Plan) {
+		return func(p *Plan) {
+			p.Rules = nil
+			for i := 0; i < n; i++ {
+				r := weekly()
+				r.ID = "rule-" + strconv.Itoa(i)
+				p.Rules = append(p.Rules, r)
+			}
+		}
+	}
+	for _, tc := range []struct {
+		name   string
+		mutate func(*Plan)
+		want   string // empty: the plan is valid
+	}{
+		{"latitude north edge", func(p *Plan) { p.Location = &Location{90, 0} }, ""},
+		{"latitude south edge", func(p *Plan) { p.Location = &Location{-90, 0} }, ""},
+		{"longitude east edge", func(p *Plan) { p.Location = &Location{0, 180} }, ""},
+		{"longitude west edge", func(p *Plan) { p.Location = &Location{0, -180} }, ""},
+		{"latitude above 90", func(p *Plan) { p.Location = &Location{90.0001, 0} }, "invalid latitude or longitude"},
+		{"latitude below -90", func(p *Plan) { p.Location = &Location{-90.0001, 0} }, "invalid latitude or longitude"},
+		{"longitude above 180", func(p *Plan) { p.Location = &Location{0, 180.0001} }, "invalid latitude or longitude"},
+		{"longitude below -180", func(p *Plan) { p.Location = &Location{0, -180.0001} }, "invalid latitude or longitude"},
+		{"latitude NaN", func(p *Plan) { p.Location = &Location{math.NaN(), 0} }, "invalid latitude or longitude"},
+		{"longitude infinite", func(p *Plan) { p.Location = &Location{0, math.Inf(1)} }, "invalid latitude or longitude"},
+		{"solar offset 180", func(p *Plan) { located(p); p.Rules[0].Start = Boundary{Kind: "sunset", OffsetMinutes: 180} }, ""},
+		{"solar offset -180", func(p *Plan) { located(p); p.Rules[0].Start = Boundary{Kind: "sunrise", OffsetMinutes: -180} }, ""},
+		{"solar offset 181", func(p *Plan) { located(p); p.Rules[0].Start = Boundary{Kind: "sunset", OffsetMinutes: 181} }, "offset between -180 and 180"},
+		{"solar offset -181", func(p *Plan) { located(p); p.Rules[0].End = Boundary{Kind: "sunrise", OffsetMinutes: -181} }, "offset between -180 and 180"},
+		{"clock offset", func(p *Plan) { p.Rules[0].Start.OffsetMinutes = 1 }, "without an offset"},
+		{"priority 0", func(p *Plan) { p.Rules[0].Priority = 0 }, ""},
+		{"priority 100", func(p *Plan) { p.Rules[0].Priority = 100 }, ""},
+		{"priority -1", func(p *Plan) { p.Rules[0].Priority = -1 }, "priority must be 0–100"},
+		{"priority 101", func(p *Plan) { p.Rules[0].Priority = 101 }, "priority must be 0–100"},
+		{"100 rules", manyRules(100), ""},
+		{"101 rules", manyRules(101), "at most 100 rules"},
+		{"override id collides with rule id", func(p *Plan) {
+			p.Override = &Override{ID: p.Rules[0].ID, Action: Action{Kind: "off"}, StartsAt: instant("2026-01-01T00:00:00Z"), ExpiresAt: instant("2026-01-01T01:00:00Z")}
+		}, "override must have a unique ID"},
+		{"override id distinct", func(p *Plan) {
+			p.Override = &Override{ID: "manual", Action: Action{Kind: "off"}, StartsAt: instant("2026-01-01T00:00:00Z"), ExpiresAt: instant("2026-01-08T00:00:00Z")}
+		}, ""},
+		{"seasonal through before from", func(p *Plan) {
+			p.Rules[0].Kind, p.Rules[0].From, p.Rules[0].Through = "seasonal", "2026-10-31", "2026-10-01"
+		}, "date range ends before it starts"},
+		{"weekly through before from", func(p *Plan) { p.Rules[0].From, p.Rules[0].Through = "2026-10-02", "2026-10-01" }, "date range ends before it starts"},
+		{"seasonal single day", func(p *Plan) {
+			p.Rules[0].Kind, p.Rules[0].From, p.Rules[0].Through = "seasonal", "2026-10-01", "2026-10-01"
+		}, ""},
+		{"exception spans two dates", func(p *Plan) {
+			p.Rules[0].Kind, p.Rules[0].Weekdays = "exception", nil
+			p.Rules[0].From, p.Rules[0].Through = "2026-10-01", "2026-10-02"
+		}, "same start and end date"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := Default()
+			p.Rules = []Rule{weekly()}
+			tc.mutate(&p)
+			err := p.Validate()
+			if tc.want == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("got %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// assertLocal pins the tzdata transition that a test depends on, so a tzdata
+// change fails here instead of silently changing the expected timeline.
+func assertLocal(t *testing.T, loc *time.Location, utc, local string) {
+	t.Helper()
+	if got := instant(utc).In(loc).Format(time.RFC3339); got != local {
+		t.Fatalf("%s: %s is %s, want %s", loc, utc, got, local)
+	}
+}
+func zone(t *testing.T, name string) *time.Location {
+	t.Helper()
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loc
+}
+func allDays(id, start, end string, pattern string) Rule {
+	r := weekly()
+	r.ID, r.Name = id, id
+	r.Start.Time, r.End.Time = start, end
+	r.Action.PatternID = pattern
+	return r
+}
+func checkSegments(t *testing.T, out Preview, want []Segment) {
+	t.Helper()
+	if out.ExecutionEnabled || len(out.Segments) != len(want) {
+		t.Fatalf("segments %+v, want %+v", out.Segments, want)
+	}
+	for i, w := range want {
+		s := out.Segments[i]
+		if !s.From.Equal(w.From) || !s.Until.Equal(w.Until) || s.Action != w.Action {
+			t.Fatalf("segment %d %+v, want %+v", i, s, w)
+		}
+	}
+}
+func checkIssues(t *testing.T, out Preview, want []Issue) {
+	t.Helper()
+	if !reflect.DeepEqual(out.Issues, want) {
+		t.Fatalf("issues %+v, want %+v", out.Issues, want)
+	}
+}
+func patternAction(id string) Action { return Action{Kind: "pattern", PatternID: id, Revision: 1} }
+
+var off = Action{Kind: "off"}
+
+func TestMidnightDSTGapAndRepeatEndToEnd(t *testing.T) {
+	// Cuba changes clocks at local midnight: 2026-03-08 00:00 CST becomes 01:00 CDT,
+	// and 2026-11-01 01:00 CDT becomes 00:00 CST, so midnight repeats.
+	havana := zone(t, "America/Havana")
+	assertLocal(t, havana, "2026-03-08T04:59:00Z", "2026-03-07T23:59:00-05:00")
+	assertLocal(t, havana, "2026-03-08T05:00:00Z", "2026-03-08T01:00:00-04:00")
+	assertLocal(t, havana, "2026-11-01T04:00:00Z", "2026-11-01T00:00:00-04:00")
+	assertLocal(t, havana, "2026-11-01T05:00:00Z", "2026-11-01T00:00:00-05:00")
+	p := Default()
+	p.Timezone = "America/Havana"
+	p.Rules = []Rule{allDays("early", "00:00", "02:00", "early")}
+
+	out, err := EvaluateDates(p, "2026-03-08", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The local day starts at 01:00 CDT and lasts 23 hours.
+	checkSegments(t, out, []Segment{
+		{From: instant("2026-03-08T05:00:00Z"), Until: instant("2026-03-08T06:00:00Z"), Action: patternAction("early")},
+		{From: instant("2026-03-08T06:00:00Z"), Until: instant("2026-03-09T04:00:00Z"), Action: off},
+	})
+	checkIssues(t, out, []Issue{{"early", "2026-03-08", "Missing clock time: shifted forward by 1h0m0s."}})
+
+	out, err = EvaluateDates(p, "2026-11-01", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The local day starts at the first midnight and lasts 25 hours.
+	checkSegments(t, out, []Segment{
+		{From: instant("2026-11-01T04:00:00Z"), Until: instant("2026-11-01T07:00:00Z"), Action: patternAction("early")},
+		{From: instant("2026-11-01T07:00:00Z"), Until: instant("2026-11-02T05:00:00Z"), Action: off},
+	})
+	checkIssues(t, out, []Issue{{"early", "2026-11-01", "Repeated clock time: using the first occurrence for the start."}})
+
+	// Lebanon also springs forward at midnight: 2026-03-29 00:00 EET becomes 01:00 EEST.
+	beirut := zone(t, "Asia/Beirut")
+	assertLocal(t, beirut, "2026-03-28T21:59:00Z", "2026-03-28T23:59:00+02:00")
+	assertLocal(t, beirut, "2026-03-28T22:00:00Z", "2026-03-29T01:00:00+03:00")
+	p.Timezone = "Asia/Beirut"
+	evening := allDays("evening", "22:00", "00:00", "evening")
+	evening.EndNextDay = true
+	p.Rules = []Rule{evening, allDays("early", "00:00", "01:30", "early")}
+	out = evaluate(t, p, "2026-03-28T19:00:00Z", "2026-03-29T00:00:00Z")
+	// The overnight end and the next start both resolve to the first instant after
+	// the gap; neither window loses or gains elapsed time.
+	checkSegments(t, out, []Segment{
+		{From: instant("2026-03-28T19:00:00Z"), Until: instant("2026-03-28T20:00:00Z"), Action: off},
+		{From: instant("2026-03-28T20:00:00Z"), Until: instant("2026-03-28T22:00:00Z"), Action: patternAction("evening")},
+		{From: instant("2026-03-28T22:00:00Z"), Until: instant("2026-03-28T22:30:00Z"), Action: patternAction("early")},
+		{From: instant("2026-03-28T22:30:00Z"), Until: instant("2026-03-29T00:00:00Z"), Action: off},
+	})
+	checkIssues(t, out, []Issue{
+		{"evening", "2026-03-28", "Missing clock time: shifted forward by 1h0m0s."},
+		{"early", "2026-03-29", "Missing clock time: shifted forward by 1h0m0s."},
+	})
+}
+
+func TestSkippedCivilDateEndToEnd(t *testing.T) {
+	// Samoa skipped 2011-12-30: 2011-12-29 23:59 at UTC-10 became 2011-12-31 00:00 at UTC+14.
+	apia := zone(t, "Pacific/Apia")
+	assertLocal(t, apia, "2011-12-30T09:59:00Z", "2011-12-29T23:59:00-10:00")
+	assertLocal(t, apia, "2011-12-30T10:00:00Z", "2011-12-31T00:00:00+14:00")
+	p := Default()
+	p.Timezone = "Pacific/Apia"
+	exception := allDays("skipped-day", "12:00", "13:00", "party")
+	exception.Kind, exception.Weekdays = "exception", nil
+	exception.From, exception.Through = "2011-12-30", "2011-12-30"
+	p.Rules = []Rule{allDays("daily", "12:00", "13:00", "daily"), exception}
+
+	// Three civil days, 2011-12-29 through 2011-12-31, span only 48 elapsed hours.
+	out, err := EvaluateDates(p, "2011-12-29", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Neither rule moves its 2011-12-30 occurrence to another date: the exception
+	// never wins on 2011-12-31.
+	checkSegments(t, out, []Segment{
+		{From: instant("2011-12-29T10:00:00Z"), Until: instant("2011-12-29T22:00:00Z"), Action: off},
+		{From: instant("2011-12-29T22:00:00Z"), Until: instant("2011-12-29T23:00:00Z"), Action: patternAction("daily")},
+		{From: instant("2011-12-29T23:00:00Z"), Until: instant("2011-12-30T22:00:00Z"), Action: off},
+		{From: instant("2011-12-30T22:00:00Z"), Until: instant("2011-12-30T23:00:00Z"), Action: patternAction("daily")},
+		{From: instant("2011-12-30T23:00:00Z"), Until: instant("2011-12-31T10:00:00Z"), Action: off},
+	})
+	skipped := "Skipped: civil date or clock time does not exist"
+	checkIssues(t, out, []Issue{{"daily", "2011-12-30", skipped}, {"skipped-day", "2011-12-30", skipped}})
+
+	// Evaluate over the same instants agrees with the local-date form.
+	again := evaluate(t, p, "2011-12-29T10:00:00Z", "2011-12-31T10:00:00Z")
+	if !reflect.DeepEqual(again, out) {
+		t.Fatalf("instant preview %+v differs from date preview %+v", again, out)
+	}
+	// A preview cannot start on a date that does not exist.
+	if _, err := EvaluateDates(p, "2011-12-30", 1); err == nil {
+		t.Fatal("skipped civil date was accepted as a preview start")
 	}
 }

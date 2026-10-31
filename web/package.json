@@ -15,7 +15,7 @@
     "lint": "eslint --max-warnings 0 .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "node --test src/*.test.mjs"
+    "test": "node scripts/build-component-tests.mjs && node --test src/*.test.mjs"
   },
   "dependencies": {
     "react": "19.3.1",

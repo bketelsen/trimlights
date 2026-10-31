@@ -53,7 +53,12 @@ make check
 
 `make check` runs the frontend build/tests, formatting, vet, Go race tests,
 documentation links and a static binary build. It never contacts lighting hardware.
-Its `web-check` step runs `pnpm run check` in `web/`: ESLint (typescript-eslint,
+The frontend tests (`pnpm --dir web test`, run by `make web-test`) use `node:test`
+with no test framework. They first compile a few components with the project's
+TypeScript compiler into the ignored `web/.test-build` directory, then render them
+to static HTML with `react-dom/server` as smoke tests
+([frontend design](docs/design/application.md#application-boundaries)).
+`make check` also runs `web-check`, which runs `pnpm run check` in `web/`: ESLint (typescript-eslint,
 React hooks, jsx-a11y, no `dangerouslySetInnerHTML`), the Prettier check and
 TypeScript checks of the app, the `.mjs` tests and the Vite config. Run
 `pnpm run format` in `web/` to apply Prettier. ESLint uses the TypeScript 6 API
@@ -91,7 +96,7 @@ which exits 0 only when the loopback `/readyz` endpoint answers 200.
 
 1. Register a confidential Pocket ID client with your app's exact HTTPS callback,
    for example `https://trimlights.example.com/auth/callback`. Restrict the client
-   to the household users.
+   to the household users. The app requests only the `openid profile` scopes.
 2. Copy [OIDC configuration](deploy/oidc.example.json) to private storage and fill
    `origin`, `issuer`, `client_id` and `allowed_subjects`. In Pocket ID, open the
    client’s **OIDC Data Preview**, select each user, and copy their `sub` value.
@@ -107,6 +112,12 @@ which exits 0 only when the loopback `/readyz` endpoint answers 200.
 6. Configure [Caddy](deploy/Caddyfile.example) with `TRIMLIGHT_DOMAIN` and
    `TRIMLIGHT_UPSTREAM`, pointing to the app's private address and port. Use the
    HTTPS domain for login; secure cookies do not work at the raw HTTP address.
+
+The service writes JSON logs to standard error; read them with `docker logs`
+(or the TrueNAS app log view). Set `TRIMLIGHT_LOG_LEVEL` to `debug`, `info`,
+`warn` or `error`; `debug` adds request lines (method, path, status, duration). Logs record sign-in subjects
+and the causes of server errors, never tokens, cookies or the controller address.
+See the [service log contract](docs/specs/local-service.md#service-logs).
 
 The container runs as UID/GID 65532 with a read-only root filesystem. Give that
 user write access to the data dataset and read access to the config/secret files.
@@ -137,7 +148,9 @@ Bundles contain the OIDC secret and are not encrypted; store them privately.
 
 In House, upload a JPEG, PNG or WebP (up to 12 MiB and 50 million pixels). The picker
 requests supported formats so Safari can convert compatible photos. If HEIC still
-arrives, export it as JPEG in Photos or Preview. Original files and metadata are
+arrives, export it as JPEG in Photos or Preview. A photo that needs more than
+128 MiB to decode, such as a 16-bit PNG, a large progressive JPEG or a lossless
+WebP, is refused; export it as a standard JPEG. Original files and metadata are
 not retained. Up to 20 sanitized photos and their thumbnails stay in SQLite.
 
 Add a roofline, set its output, first bulb and count, then tap its corners in order.
