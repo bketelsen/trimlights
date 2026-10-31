@@ -82,6 +82,8 @@ flowchart LR
   selected `.tsx` components with `tsc` and `web/tsconfig.test.json` into the
   ignored `web/.test-build` directory as CommonJS, and `components.test.mjs`
   renders them with `react-dom/server`. This adds no test dependency.
+  ESLint, Prettier and TypeScript checks run in `make check`
+  ([Build](../../README.md#build)).
 - CLI commands proposed: `serve`, `status`, `doctor`, `patterns`, `schedules`,
   `layout`, `backup`, and `restore`. Keep the current snapshot/probe commands as
   explicit diagnostic operations during migration.
@@ -375,7 +377,7 @@ pinned in `mise.toml` with checksums in `mise.lock`; Go comes from `go.mod`.
 | Target | Runs | Use |
 | --- | --- | --- |
 | `make verify` | `go mod tidy -diff`, `gofmt -l`, `go vet`, golangci-lint, race tests, doc links | Credential-free and non-mutating; no Node or pnpm |
-| `make ci` | `verify`, then frontend tests and build, then the static binary build | The Check workflow's `check` job |
+| `make ci` | `verify`, then frontend lint/format/type checks (`web-check`), tests and build, then the static binary build | The Check workflow's `check` job |
 | `make check` | `gofmt -w`, then `make ci` | Developer gate before a change is done |
 | `make vulncheck` | Pinned govulncheck; needs the network | Separate workflow job, outside the gate |
 

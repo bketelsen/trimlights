@@ -1,4 +1,4 @@
-.PHONY: build web-build web-test test vet fmt fmt-check lint lint-version-check tidy-check docs-check vulncheck verify check ci svu-version-check bump
+.PHONY: build web-build web-check web-test test vet fmt fmt-check lint lint-version-check tidy-check docs-check vulncheck verify check ci svu-version-check bump
 
 PNPM ?= pnpm
 # IN_NSL prefixes every pnpm call, so a developer can run the frontend
@@ -27,6 +27,11 @@ build: web-build
 
 web-test: web/node_modules/.install-stamp
 	$(IN_NSL) $(PNPM) --dir web test
+
+# Lint (ESLint), formatting (Prettier) and type checks of the app, the tests
+# and the Vite config. The web build itself runs only vite build.
+web-check: web/node_modules/.install-stamp
+	$(IN_NSL) $(PNPM) --dir web run check
 
 test:
 	go test -race ./...
@@ -67,15 +72,16 @@ vulncheck:
 
 # The gate triad (frostyard/core ADR-0043, ADR-0044; ADR-0016 here).
 # verify is credential-free and non-mutating: a read-only reviewer runs it,
-# and it needs no Node or pnpm. ci adds the frontend build and tests and the
-# binary build; CI runs exactly make ci. check formats Go code, then runs ci.
+# and it needs no Node or pnpm. ci adds the frontend lint, format and type
+# checks (web-check), the frontend build and tests and the binary build; CI
+# runs exactly make ci. check formats Go code, then runs ci.
 # The steps of ci and check run in a fixed order, also under make -j (or an
 # inherited MAKEFLAGS=-j, as in make bump): a sub-make starts only after the
 # step before it ends, so gofmt -w never changes files that verify reads.
 verify: tidy-check fmt-check vet lint test docs-check
 
 ci: verify
-	$(MAKE) --no-print-directory web-test build
+	$(MAKE) --no-print-directory web-check web-test build
 
 check: fmt
 	$(MAKE) --no-print-directory ci

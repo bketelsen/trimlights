@@ -167,7 +167,7 @@ and [ADR-0011](../adr/0011-audited-household-native-controls.md).
 | `build/trimlight` | Static Go binary with clix build metadata and timezone data |
 | `trimlights.db` | Local SQLite storage; generated runtime state, never committed |
 | `make verify` | Tidy, formatting, vet, lint, race tests, protocol fixtures and doc links; non-mutating, no pnpm |
-| `make ci` | `make verify`, frontend tests and build, and the static binary build; run by CI |
+| `make ci` | `make verify`, frontend lint/format/type checks, tests and build, and the static binary build; run by CI |
 | `make check` | Go formatting (`gofmt -w`), then `make ci` |
 
 ## References
