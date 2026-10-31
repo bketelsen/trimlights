@@ -23,6 +23,11 @@ existing loopback bearer API. Bodies are one JSON object, at most 32 KiB, with
 Import, archive and restore accept `{}`. List with `?include_archived=1` to include
 archived entries. Create also serves import/duplicate: it always assigns a new
 application ID, never imports identity or overwrites an existing pattern.
+A created native design (a duplicate or a file import) MUST copy a slot of the
+latest cached controller snapshot: equal slot ID, equal raw slot name and equal
+156 parameter bytes (hex case is ignored). Otherwise create answers 400 and saves
+nothing. Native designs therefore come only from controller slots, and
+`native.name` is never free user input.
 
 ```json
 {"schema":1,"name":"Porch warmth","favorite":false,"effect":"static","brightness":60,"speed":0,"reverse":false,"palette":[{"color":"#ffb05a","count":3},{"color":"#000000","count":1}]}

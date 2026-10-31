@@ -5,6 +5,7 @@ export function userMessage(error:unknown,fallback:string):string {
   if(/sunday/i.test(error.message))return 'Light controls are unavailable on Sundays for now.';
   if(error.status===409)return 'Someone else saved a change. Your edits are still here; load the latest version or save a copy.';
   if(error.status===413)return 'This file is too large. Choose a smaller file.';
+  if(error.status===400&&/latest controller snapshot/.test(error.message))return 'This saved-on-lights pattern no longer matches your lights, so it cannot be added as a copy.';
   if(error.status===400)return 'Check your entries and try again.';
   if(error.status===403)return 'Please sign in again to continue.';
   return fallback;

@@ -104,3 +104,21 @@ func TestControllerImportErrorsAreClientErrors(t *testing.T) {
 		t.Fatal(response.Code, response.Body.String())
 	}
 }
+
+func TestCreateRejectsForgedNativeDesign(t *testing.T) {
+	store, w := setup(t, nil)
+	token := strings.Repeat("x", 32)
+	h := Handler(store, w, token)
+	body := `{"schema":1,"name":"Forged","favorite":false,"effect":"native","brightness":100,"speed":0,"reverse":false,"palette":[],"native":{"id":1,"name":"Forged","parameters_hex":"` + strings.Repeat("00", 156) + `","snapshot_at":"2026-10-30T12:00:00Z"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/patterns", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	h.ServeHTTP(response, req)
+	if response.Code != 400 || !strings.Contains(response.Body.String(), "latest controller snapshot") {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	if values, err := store.Patterns(context.Background(), true); err != nil || len(values) != 0 {
+		t.Fatal(values, err)
+	}
+}
