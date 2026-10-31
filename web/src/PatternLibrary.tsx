@@ -1,6 +1,7 @@
 import {HousePreview} from './HousePreview';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {APIError,request,SignedOut,userMessage} from './api';
+import {LiveStatus} from './LiveRegion';
 import {exportDesign,newDesign,renderPattern,validateDesign} from './pattern';
 import type {Design,SavedPattern} from './pattern';
 import {PreviewClock} from './previewClock';
@@ -97,10 +98,10 @@ export function PatternLibrary({csrf,onError,onDirty}:{csrf:string;onError:(erro
  return <section className="library">
   <input hidden ref={file} type="file" accept="application/json,.json" aria-label="Import pattern file" onChange={e=>{const selected=e.target.files?.[0];e.target.value='';if(selected)void importFile(selected);}}/>
   {error&&<div role="alert" className="notice field-error">{error}</div>}
-  {notice&&<div role="status" className="notice library-notice">{notice}</div>}
+  <LiveStatus>{notice&&<div className="notice library-notice">{notice}</div>}</LiveStatus>
   {draft?<>
    <div className="editor-toolbar"><button type="button" className="button secondary" disabled={busy} onClick={()=>{if(discardDraft()){editorSequence.current++;replaceDraft(null);}}}>← Library</button><span className="muted">{editing?`${dirty?'Unsaved changes':'Saved pattern'}`:'Unsaved pattern'}</span><button className="button primary" disabled={busy||!!validateDesign(draft)||!!editing&&currentReferences===null} onClick={()=>void save()}>{busy?'Saving…':'Save pattern'}</button></div>
-   {conflict&&<div className="conflict" role="status"><strong>Someone saved a newer version.</strong><p>Your draft is still here. Save it as a separate pattern or discard it and load the latest version.</p><div className="action-row"><button className="button primary" disabled={busy} onClick={()=>void save(true)}>Save as new pattern</button><button className="button secondary" disabled={busy} onClick={()=>void reloadDraft()}>Discard draft and load latest</button></div></div>}
+   <LiveStatus>{conflict&&<div className="conflict"><strong>Someone saved a newer version.</strong><p>Your draft is still here. Save it as a separate pattern or discard it and load the latest version.</p><div className="action-row"><button className="button primary" disabled={busy} onClick={()=>void save(true)}>Save as new pattern</button><button className="button secondary" disabled={busy} onClick={()=>void reloadDraft()}>Discard draft and load latest</button></div></div>}</LiveStatus>
    <div className="panel editor-panel">{editing&&<ReferenceNotice references={currentReferences}/>}<label className="field">Pattern name<input maxLength={80} value={draft.name} onChange={e=>update({name:e.target.value})}/></label><label className="check-label"><input type="checkbox" checked={draft.favorite} onChange={e=>update({favorite:e.target.checked})}/>Favorite</label><StripPreview design={draft}/><HousePreview design={draft}/>
    {draft.effect!=='native'?<><div className="effect-fields"><label className="field">Effect<select value={draft.effect} onChange={e=>update({effect:e.target.value as 'static'|'chase'})}><option value="static">Steady colors</option><option value="chase">Chase</option></select></label><label className="field">Brightness · {draft.brightness}%<input type="range" min="0" max="100" value={draft.brightness} onChange={e=>update({brightness:Number(e.target.value)})}/></label><label className="field">Speed · {draft.speed}<input type="range" min="0" max="100" disabled={draft.effect==='static'} value={draft.speed} onChange={e=>update({speed:Number(e.target.value)})}/></label><label className="check-label"><input type="checkbox" checked={draft.reverse} onChange={e=>update({reverse:e.target.checked})}/>Reverse direction</label></div>
    <div className="section-heading"><h2>Colors</h2><span>{draft.palette.reduce((n,r)=>n+r.count,0)} bulbs per repeat</span></div>
