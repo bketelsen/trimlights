@@ -45,4 +45,15 @@ export function routeStep(current:RouteModel,page:Page,index:number|undefined,ca
  return {model:{...model,restoring:{to:model.index,from:index??null}},go:model.index-target};
 }
 // routePush records a page change made inside the app (a navigation button).
-export function routePush(current:RouteModel,page:Page):RouteModel{return {page,index:current.index+1};}
+// history.go is asynchronous: while a refusal is still returning, the browser is
+// on the refused entry, so a push would delete entries. It returns null then.
+export function routePush(current:RouteModel,page:Page):RouteModel|null{return current.restoring?null:{page,index:current.index+1};}
+// routeSettle ends a restoration that has not landed after a short wait (for
+// example, an out-of-range go). If the same restoration is still pending, the
+// model takes the browser's actual index and the step replaces that entry with
+// the shown page, so the URL matches the page again.
+export const restoreTimeoutMs=1000;
+export function routeSettle(current:RouteModel,pending:RouteModel['restoring'],actualIndex:number|undefined):RouteStep{
+ if(!pending||current.restoring!==pending)return {model:current};
+ return {model:{page:current.page,index:actualIndex??current.index},replace:true};
+}

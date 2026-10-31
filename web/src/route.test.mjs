@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {pageFromHash,pageHash,pageTitle,pages,routeIndex,routePush,routeState,routeStep} from './route.ts';
+import {pageFromHash,pageHash,pageTitle,pages,routeIndex,routePush,routeSettle,routeState,routeStep} from './route.ts';
 
 test('every page round-trips through its URL hash',()=>{for(const page of pages)assert.equal(pageFromHash(pageHash(page)),page);});
 test('an empty or unknown hash opens Home',()=>{for(const hash of ['','#','#unknown','#Home','#/house'])assert.equal(pageFromHash(hash),'home');});
@@ -65,4 +65,58 @@ test('a typed hash is stamped as a new entry, or left with Back when refused',()
 test('a changed page on the same entry is replaced back when refused',()=>{
  assert.deepEqual(routeStep({page:'house',index:2},'home',2,()=>false),{model:{page:'house',index:2},replace:true});
  assert.deepEqual(routeStep({page:'house',index:2},'home',2,()=>true),{model:{page:'home',index:2},show:'home'});
+});
+
+// A small browser: history entries, a cursor and queued (asynchronous) history.go calls.
+// Each traversal fires popstate and hashchange, as browsers do for a hash change.
+function browser(page){
+ const b={entries:[{page,index:0}],cursor:0,queued:[],model:{page,index:0},shown:page,asks:0};
+ b.event=leave=>{const entry=b.entries[b.cursor];const step=routeStep(b.model,entry.page,entry.index,()=>{b.asks++;return leave;});b.model=step.model;if(step.stamp!==undefined)entry.index=step.stamp;if(step.replace)b.entries[b.cursor]={page:step.model.page,index:step.model.index};if(step.go)b.queued.push(step.go);if(step.show)b.shown=step.show;};
+ b.traverse=(delta,leave=true)=>{b.cursor+=delta;assert.ok(b.cursor>=0&&b.cursor<b.entries.length);b.event(leave);b.event(leave);};
+ b.land=()=>{const asks=b.asks;b.traverse(b.queued.shift());assert.equal(b.asks,asks);};
+ b.click=next=>{const pushed=routePush(b.model,next);if(!pushed||next===b.shown)return false;b.model=pushed;b.entries.splice(b.cursor+1,Infinity,{page:next,index:pushed.index});b.cursor++;b.shown=next;return true;};
+ b.pages=()=>b.entries.map(e=>e.page);
+ return b;
+}
+test('a navigation before a refused Back has returned does not push or lose entries',()=>{
+ const b=browser('home');
+ assert.ok(b.click('patterns')&&b.click('house'));
+ b.traverse(-1,false);
+ assert.equal(b.asks,1);
+ assert.deepEqual(b.queued,[1]);
+ assert.equal(b.cursor,1);
+ // history.go(1) has not completed yet: the click must not push from the refused entry.
+ assert.equal(b.click('settings'),false);
+ assert.deepEqual(b.pages(),['home','patterns','house']);
+ b.land();
+ assert.equal(b.cursor,2);
+ assert.deepEqual(b.model,{page:'house',index:2});
+ assert.equal(b.shown,'house');
+ // After the landing, navigation and Back work with correct positions.
+ assert.ok(b.click('settings'));
+ assert.deepEqual(b.pages(),['home','patterns','house','settings']);
+ assert.deepEqual(b.entries.map(e=>e.index),[0,1,2,3]);
+ assert.equal(b.cursor,3);
+ b.traverse(-1);b.traverse(-1);
+ assert.equal(b.shown,'patterns');
+ assert.deepEqual(b.model,{page:'patterns',index:1});
+});
+test('a restoration that never lands is settled after the wait',()=>{
+ const b=browser('home');
+ b.click('house');
+ b.traverse(-1,false);
+ const pending=b.model.restoring;
+ assert.ok(pending);
+ b.queued=[]; // the history.go call never lands
+ assert.equal(b.click('settings'),false);
+ const settled=routeSettle(b.model,pending,b.entries[b.cursor].index);
+ assert.deepEqual(settled,{model:{page:'house',index:0},replace:true});
+ b.model=settled.model;b.entries[b.cursor]={page:'house',index:0};
+ assert.ok(b.click('settings'));
+ // The refused entry now holds the shown page, so the URL matches it again.
+ assert.deepEqual(b.pages(),['house','settings']);
+ assert.equal(b.cursor,1);
+ // A settle after a landed restoration changes nothing.
+ const landed={page:'house',index:2};
+ assert.deepEqual(routeSettle(landed,{to:2,from:1},1),{model:landed});
 });

@@ -8,7 +8,7 @@ import {House} from './House';
 import {clockTime,repeatLabel} from './uiText';
 import {NativeControls,type NativeSnapshot} from './NativeControls';
 import {LiveStatus} from './LiveRegion';
-import {pageFromHash,pageHash,pageLabel,pageTitle,pages,routeIndex,routePush,routeState,routeStep,type Page,type RouteModel} from './route';
+import {pageFromHash,pageHash,pageLabel,pageTitle,pages,restoreTimeoutMs,routeIndex,routePush,routeSettle,routeState,routeStep,type Page,type RouteModel} from './route';
 
 type Identity = {subject:string;name:string;csrf_token:string;expires:string};
 type NativeSchedule = {slot:number;enabled:boolean;pattern_name:string;repetition_interpretation:string;start_time:string;off_time:string};
@@ -46,13 +46,16 @@ function App(){
    route.current=step.model;
    if(step.stamp!==undefined)history.replaceState(routeState(step.stamp),'');
    if(step.replace)history.replaceState(routeState(step.model.index),'',pageHash(step.model.page));
-   if(step.go)history.go(step.go);
+   if(step.go){
+    const pending=step.model.restoring;history.go(step.go);
+    window.setTimeout(()=>{const settled=routeSettle(route.current,pending,routeIndex(history.state));route.current=settled.model;if(settled.replace)history.replaceState(routeState(settled.model.index),'',pageHash(settled.model.page));},restoreTimeoutMs);
+   }
    if(step.show)show(step.show);
   };
   window.addEventListener('popstate',changed);window.addEventListener('hashchange',changed);
   return()=>{window.removeEventListener('popstate',changed);window.removeEventListener('hashchange',changed);};
  },[show]);
- function navigate(next:Page){if(next===page||(dirty&&!window.confirm('Leave this page and discard unsaved changes?')))return;route.current=routePush(route.current,next);history.pushState(routeState(route.current.index),'',pageHash(next));show(next);}
+ function navigate(next:Page){const pushed=routePush(route.current,next);if(!pushed||next===page||(dirty&&!window.confirm('Leave this page and discard unsaved changes?')))return;route.current=pushed;history.pushState(routeState(pushed.index),'',pageHash(next));show(next);}
  useEffect(()=>{document.title=pageTitle(identity?page:null);},[identity,page]);
  // Move focus to the new page heading so that screen readers and keyboards start there.
  useEffect(()=>{if(shownPage.current===page)return;shownPage.current=page;heading.current?.focus();},[page]);
