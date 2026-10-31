@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"trimlights/internal/house"
 	"trimlights/internal/storage"
 )
 
-func houseError(w http.ResponseWriter, err error) {
+func houseError(w http.ResponseWriter, r *http.Request, logger *slog.Logger, err error) {
 	switch {
 	case errors.Is(err, storage.ErrMissing):
 		jsonError(w, 404, "photo not found")
@@ -21,19 +22,19 @@ func houseError(w http.ResponseWriter, err error) {
 	case errors.Is(err, storage.ErrPhotoReference):
 		jsonError(w, 400, err.Error())
 	default:
-		jsonError(w, 500, "could not read or save house photos and mapping")
+		serverError(w, r, logger, 500, "could not read or save house photos and mapping", err)
 	}
 }
 func houseResponse(w http.ResponseWriter, h storage.SavedHouse) {
 	w.Header().Set("ETag", `"`+strconv.Itoa(h.Revision)+`"`)
 	jsonResponse(w, 200, h)
 }
-func registerHouse(mux *http.ServeMux, store *storage.Store) {
+func registerHouse(mux *http.ServeMux, store *storage.Store, logger *slog.Logger) {
 	decoding := make(chan struct{}, 1)
 	mux.HandleFunc("GET /api/v1/photos", func(w http.ResponseWriter, r *http.Request) {
 		p, err := store.Photos(r.Context())
 		if err != nil {
-			houseError(w, err)
+			houseError(w, r, logger, err)
 			return
 		}
 		jsonResponse(w, 200, map[string]any{"photos": p})
@@ -61,7 +62,7 @@ func registerHouse(mux *http.ServeMux, store *storage.Store) {
 		}
 		saved, err := store.AddPhoto(r.Context(), p, actor(r))
 		if err != nil {
-			houseError(w, err)
+			houseError(w, r, logger, err)
 			return
 		}
 		w.Header().Set("Location", "/api/v1/photos/"+saved.ID+"/image")
@@ -71,7 +72,7 @@ func registerHouse(mux *http.ServeMux, store *storage.Store) {
 		mux.HandleFunc("GET /api/v1/photos/{id}/"+kind, func(w http.ResponseWriter, r *http.Request) {
 			raw, err := store.PhotoBytes(r.Context(), r.PathValue("id"), kind == "thumbnail")
 			if err != nil {
-				houseError(w, err)
+				houseError(w, r, logger, err)
 				return
 			}
 			w.Header().Set("Content-Type", "image/jpeg")
@@ -85,7 +86,7 @@ func registerHouse(mux *http.ServeMux, store *storage.Store) {
 	mux.HandleFunc("GET /api/v1/house", func(w http.ResponseWriter, r *http.Request) {
 		h, err := store.House(r.Context())
 		if err != nil {
-			houseError(w, err)
+			houseError(w, r, logger, err)
 			return
 		}
 		houseResponse(w, h)
@@ -100,7 +101,7 @@ func registerHouse(mux *http.ServeMux, store *storage.Store) {
 			return
 		}
 		if err := store.ValidateHouse(r.Context(), l); err != nil {
-			houseError(w, err)
+			houseError(w, r, logger, err)
 			return
 		}
 		jsonResponse(w, 200, map[string]any{"layout": l})
@@ -120,7 +121,7 @@ func registerHouse(mux *http.ServeMux, store *storage.Store) {
 		}
 		h, err := store.SaveHouse(r.Context(), v, l, actor(r))
 		if err != nil {
-			houseError(w, err)
+			houseError(w, r, logger, err)
 			return
 		}
 		houseResponse(w, h)
@@ -128,7 +129,7 @@ func registerHouse(mux *http.ServeMux, store *storage.Store) {
 	mux.HandleFunc("GET /api/v1/house/revisions", func(w http.ResponseWriter, r *http.Request) {
 		h, err := store.HouseHistory(r.Context())
 		if err != nil {
-			houseError(w, err)
+			houseError(w, r, logger, err)
 			return
 		}
 		jsonResponse(w, 200, map[string]any{"revisions": h})

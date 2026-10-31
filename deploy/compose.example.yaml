@@ -23,4 +23,5 @@ services:
       - --oidc-config=/config/oidc.json
       - --timezone=${TRIMLIGHT_TIMEZONE:-UTC}
       - --daily-schedules-offset=${TRIMLIGHT_SCHEDULE_OFFSET:--1}
+      - --log-level=${TRIMLIGHT_LOG_LEVEL:-info}
     stop_grace_period: 30s

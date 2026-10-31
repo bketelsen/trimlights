@@ -19,9 +19,17 @@ import (
 	"trimlights/internal/storage"
 )
 
+// Distinctive fixture values, so a log test can prove that none of them leak.
+const (
+	testCode        = "code-Q7xV2pLmR4"
+	testSecret      = "client-secret-9HqT3w"
+	testAccessToken = "never-expose-this-access-token"
+)
+
 type providerFixture struct {
 	mu                        sync.Mutex
 	nonce, challenge, invalid string
+	verifier, idToken         string
 	calls                     int
 	key                       *rsa.PrivateKey
 	issuer                    string
@@ -33,7 +41,7 @@ func (f *providerFixture) token(w http.ResponseWriter, r *http.Request) {
 	f.calls++
 	_ = r.ParseForm()
 	user, password, ok := r.BasicAuth()
-	if !ok || user != "client" || password != "secret" || r.Form.Get("code") != "valid" || r.Form.Get("grant_type") != "authorization_code" || r.Form.Get("redirect_uri") != "https://lights.test/auth/callback" || oauth2.S256ChallengeFromVerifier(r.Form.Get("code_verifier")) != f.challenge {
+	if !ok || user != "client" || password != testSecret || r.Form.Get("code") != testCode || r.Form.Get("grant_type") != "authorization_code" || r.Form.Get("redirect_uri") != "https://lights.test/auth/callback" || oauth2.S256ChallengeFromVerifier(r.Form.Get("code_verifier")) != f.challenge {
 		http.Error(w, "bad token request", 400)
 		return
 	}
@@ -64,8 +72,9 @@ func (f *providerFixture) token(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "sign failed", 500)
 		return
 	}
+	f.verifier, f.idToken = r.Form.Get("code_verifier"), signed
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "never-expose-this", "token_type": "Bearer", "expires_in": 3600, "id_token": signed})
+	_ = json.NewEncoder(w).Encode(map[string]any{"access_token": testAccessToken, "token_type": "Bearer", "expires_in": 3600, "id_token": signed})
 }
 func authFixture(t *testing.T) (*Auth, *providerFixture) {
 	t.Helper()
@@ -90,7 +99,7 @@ func authFixture(t *testing.T) (*Auth, *providerFixture) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { store.Close() })
-	a, err := newWithClient(context.Background(), Config{Origin: "https://lights.test", Issuer: server.URL, ClientID: "client", ClientSecret: "secret", AllowedSubjects: []string{"owner", "wife"}}, store, server.Client())
+	a, err := newWithClient(context.Background(), Config{Origin: "https://lights.test", Issuer: server.URL, ClientID: "client", ClientSecret: testSecret, AllowedSubjects: []string{"owner", "wife"}}, store, server.Client(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +138,7 @@ func begin(t *testing.T, a *Auth, f *providerFixture) (string, *http.Cookie) {
 	if len(cookies) != 1 {
 		t.Fatal(cookies)
 	}
-	return "/auth/callback?code=valid&state=" + url.QueryEscape(q.Get("state")), cookies[0]
+	return "/auth/callback?code=" + testCode + "&state=" + url.QueryEscape(q.Get("state")), cookies[0]
 }
 func TestLoginSessionCSRFLogout(t *testing.T) {
 	a, f := authFixture(t)
@@ -161,7 +170,7 @@ func TestLoginSessionCSRFLogout(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &me); err != nil {
 		t.Fatal(err)
 	}
-	if me.Subject != "owner" || me.CSRF == "" || strings.Contains(w.Body.String(), session.Value) || strings.Contains(w.Body.String(), "never-expose") {
+	if me.Subject != "owner" || me.CSRF == "" || strings.Contains(w.Body.String(), session.Value) || strings.Contains(w.Body.String(), testAccessToken) {
 		t.Fatal(w.Body.String())
 	}
 	for _, pair := range [][2]string{{"", ""}, {a.config.Origin, "wrong"}, {"https://evil.test", me.CSRF}} {
@@ -322,7 +331,7 @@ func TestSealedFlowCookieRefusals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	refused("foreign key", "/auth/callback?code=valid&state=state", &http.Cookie{Name: flowCookie, Value: foreign})
+	refused("foreign key", "/auth/callback?code="+testCode+"&state=state", &http.Cookie{Name: flowCookie, Value: foreign})
 	f.mu.Lock()
 	calls := f.calls
 	f.mu.Unlock()
@@ -343,7 +352,7 @@ func TestSealedFlowCookieRefusals(t *testing.T) {
 func TestFailedExchangeDoesNotSpendFlow(t *testing.T) {
 	a, f := authFixture(t)
 	path, flow := begin(t, a, f)
-	bad := strings.Replace(path, "code=valid", "code=forged", 1)
+	bad := strings.Replace(path, "code="+testCode, "code=forged", 1)
 	if w := call(a, "GET", bad, flow, "", ""); w.Code != 401 || !flowCleared(w) {
 		t.Fatal(w.Code, w.Body.String())
 	}

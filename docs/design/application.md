@@ -104,8 +104,11 @@ without redefining them. `--dry-run` must not call the current snapshot request,
 because that request can synchronize the controller clock. Use cached state for
 planning, report its age, and refuse operations requiring an unavailable baseline.
 Emit one documented JSON result for ordinary commands; do not mix reporter JSON
-events into that result. Controller operations currently use persisted audit
-records; structured operational logging remains to be added.
+events into that result. Controller operations use persisted audit records, and
+`serve` also writes structured JSON [service logs](../specs/local-service.md#service-logs)
+to standard error: a startup line, the cause of each 5xx response, controller
+operation results and [sign-in outcomes](../specs/household-auth.md#service-log-events).
+Logs never carry the controller address or login credentials.
 
 The worker serializes whole operations, retains the validated pauses, bounds
 timeouts/retries and verifies resulting state. An ambiguous write triggers a
@@ -323,7 +326,8 @@ share. Export transactionally consistent database backups (including sanitized p
 plus required private configuration
 and manifests; exercise restoration on an isolated instance with hardware disabled.
 
-Provide separate process health and controller connectivity, structured logs,
+Provide separate process health and controller connectivity, structured logs
+(`docker logs`; implemented, see [service logs](../specs/local-service.md#service-logs)),
 operation history, last successful read/write, queue status and stale-state age.
 Back up before database migrations; use versioned images and a documented rollback
 path. Credentials stay outside the image/repository. The initial release needs no

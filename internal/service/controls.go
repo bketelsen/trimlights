@@ -4,13 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 
 	"trimlights/internal/auth"
 	"trimlights/internal/trimlight"
 )
 
-func registerControls(mux *http.ServeMux, worker *Worker) {
+func registerControls(mux *http.ServeMux, worker *Worker, logger *slog.Logger) {
 	mux.HandleFunc("POST /api/v1/controller/control", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Content-Type") != "application/json" {
 			jsonError(w, 415, "Content-Type must be application/json")
@@ -40,11 +41,11 @@ func registerControls(mux *http.ServeMux, worker *Worker) {
 		}
 		id, done, err := worker.EnqueueControl(r.Context(), actor, input.ControlRequest)
 		if err != nil {
-			code := 503
 			if errors.Is(err, trimlight.ErrStaleBaseline) {
-				code = 409
+				jsonError(w, 409, err.Error())
+				return
 			}
-			jsonError(w, code, err.Error())
+			serverError(w, r, logger, 503, err.Error(), err)
 			return
 		}
 		select {
@@ -53,6 +54,8 @@ func registerControls(mux *http.ServeMux, worker *Worker) {
 				code := 502
 				if errors.Is(err, trimlight.ErrStaleBaseline) {
 					code = 409
+				} else {
+					logFailure(r, logger, code, err, "operation_id", id)
 				}
 				jsonResponse(w, code, map[string]any{"error": err.Error(), "operation_id": id})
 				return

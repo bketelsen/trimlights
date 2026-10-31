@@ -81,6 +81,12 @@ an unauthenticated TrueNAS install can pull the image.
    `TRIMLIGHT_UPSTREAM`, pointing to the app's private address and port. Use the
    HTTPS domain for login; secure cookies do not work at the raw HTTP address.
 
+The service writes JSON logs to standard error; read them with `docker logs`
+(or the TrueNAS app log view). Set `TRIMLIGHT_LOG_LEVEL` to `debug`, `info`,
+`warn` or `error`; `debug` adds one line per request. Logs record sign-in subjects
+and the causes of server errors, never tokens, cookies or the controller address.
+See the [service log contract](docs/specs/local-service.md#service-logs).
+
 The container runs as UID/GID 65532 with a read-only root filesystem. Give that
 user write access to the data dataset and read access to the config/secret files.
 Use a local filesystem for the live SQLite database, not an NFS/SMB share.

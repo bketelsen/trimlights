@@ -49,6 +49,23 @@ not mutable email addresses. The client is confidential; its secret stays in Go.
 - Logout deletes the local session and cookie. Pocket ID back-channel logout is
   not implemented; sessions otherwise last until expiry or allowlist removal.
 
+## Service log events
+
+Sign-in outcomes follow the [service log contract](local-service.md#service-logs).
+
+| Message | Level | Fields |
+| --- | --- | --- |
+| `sign-in succeeded` | info | `subject` |
+| `sign-in denied` | warn | `subject` not in the allowlist |
+| `sign-in callback refused` | warn | `reason`: `malformed_callback`, `unexpected_issuer`, `invalid_or_expired_flow`, `state_mismatch` or `flow_already_used` |
+| `sign-in token exchange failed` | warn | `idp_status` and `oauth_error`, or a transport `error` |
+| `sign-in verification failed` | warn | `reason`: `missing_id_token`, `invalid_id_token`, `nonce_mismatch` or `invalid_claims`; verifier `error` |
+| `sign-in flow unavailable`, `sign-in session not saved`, `sign-out failed` | error | `status`, `error`; `subject` when known |
+
+- Logs MUST NOT contain authorization codes, state, nonces, PKCE verifiers, ID or
+  access tokens, flow or session cookie values, session hashes, CSRF tokens or the
+  client secret. Token exchange failures omit the provider response body.
+
 ## Derived artifacts
 
 SQLite stores session hashes. Pending login flows live only in the sealed

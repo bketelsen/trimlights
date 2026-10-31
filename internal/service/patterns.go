@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"strconv"
@@ -68,7 +69,7 @@ func revision(w http.ResponseWriter, r *http.Request) (int, bool) {
 	}
 	return int(n), true
 }
-func patternError(w http.ResponseWriter, err error) {
+func patternError(w http.ResponseWriter, r *http.Request, logger *slog.Logger, err error) {
 	switch {
 	case errors.Is(err, storage.ErrMissing):
 		jsonError(w, 404, "pattern or cached snapshot not found")
@@ -77,18 +78,18 @@ func patternError(w http.ResponseWriter, err error) {
 	case errors.Is(err, storage.ErrNativeEdit):
 		jsonError(w, 400, storage.ErrNativeEdit.Error())
 	default:
-		jsonError(w, 500, "could not save or read the pattern library")
+		serverError(w, r, logger, 500, "could not save or read the pattern library", err)
 	}
 }
 func patternResponse(w http.ResponseWriter, code int, p storage.SavedPattern) {
 	w.Header().Set("ETag", `"`+strconv.Itoa(p.Revision)+`"`)
 	jsonResponse(w, code, p)
 }
-func registerPatterns(mux *http.ServeMux, store *storage.Store) {
+func registerPatterns(mux *http.ServeMux, store *storage.Store, logger *slog.Logger) {
 	mux.HandleFunc("GET /api/v1/patterns", func(w http.ResponseWriter, r *http.Request) {
 		values, err := store.Patterns(r.Context(), r.URL.Query().Get("include_archived") == "1")
 		if err != nil {
-			patternError(w, err)
+			patternError(w, r, logger, err)
 			return
 		}
 		jsonResponse(w, 200, map[string]any{"patterns": values})
@@ -104,7 +105,7 @@ func registerPatterns(mux *http.ServeMux, store *storage.Store) {
 		}
 		saved, err := store.CreatePattern(r.Context(), design, actor(r))
 		if err != nil {
-			patternError(w, err)
+			patternError(w, r, logger, err)
 			return
 		}
 		w.Header().Set("Location", "/api/v1/patterns/"+saved.ID)
@@ -113,7 +114,7 @@ func registerPatterns(mux *http.ServeMux, store *storage.Store) {
 	mux.HandleFunc("GET /api/v1/patterns/{id}", func(w http.ResponseWriter, r *http.Request) {
 		p, err := store.Pattern(r.Context(), r.PathValue("id"))
 		if err != nil {
-			patternError(w, err)
+			patternError(w, r, logger, err)
 			return
 		}
 		patternResponse(w, 200, p)
@@ -133,7 +134,7 @@ func registerPatterns(mux *http.ServeMux, store *storage.Store) {
 		}
 		saved, err := store.UpdatePattern(r.Context(), r.PathValue("id"), version, design, actor(r))
 		if err != nil {
-			patternError(w, err)
+			patternError(w, r, logger, err)
 			return
 		}
 		patternResponse(w, 200, saved)
@@ -150,7 +151,7 @@ func registerPatterns(mux *http.ServeMux, store *storage.Store) {
 			}
 			p, err := store.ArchivePattern(r.Context(), r.PathValue("id"), version, action == "archive", actor(r))
 			if err != nil {
-				patternError(w, err)
+				patternError(w, r, logger, err)
 				return
 			}
 			patternResponse(w, 200, p)
@@ -159,7 +160,7 @@ func registerPatterns(mux *http.ServeMux, store *storage.Store) {
 	mux.HandleFunc("GET /api/v1/patterns/{id}/revisions", func(w http.ResponseWriter, r *http.Request) {
 		history, err := store.PatternHistory(r.Context(), r.PathValue("id"))
 		if err != nil {
-			patternError(w, err)
+			patternError(w, r, logger, err)
 			return
 		}
 		jsonResponse(w, 200, map[string]any{"revisions": history})
@@ -171,7 +172,7 @@ func registerPatterns(mux *http.ServeMux, store *storage.Store) {
 		}
 		result, err := store.ImportControllerPatterns(r.Context(), actor(r))
 		if err != nil {
-			patternError(w, err)
+			patternError(w, r, logger, err)
 			return
 		}
 		jsonResponse(w, 200, result)

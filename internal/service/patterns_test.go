@@ -16,7 +16,7 @@ import (
 func TestPatternAPIValidationAndConflicts(t *testing.T) {
 	store, w := setup(t, nil)
 	token := strings.Repeat("x", 32)
-	h := Handler(store, w, token)
+	h := Handler(store, w, token, nil)
 	call := func(method, path string, body any, revision string) *httptest.ResponseRecorder {
 		raw, err := json.Marshal(body)
 		if err != nil {

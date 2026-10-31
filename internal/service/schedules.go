@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -13,11 +14,11 @@ func scheduleResponse(w http.ResponseWriter, s storage.SavedSchedule) {
 	w.Header().Set("ETag", `"`+strconv.Itoa(s.Revision)+`"`)
 	jsonResponse(w, 200, s)
 }
-func registerSchedules(mux *http.ServeMux, store *storage.Store) {
+func registerSchedules(mux *http.ServeMux, store *storage.Store, logger *slog.Logger) {
 	mux.HandleFunc("GET /api/v1/schedule", func(w http.ResponseWriter, r *http.Request) {
 		saved, err := store.Schedule(r.Context())
 		if err != nil {
-			jsonError(w, 500, "cannot read calendar")
+			serverError(w, r, logger, 500, "cannot read calendar", err)
 			return
 		}
 		scheduleResponse(w, saved)
@@ -42,7 +43,7 @@ func registerSchedules(mux *http.ServeMux, store *storage.Store) {
 			case errors.Is(err, storage.ErrScheduleReference):
 				jsonError(w, 400, err.Error()+"; restore the matching household backup or choose an available pattern before importing")
 			default:
-				jsonError(w, 500, "cannot validate calendar")
+				serverError(w, r, logger, 500, "cannot validate calendar", err)
 			}
 			return
 		}
@@ -81,7 +82,7 @@ func registerSchedules(mux *http.ServeMux, store *storage.Store) {
 			return
 		}
 		if err != nil {
-			jsonError(w, 500, "cannot save calendar")
+			serverError(w, r, logger, 500, "cannot save calendar", err)
 			return
 		}
 		scheduleResponse(w, saved)
@@ -89,7 +90,7 @@ func registerSchedules(mux *http.ServeMux, store *storage.Store) {
 	mux.HandleFunc("GET /api/v1/schedule/revisions", func(w http.ResponseWriter, r *http.Request) {
 		history, err := store.ScheduleHistory(r.Context())
 		if err != nil {
-			jsonError(w, 500, "cannot read calendar history")
+			serverError(w, r, logger, 500, "cannot read calendar history", err)
 			return
 		}
 		jsonResponse(w, 200, map[string]any{"revisions": history})
@@ -128,12 +129,12 @@ func registerSchedules(mux *http.ServeMux, store *storage.Store) {
 	})
 	mux.HandleFunc("GET /api/v1/patterns/{id}/schedule-references", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := store.Pattern(r.Context(), r.PathValue("id")); err != nil {
-			patternError(w, err)
+			patternError(w, r, logger, err)
 			return
 		}
 		refs, err := store.PatternScheduleReferences(r.Context(), r.PathValue("id"))
 		if err != nil {
-			jsonError(w, 500, "cannot read calendar references")
+			serverError(w, r, logger, 500, "cannot read calendar references", err)
 			return
 		}
 		jsonResponse(w, 200, map[string]any{"references": refs})
