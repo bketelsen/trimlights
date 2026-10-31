@@ -38,7 +38,7 @@ func handler(root fs.FS, logger *slog.Logger) http.Handler {
 		}
 		if _, err := fs.Stat(root, "index.html"); err != nil {
 			logger.ErrorContext(r.Context(), "request failed", "route", "GET /", "status", 503, "error", "frontend not built")
-			http.Error(w, "Frontend not built; run make web-build", 503)
+			http.Error(w, "Frontend not built; run make web-build", http.StatusServiceUnavailable)
 			return
 		}
 		recorder := &statusWriter{ResponseWriter: w}

@@ -40,7 +40,9 @@ and [CLI acceptance](../specs/v1-acceptance.md#interface).
   Create repeatable skills for protocol capture, bounded hardware validation and
   homelab release/restore as those procedures stabilize.
 - Create a non-hardware `make check` used identically by CI: formatting check,
-  vet/lint, unit/race/protocol tests, docs links and build. Keep hardware experiments
+  vet/lint, unit/race/protocol tests, docs links and build. Since 2026-10-30 CI
+  runs `make ci` and reviewers run `make verify`
+  ([ADR-0016](../adr/0016-adopt-the-frostyard-make-gate.md)). Keep hardware experiments
   explicitly separate. Organize Python under research when links are migrated;
   production builds/tests must not require it.
 - Replace the ad-hoc flag CLI with clix/Cobra. Start from **clix v0.5.0**, verify

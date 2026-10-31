@@ -1,13 +1,17 @@
-.PHONY: build web-build web-test test vet fmt-check docs-check check svu-version-check bump
+.PHONY: build web-build web-test test vet fmt fmt-check lint lint-version-check tidy-check docs-check vulncheck verify check ci svu-version-check bump
 
 PNPM ?= pnpm
+# IN_NSL prefixes every pnpm call, so a developer can run the frontend
+# toolchain in an nsl machine instead of on the host, for example
+# IN_NSL='nsl run -m lodge'. Empty by default: pnpm runs directly, as in CI.
+IN_NSL ?=
 
 web/node_modules/.install-stamp: web/package.json web/pnpm-lock.yaml
-	$(PNPM) --dir web install --frozen-lockfile
+	$(IN_NSL) $(PNPM) --dir web install --frozen-lockfile
 	touch $@
 
 web-build: web/node_modules/.install-stamp
-	$(PNPM) --dir web run build
+	$(IN_NSL) $(PNPM) --dir web run build
 	touch internal/webui/dist/.gitkeep
 
 VERSION ?= dev
@@ -22,7 +26,7 @@ build: web-build
 	cp build/trimlight build/$(shell go env GOARCH)/trimlight
 
 web-test: web/node_modules/.install-stamp
-	$(PNPM) --dir web test
+	$(IN_NSL) $(PNPM) --dir web test
 
 test:
 	go test -race ./...
@@ -30,13 +34,51 @@ test:
 vet:
 	go vet ./...
 
+fmt:
+	gofmt -w cmd internal
+
 fmt-check:
 	@test -z "$$(gofmt -l cmd internal)" || (gofmt -l cmd internal; exit 1)
+
+# golangci-lint's release, read from mise.toml (frostyard/core ADR-0043).
+GOLANGCI_LINT_VERSION := $(strip $(shell sed -n 's/^golangci-lint = "\(.*\)"/\1/p' mise.toml))
+
+lint-version-check:
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint $(GOLANGCI_LINT_VERSION) is required (not installed; run: mise install)"; exit 1; }
+	@v=$$(golangci-lint version 2>/dev/null | sed -n 's/.*version \([0-9.]*\).*/\1/p'); \
+	[ "$$v" = "$(GOLANGCI_LINT_VERSION)" ] || echo "warning: golangci-lint $$v, mise.toml pins $(GOLANGCI_LINT_VERSION) (mise install)"
+
+lint: lint-version-check
+	golangci-lint run
+
+tidy-check:
+	go mod tidy -diff
 
 docs-check:
 	go run ./internal/doccheck
 
-check: web-build web-test fmt-check vet test docs-check build
+# govulncheck's release, pinned here and not in go.mod. It downloads the
+# vulnerability database, so it stays out of verify, check and ci (CI runs it
+# as its own job).
+GOVULNCHECK_VERSION := v1.9.0
+
+vulncheck:
+	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+
+# The gate triad (frostyard/core ADR-0043, ADR-0044; ADR-0016 here).
+# verify is credential-free and non-mutating: a read-only reviewer runs it,
+# and it needs no Node or pnpm. ci adds the frontend build and tests and the
+# binary build; CI runs exactly make ci. check formats Go code, then runs ci.
+# The steps of ci and check run in a fixed order, also under make -j (or an
+# inherited MAKEFLAGS=-j, as in make bump): a sub-make starts only after the
+# step before it ends, so gofmt -w never changes files that verify reads.
+verify: tidy-check fmt-check vet lint test docs-check
+
+ci: verify
+	$(MAKE) --no-print-directory web-test build
+
+check: fmt
+	$(MAKE) --no-print-directory ci
 
 # svu's release, read from mise.toml; make bump checks it (ADR-0015).
 SVU_VERSION := $(strip $(shell sed -n 's/^svu = "\(.*\)"/\1/p' mise.toml))

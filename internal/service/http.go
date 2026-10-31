@@ -247,7 +247,11 @@ func Run(ctx context.Context, c Config) error {
 		if err != nil {
 			_ = server.Close()
 		}
-		<-serveDone
+		// Serve returns http.ErrServerClosed after Shutdown or Close; report
+		// any other Serve failure only when the shutdown itself succeeded.
+		if serveErr := <-serveDone; err == nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			err = serveErr
+		}
 		return err
 	}
 }

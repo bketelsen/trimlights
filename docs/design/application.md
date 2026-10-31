@@ -10,6 +10,7 @@ Recovery procedure: [backup operations](backup-operations.md).
 Photo rationale: [ADR-0008](../adr/0008-private-photos-and-physical-mapping.md).
 Publication: [ADR-0007](../adr/0007-public-repository-and-private-deployment.md).
 Image releases: [ADR-0015](../adr/0015-versioned-attested-images.md).
+Repository gate: [ADR-0016](../adr/0016-adopt-the-frostyard-make-gate.md).
 Contracts: [local service](../specs/local-service.md),
 [household authentication](../specs/household-auth.md),
 [house mapping](../specs/house.md), [pattern library](../specs/patterns.md), [calendar](../specs/schedules.md),
@@ -342,11 +343,26 @@ Back up before database migrations; use versioned images and a documented rollba
 path. Credentials stay outside the image/repository. The initial release needs no
 Kubernetes, Redis, message broker or separate database server.
 
+### Repository gate
+
+Rationale: [ADR-0016](../adr/0016-adopt-the-frostyard-make-gate.md). Tools are
+pinned in `mise.toml` with checksums in `mise.lock`; Go comes from `go.mod`.
+
+| Target | Runs | Use |
+| --- | --- | --- |
+| `make verify` | `go mod tidy -diff`, `gofmt -l`, `go vet`, golangci-lint, race tests, doc links | Credential-free and non-mutating; no Node or pnpm |
+| `make ci` | `verify`, then frontend tests and build, then the static binary build | The Check workflow's `check` job |
+| `make check` | `gofmt -w`, then `make ci` | Developer gate before a change is done |
+| `make vulncheck` | Pinned govulncheck; needs the network | Separate workflow job, outside the gate |
+
+No gate target contacts lighting hardware. Set `IN_NSL` to a command prefix,
+such as `nsl run -m lodge`, to run pnpm in an nsl machine.
+
 ### Image releases
 
 Rationale: [ADR-0015](../adr/0015-versioned-attested-images.md). The Check
 workflow publishes `ghcr.io/bketelsen/trimlights` for linux/amd64 and
-linux/arm64 only after `make check` passes. A build job without write
+linux/arm64 only after `make ci` passes ([repository gate](#repository-gate)). A build job without write
 permissions compiles both static binaries and hands them over as an artifact.
 A separate publish job packages them with the copy-only Containerfile, pushes,
 and attests the pushed digest with GitHub build provenance. Only publish and

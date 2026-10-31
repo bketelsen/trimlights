@@ -22,7 +22,7 @@ func (s *Store) SaveSession(ctx context.Context, v Session) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.ExecContext(ctx, "DELETE FROM sessions WHERE expires<=?", time.Now().Unix()); err != nil {
 		return err
 	}
