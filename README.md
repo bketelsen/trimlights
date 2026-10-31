@@ -51,6 +51,11 @@ make check
 
 `make check` runs the frontend build/tests, formatting, vet, Go race tests,
 documentation links and a static binary build. It never contacts lighting hardware.
+The frontend tests (`pnpm --dir web test`, run by `make web-test`) use `node:test`
+with no test framework. They first compile a few components with the project's
+TypeScript compiler into the ignored `web/.test-build` directory, then render them
+to static HTML with `react-dom/server` as smoke tests
+([frontend design](docs/design/application.md#application-boundaries)).
 The binary is written to `build/trimlight` and `build/<architecture>/trimlight`.
 All public protocol fixtures are synthetic; no original household captures are
 included. Python is not required to build, test or run the application.

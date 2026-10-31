@@ -70,7 +70,12 @@ flowchart LR
 - `internal/house`: bounded photo normalization and validated address/geometry model.
   SQLite holds sanitized JPEG blobs and versioned layout references atomically.
 - `web/`: compiled browser assets. Go embeds release assets; development may use
-  a frontend dev server. No Node process is required in production.
+  a frontend dev server. No Node process is required in production. As of
+  2026-10-31, `pnpm test` runs `node:test` files in `web/src`: plain modules load
+  through Node type stripping. `web/scripts/build-component-tests.mjs` compiles
+  selected `.tsx` components with `tsc` and `web/tsconfig.test.json` into the
+  ignored `web/.test-build` directory as CommonJS, and `components.test.mjs`
+  renders them with `react-dom/server`. This adds no test dependency.
 - CLI commands proposed: `serve`, `status`, `doctor`, `patterns`, `schedules`,
   `layout`, `backup`, and `restore`. Keep the current snapshot/probe commands as
   explicit diagnostic operations during migration.
