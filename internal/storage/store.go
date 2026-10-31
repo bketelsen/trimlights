@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -45,7 +46,15 @@ func Open(dir string) (*Store, error) {
 		lock.Close()
 		return nil, fmt.Errorf("data directory already owned: %w", err)
 	}
-	db, err := sql.Open("sqlite", filepath.Join(dir, "trimlights.db"))
+	// The driver applies these per-connection PRAGMAs to every new connection,
+	// including one that replaces a connection discarded after an error.
+	query := url.Values{"_pragma": {"busy_timeout(5000)", "journal_mode(WAL)", "foreign_keys(1)", "synchronous(FULL)"}}
+	dsn, err := FileURL(filepath.Join(dir, "trimlights.db"), query)
+	if err != nil {
+		lock.Close()
+		return nil, err
+	}
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		lock.Close()
 		return nil, err
@@ -58,10 +67,20 @@ func Open(dir string) (*Store, error) {
 	}
 	return s, nil
 }
-func (s *Store) init() error {
-	if _, err := s.db.Exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;`); err != nil {
-		return err
+
+// FileURL returns an absolute, escaped SQLite file: URI for path. Escaping keeps
+// '?', '#' and '%' in directory names part of the path; query holds driver
+// parameters such as _pragma and mode.
+func FileURL(path string, query url.Values) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
 	}
+	u := url.URL{Scheme: "file", Path: absolute, RawQuery: query.Encode()}
+	return u.String(), nil
+}
+
+func (s *Store) init() error {
 	var version int
 	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err

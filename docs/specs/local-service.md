@@ -59,7 +59,10 @@ Refresh accepts exactly one JSON object, with `Content-Type: application/json`:
   the [pattern library](patterns.md), version 4 adds the [calendar](schedules.md), and version 5 adds
   [photos and layout history](house.md). Schema 6 adds [native control audits](native-controls.md). Upgrades back up
   the existing database with VACUUM INTO before a transactional migration.
-  SQLite uses WAL and FULL sync.
+  SQLite uses WAL and FULL sync. The store opens `trimlights.db` through an
+  escaped absolute `file:` URI, so `?`, `%` or `#` in a data directory name
+  stay part of the path. The URI applies a 5-second busy timeout, WAL, foreign
+  keys and FULL sync to every connection, including a replacement connection.
 - A process lock does not protect against another machine or another data directory
   owning the same hardware. Deployment MUST use a single active owner.
 - A restored data directory containing `controller-disabled` MUST disable controller
