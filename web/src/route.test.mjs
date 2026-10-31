@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pageFromHash, pageHash, pageTitle, pages, routeStep } from './route.ts';
+import { mayDiscard, pageFromHash, pageHash, pageTitle, pages, routeStep } from './route.ts';
 
 test('every page round-trips through its URL hash', () => {
   for (const page of pages) assert.equal(pageFromHash(pageHash(page)), page);
@@ -152,4 +152,17 @@ test('a refused Forward keeps the page on screen', () => {
   at(b, ['home', 'patterns', 'house', 'patterns'], 3, 'patterns');
   b.traverse(-1);
   at(b, ['home', 'patterns', 'house', 'patterns'], 2, 'house');
+});
+test('Reconnect asks only over unsaved edits and obeys the answer', () => {
+  /** @type {boolean[]} */
+  const asked = [];
+  const ask = (/** @type {boolean} */ answer) => () => {
+    asked.push(answer);
+    return answer;
+  };
+  assert.equal(mayDiscard(false, ask(false)), true);
+  assert.deepEqual(asked, []);
+  assert.equal(mayDiscard(true, ask(false)), false);
+  assert.equal(mayDiscard(true, ask(true)), true);
+  assert.deepEqual(asked, [false, true]);
 });

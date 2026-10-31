@@ -10,7 +10,16 @@ import { NativeControls, type NativeSnapshot } from './NativeControls';
 import { LiveStatus } from './LiveRegion';
 import { ErrorBoundary } from './ErrorBoundary';
 import { latestRequests } from './latest';
-import { pageFromHash, pageHash, pageLabel, pageTitle, pages, routeStep, type Page } from './route';
+import {
+  mayDiscard,
+  pageFromHash,
+  pageHash,
+  pageLabel,
+  pageTitle,
+  pages,
+  routeStep,
+  type Page,
+} from './route';
 
 type Identity = { subject: string; name: string; csrf_token: string; expires: string };
 type NativeSchedule = {
@@ -268,7 +277,7 @@ function App() {
           {error}{' '}
           <button
             onClick={() => {
-              if (!dirty || window.confirm('Reconnect and discard unsaved changes?'))
+              if (mayDiscard(dirty, () => window.confirm('Reconnect and discard unsaved changes?')))
                 location.reload();
             }}
           >
