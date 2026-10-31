@@ -55,9 +55,10 @@ re-evaluates the current instant; elapsed transitions are not queued.
   refuses Sunday in the controller timezone (`--timezone`). From Sunday 00:00 to
   Monday 00:00 each runner refresh therefore fails. The runner treats this as a
   read-only failure: it backs off to at most 5 minutes, sends no write and keeps
-  ownership active. It does not pause or set a runtime reason; only the
-  observation's last error and the preparation blocker `sunday_clock_unverified`
-  show the cause. Sunday transitions are not delivered. Monday's first successful
+  ownership active. It does not pause or set a runtime reason; the cause shows
+  only in the observation's last error, the failed operation's error in
+  operation history (`GET /api/v1/operations`) and the preparation blocker
+  `sunday_clock_unverified`. Sunday transitions are not delivered. Monday's first successful
   pass applies only the then-current intent. A delivery whose readback falls on
   Sunday is uncertain and pauses ownership.
 - Before production activation, either verified Sunday encoding MUST replace the
