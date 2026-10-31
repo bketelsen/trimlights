@@ -104,6 +104,15 @@ error text never reaches the client.
 - All API responses MUST use `Cache-Control: no-store`. No credentialed CORS or
   cookie authentication exists in this development mode. Use the separate
   [household OIDC mode](household-auth.md) through Caddy instead.
+- The embedded UI serves only `/` (as `index.html`), regular files under
+  `/assets/`, and the root files `manifest.webmanifest`
+  (`application/manifest+json`), `apple-touch-icon.png`, `icon-192.png` and
+  `icon-512.png` (detected type). It MUST NOT list directories: a directory or
+  a missing file answers 404, and another file system error answers 500.
+  Content-hashed `/assets/` files use
+  `Cache-Control: public, max-age=31536000, immutable`. `/` and the root files
+  keep fixed names, so they use `no-cache` and revalidate. Every error status,
+  including 412, 416 and the 503 for a missing build, uses `no-store`.
 
 ## Service logs
 

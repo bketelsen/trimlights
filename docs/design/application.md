@@ -70,7 +70,9 @@ flowchart LR
 - `internal/auth`: OIDC state/nonce/PKCE, subject allowlist, opaque sessions and CSRF.
 - `internal/webui`: embedded browser build and restrictive content security policy.
   It serves `/`, `/assets/` and a fixed list of root files for home-screen use
-  (`manifest.webmanifest`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`).
+  (`manifest.webmanifest`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`),
+  with long-lived caching only for hashed bundles and no directory listings
+  ([local service contract](../specs/local-service.md)).
 - `internal/pattern`: validated design schema and deterministic logical-pixel render.
 - `internal/schedule`: pure calendar validation, civil/solar intervals and precedence.
 - `internal/house`: bounded photo normalization and validated address/geometry model.
