@@ -170,7 +170,8 @@ the [backup contract](../specs/backups.md).
 Implements [operations](../design/application.md#operational-notes) and the complete
 [v1 acceptance contract](../specs/v1-acceptance.md).
 
-- Produce versioned amd64/arm64 OCI images, deployment examples for the selected
+- Produce versioned amd64/arm64 OCI images ([image releases](../design/application.md#image-releases),
+  [ADR-0015](../adr/0015-versioned-attested-images.md); implemented 2026-10-30), deployment examples for the selected
   Docker/Podman or Incus environment, Caddy configuration, Pocket ID registration
   notes, persistent-volume layout and secrets configuration.
 - Implement consistent backups of database/media/mappings and a manifest. Restore
