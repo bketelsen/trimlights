@@ -284,6 +284,35 @@ func vp8Header(w, h uint16) []byte {
 	return binary.LittleEndian.AppendUint16(d, h)
 }
 
+// app0 is an APP0 segment; "JFIF" marks JFIF.
+func app0(id string) []byte {
+	data := append([]byte(id+"\x00"), 1, 2, 0, 0, 1, 0, 1, 0, 0)
+	return append(binary.BigEndian.AppendUint16([]byte{0xff, 0xe0}, uint16(2+len(data))), data...)
+}
+
+// adobe is an APP14 Adobe segment; transform 0 means RGB.
+func adobe(transform byte) []byte {
+	data := []byte{'A', 'd', 'o', 'b', 'e', 0, 100, 0, 0, 0, 0, transform}
+	return append(binary.BigEndian.AppendUint16([]byte{0xff, 0xee}, uint16(2+len(data))), data...)
+}
+
+// afterSOF inserts segments right after the first SOF0/1/2 segment.
+func afterSOF(raw []byte, segments ...[]byte) []byte {
+	for i := 2; i+4 <= len(raw); {
+		n := int(binary.BigEndian.Uint16(raw[i+2 : i+4]))
+		end := i + 2 + n
+		if raw[i+1] >= 0xc0 && raw[i+1] <= 0xc2 {
+			out := append([]byte{}, raw[:end]...)
+			for _, s := range segments {
+				out = append(out, s...)
+			}
+			return append(out, raw[end:]...)
+		}
+		i = end
+	}
+	panic("no SOF")
+}
+
 func jpegHeader(w, h uint16, sof byte, factors ...byte) []byte {
 	b := []byte{0xff, 0xd8, 0xff, sof}
 	b = binary.BigEndian.AppendUint16(b, uint16(8+3*len(factors)))
@@ -319,6 +348,8 @@ func TestDecodeMemoryBudget(t *testing.T) {
 		{"lossless WebP, 1 MP", riff(webpChunk("VP8L", vp8lHeader(1000, 1000, false))), true},
 		{"lossless WebP, 128x128", riff(webpChunk("VP8L", vp8lHeader(128, 128, false))), false},
 		{"lossy WebP with lossless alpha, 1 MP", riff(vp8x(1000, 1000, 0x10), webpChunk("ALPH", []byte{1}), webpChunk("VP8 ", vp8Header(1000, 1000))), true},
+		{"baseline 4:4:4 JPEG, 24 MP, later Adobe RGB", afterSOF(jpegHeader(6000, 4000, 0xc0, 0x11, 0x11, 0x11), app0("XXXX"), adobe(0)), true},
+		{"baseline 4:4:4 JPEG, 24 MP, later Adobe YCbCr", afterSOF(jpegHeader(6000, 4000, 0xc0, 0x11, 0x11, 0x11), adobe(1)), false},
 		{"baseline 4:2:0 JPEG, 48 MP", jpegHeader(8000, 6000, 0xc0, 0x22, 0x11, 0x11), false},
 		{"baseline 4:4:4 JPEG, 24 MP", jpegHeader(6000, 4000, 0xc0, 0x11, 0x11, 0x11), false},
 		{"progressive 4:2:0 JPEG, 12 MP", jpegHeader(4000, 3000, 0xc2, 0x22, 0x11, 0x11), false},
@@ -364,6 +395,14 @@ func TestDecodeEstimateCoversAllocation(t *testing.T) {
 			return withChunk(b.Bytes(), "tRNS", []byte{0, 0}), err
 		}
 	}
+	encodings["jpeg JFIF, later Adobe RGB"] = func() ([]byte, error) {
+		// DecodeConfig stops at SOF after JFIF and reports YCbCr; the later
+		// non-JFIF APP0 and Adobe transform 0 make the decoder convert to RGBA.
+		var b bytes.Buffer
+		err := jpeg.Encode(&b, image.NewRGBA(r), nil)
+		raw := append([]byte{0xff, 0xd8}, app0("JFIF")...)
+		return afterSOF(append(raw, b.Bytes()[2:]...), app0("XXXX"), adobe(0)), err
+	}
 	for name, img := range map[string]image.Image{"gray": image.NewGray(r), "ycbcr 4:2:0": image.NewRGBA(r)} {
 		encodings["jpeg "+name] = func() ([]byte, error) {
 			var b bytes.Buffer
@@ -387,6 +426,9 @@ func TestDecodeEstimateCoversAllocation(t *testing.T) {
 		decoded, _, err := image.Decode(bytes.NewReader(raw))
 		if err != nil {
 			t.Fatal(name, err)
+		}
+		if _, ok := decoded.(*image.RGBA); strings.Contains(name, "Adobe RGB") && (!ok || cfg.ColorModel != color.YCbCrModel) {
+			t.Fatalf("%s: config %v, decoded as %T", name, cfg.ColorModel, decoded)
 		}
 		if strings.Contains(name, "tRNS") {
 			switch decoded.(type) {

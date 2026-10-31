@@ -1,9 +1,9 @@
 package house
 
 import (
+	"bytes"
 	"encoding/binary"
 	"image"
-	"image/color"
 )
 
 // MaxDecodeBytes bounds the estimated memory of one full decode. With the
@@ -107,7 +107,9 @@ func vp8lDecodeBytes(w, h int64) int64 {
 // jpegDecodeBytes reads the SOF0/1/2 frame header and sums what image/jpeg
 // allocates: component planes at their sampling factors and MCU padding, a
 // 4-byte converted image for RGB or 4-component input, and 4 bytes of
-// coefficients per sample for progressive input.
+// coefficients per sample for progressive input. DecodeConfig can stop at SOF,
+// but the full decoder also reads APP0/APP14 markers after it, so RGB is
+// decided from the component IDs and from every APP14 in the file.
 func jpegDecodeBytes(b []byte, cfg image.Config) (int64, bool) {
 	for i := 2; i+4 <= len(b); {
 		if b[i] != 0xff {
@@ -167,7 +169,8 @@ func jpegDecodeBytes(b []byte, cfg image.Config) (int64, bool) {
 			planes = 3*padded + 64*h[comps-1]*v[comps-1]*mxx*myy*int64(comps-3)
 		}
 		total := planes
-		if comps == 4 || comps == 3 && cfg.ColorModel == color.RGBAModel {
+		rgbIDs := comps == 3 && part[6] == 'R' && part[9] == 'G' && part[12] == 'B'
+		if comps == 4 || comps == 3 && (rgbIDs || adobeRGB(b)) {
 			total += 4 * padded
 		}
 		if marker == 0xc2 {
@@ -176,6 +179,22 @@ func jpegDecodeBytes(b []byte, cfg image.Config) (int64, bool) {
 		return total, true
 	}
 	return 0, false
+}
+
+// adobeRGB reports whether any Adobe APP14 segment in b has color transform 0
+// (RGB), wherever it is. The search is conservative: a match inside other
+// data only reserves more memory. Entropy-coded data never holds 0xFF 0xEE.
+func adobeRGB(b []byte) bool {
+	for i := 0; ; i++ {
+		j := bytes.Index(b[i:], []byte{0xff, 0xee})
+		if j < 0 {
+			return false
+		}
+		i += j
+		if i+16 <= len(b) && binary.BigEndian.Uint16(b[i+2:i+4]) >= 14 && string(b[i+4:i+9]) == "Adobe" && b[i+15] == 0 {
+			return true
+		}
+	}
 }
 
 // standardRatio reports whether image/jpeg has a YCbCr subsample ratio for the
