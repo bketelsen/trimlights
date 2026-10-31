@@ -11,6 +11,10 @@ import (
 	"time"
 )
 
+// ErrSundayClock refuses a snapshot on Sunday. Every snapshot sends a clock
+// query, and the Sunday clock encoding is not verified.
+var ErrSundayClock = errors.New("controller clock sync is unavailable on Sunday")
+
 // Client serializes sessions for a controller. Use one instance per controller.
 type Client struct {
 	address  string
@@ -163,6 +167,9 @@ func (s *session) snapshot(ctx context.Context, offset int) (*Snapshot, error) {
 		return nil, err
 	}
 	now := s.client.now().In(s.client.location)
+	if now.Weekday() == time.Sunday {
+		return nil, ErrSundayClock
+	}
 	query, err := clockQuery(now)
 	if err != nil {
 		return nil, err

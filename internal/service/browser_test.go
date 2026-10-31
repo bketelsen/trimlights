@@ -42,15 +42,15 @@ func TestBrowserPreview(t *testing.T) {
 	}
 	token := rand.Text() + rand.Text()
 	csrf := rand.Text()
-	worker := NewWorker(store, nil, -1)
+	worker := NewWorker(store, nil, -1, nil)
 	if os.Getenv("TRIMLIGHT_BROWSER_NATIVE") == "1" {
-		worker = NewWorker(store, newNativeStub(t), 3306)
+		worker = NewWorker(store, newNativeStub(t), 3306, nil)
 	}
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); worker.Run(workerCtx) }()
 	defer func() { workerCancel(); <-workerDone }()
-	base := Handler(store, worker, token)
+	base := Handler(store, worker, token, nil)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Host != "127.0.0.1:8789" {
 			http.Error(w, "Unexpected host", 421)

@@ -6,17 +6,24 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"sort"
 	"strings"
 	"time"
 
 	"trimlights/internal/pattern"
+	"trimlights/internal/trimlight"
 )
 
 var ErrNativeEdit = errors.New("native pattern parameters cannot be changed; create a separate custom design")
 
 var ErrConflict = errors.New("pattern changed or was archived; reload before saving")
+
+// ErrNativeSource rejects a created native design that does not copy a slot of
+// the latest cached controller snapshot. Native designs come from controller
+// import, or duplicate/re-import one that still matches its slot.
+var ErrNativeSource = errors.New("a native pattern can be created only as a copy of a matching slot in the latest controller snapshot; use import from the controller")
 
 type SavedPattern struct {
 	ID       string         `json:"id"`
@@ -123,11 +130,53 @@ func (s *Store) CreatePattern(ctx context.Context, d pattern.Design, actor strin
 		return SavedPattern{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if d.Native != nil {
+		if err = matchCachedSlot(ctx, tx, *d.Native); err != nil {
+			return SavedPattern{}, err
+		}
+	}
 	p, err := createPattern(ctx, tx, d, actor)
 	if err != nil {
 		return p, err
 	}
 	return p, tx.Commit()
+}
+
+// matchCachedSlot accepts a native copy only when slot ID, raw slot name and all
+// parameter bytes equal a slot of the cached snapshot, so a crafted file or
+// request cannot add forged native entries.
+func matchCachedSlot(ctx context.Context, tx *sql.Tx, n pattern.Native) error {
+	snap, err := cachedSnapshot(ctx, tx)
+	if errors.Is(err, ErrMissing) {
+		return ErrNativeSource
+	}
+	if err != nil {
+		return err
+	}
+	for _, slot := range snap.Patterns {
+		if slot.ID == n.ID && slot.Name == n.Name && strings.EqualFold(slot.ParametersHex, n.ParametersHex) {
+			return nil
+		}
+	}
+	return ErrNativeSource
+}
+func cachedSnapshot(ctx context.Context, tx *sql.Tx) (*trimlight.Snapshot, error) {
+	var raw []byte
+	err := tx.QueryRowContext(ctx, "SELECT body FROM observation WHERE id=1").Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrMissing
+	}
+	if err != nil {
+		return nil, err
+	}
+	var observation Observation
+	if err = json.Unmarshal(raw, &observation); err != nil {
+		return nil, err
+	}
+	if observation.Snapshot == nil || observation.Snapshot.QueriedAt.IsZero() {
+		return nil, ErrMissing
+	}
+	return observation.Snapshot, nil
 }
 func (s *Store) UpdatePattern(ctx context.Context, id string, expected int, d pattern.Design, actor string) (SavedPattern, error) {
 	if err := d.Validate(); err != nil {
@@ -198,23 +247,12 @@ func (s *Store) ImportControllerPatterns(ctx context.Context, actor string) (Imp
 		return ImportResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var raw []byte
-	err = tx.QueryRowContext(ctx, "SELECT body FROM observation WHERE id=1").Scan(&raw)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ImportResult{}, ErrMissing
-	}
+	snap, err := cachedSnapshot(ctx, tx)
 	if err != nil {
 		return ImportResult{}, err
 	}
-	var observation Observation
-	if err = json.Unmarshal(raw, &observation); err != nil {
-		return ImportResult{}, err
-	}
-	if observation.Snapshot == nil || observation.Snapshot.QueriedAt.IsZero() {
-		return ImportResult{}, ErrMissing
-	}
-	result := ImportResult{Imported: []SavedPattern{}, SnapshotAt: observation.Snapshot.QueriedAt}
-	for _, native := range observation.Snapshot.Patterns {
+	result := ImportResult{Imported: []SavedPattern{}, SnapshotAt: snap.QueriedAt}
+	for _, native := range snap.Patterns {
 		var existing string
 		err = tx.QueryRowContext(ctx, "SELECT pattern_id FROM pattern_imports WHERE slot=?", native.ID).Scan(&existing)
 		if err == nil {
@@ -224,9 +262,15 @@ func (s *Store) ImportControllerPatterns(ctx context.Context, actor string) (Imp
 		if !errors.Is(err, sql.ErrNoRows) {
 			return result, err
 		}
-		d := pattern.Design{Schema: 1, Name: strings.TrimSpace(native.Name), Effect: "native", Brightness: 100, Palette: []pattern.Run{}, Native: &pattern.Native{ID: native.ID, Name: native.Name, ParametersHex: native.ParametersHex, SnapshotAt: result.SnapshotAt}}
+		// A blank or hidden-character slot name must not block the batch. The
+		// display name falls back to the slot; Native.Name keeps the raw bytes.
+		name := strings.TrimSpace(native.Name)
+		if !pattern.ValidName(name) {
+			name = fmt.Sprintf("Controller pattern %d", native.ID)
+		}
+		d := pattern.Design{Schema: 1, Name: name, Effect: "native", Brightness: 100, Palette: []pattern.Run{}, Native: &pattern.Native{ID: native.ID, Name: native.Name, ParametersHex: native.ParametersHex, SnapshotAt: result.SnapshotAt}}
 		if err = d.Validate(); err != nil {
-			return ImportResult{}, err
+			return ImportResult{}, fmt.Errorf("controller slot %d: %w", native.ID, err)
 		}
 		p, err := createPattern(ctx, tx, d, actor)
 		if err != nil {

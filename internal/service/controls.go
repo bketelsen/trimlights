@@ -4,16 +4,16 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 
 	"trimlights/internal/auth"
 	"trimlights/internal/trimlight"
 )
 
-func registerControls(mux *http.ServeMux, worker *Worker) {
+func registerControls(mux *http.ServeMux, worker *Worker, logger *slog.Logger) {
 	mux.HandleFunc("POST /api/v1/controller/control", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Content-Type") != "application/json" {
-			jsonError(w, 415, "Content-Type must be application/json")
+		if !requireJSON(w, r) {
 			return
 		}
 		var input struct {
@@ -40,25 +40,61 @@ func registerControls(mux *http.ServeMux, worker *Worker) {
 		}
 		id, done, err := worker.EnqueueControl(r.Context(), actor, input.ControlRequest)
 		if err != nil {
-			code := 503
 			if errors.Is(err, trimlight.ErrStaleBaseline) {
-				code = 409
+				jsonError(w, 409, trimlight.ErrStaleBaseline.Error())
+				return
 			}
-			jsonError(w, code, err.Error())
+			serverError(w, r, logger, 503, enqueueMessage(err), err)
 			return
 		}
 		select {
 		case err = <-done:
 			if err != nil {
-				code := 502
 				if errors.Is(err, trimlight.ErrStaleBaseline) {
-					code = 409
+					jsonResponse(w, 409, map[string]any{"error": trimlight.ErrStaleBaseline.Error(), "operation_id": id})
+					return
 				}
-				jsonResponse(w, code, map[string]any{"error": err.Error(), "operation_id": id})
+				logFailure(r, logger, 502, err, "operation_id", id)
+				jsonResponse(w, 502, map[string]any{"error": operationMessage(err, msgControlFailed), "operation_id": id})
 				return
 			}
 			jsonResponse(w, 200, map[string]string{"status": "verified", "operation_id": id})
 		case <-r.Context().Done():
 		}
 	})
+}
+
+// Stable client messages for controller failures. The detail goes to the log
+// and the operation record, never to the client: it can quote the controller
+// address or storage text.
+const (
+	msgControllerUnavailable = "controller is unavailable; try again later"
+	msgRefreshFailed         = "controller refresh failed; see the operation record"
+	msgControlFailed         = "controller did not verify the change; refresh before trying again"
+)
+
+// enqueueMessage answers a refused enqueue. Worker refusals carry fixed text;
+// any other cause, such as a storage error, gets a generic message.
+func enqueueMessage(err error) string {
+	var unavailable controlsUnavailable
+	switch {
+	case errors.Is(err, ErrDisabled), errors.Is(err, ErrQueueFull):
+		return err.Error()
+	case errors.As(err, &unavailable):
+		return unavailable.reason
+	}
+	return msgControllerUnavailable
+}
+
+// operationMessage answers a failed controller operation. The web UI matches
+// "Sunday" to explain the Sunday refusal, so that case keeps its fixed text.
+func operationMessage(err error, fallback string) string {
+	var unavailable controlsUnavailable
+	switch {
+	case errors.Is(err, trimlight.ErrSundayClock):
+		return trimlight.ErrSundayClock.Error()
+	case errors.As(err, &unavailable):
+		return unavailable.reason
+	}
+	return fallback
 }

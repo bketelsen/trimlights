@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -43,7 +44,7 @@ func readToken(path string) (string, error) {
 }
 
 func serveCommand() *cobra.Command {
-	var listen, dir, tokenFile, host, tz, oidcFile string
+	var listen, dir, tokenFile, host, tz, oidcFile, logLevel string
 	var offset int
 	cmd := &cobra.Command{Use: "serve", Short: "Run the local development API and serialized controller worker"}
 	f := cmd.Flags()
@@ -54,14 +55,18 @@ func serveCommand() *cobra.Command {
 	f.StringVar(&host, "host", "", "controller hostname; defaults to TRIMLIGHT_CONTROLLER_HOST; empty disables access")
 	f.StringVar(&tz, "timezone", "America/New_York", "controller timezone")
 	f.IntVar(&offset, "daily-schedules-offset", -1, "explicit captured schedule offset")
+	f.StringVar(&logLevel, "log-level", "info", "JSON log level on stderr: debug, info, warn or error")
 	cmd.RunE = commandRun(func(cmd *cobra.Command, args []string) error {
 		host = resolveControllerHost(cmd, host)
 		if len(args) != 0 {
 			return errors.New("positional arguments are not supported")
 		}
+		level, err := parseLogLevel(logLevel)
+		if err != nil {
+			return err
+		}
 		var token string
 		var household *auth.Config
-		var err error
 		if oidcFile != "" {
 			if tokenFile != "" {
 				return errors.New("choose --oidc-config or --api-token-file")
@@ -84,7 +89,8 @@ func serveCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		c := service.Config{Listen: listen, DataDir: dir, APIToken: token, ScheduleOffset: offset, OIDC: household}
+		logger := slog.New(slog.NewJSONHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: level}))
+		c := service.Config{Listen: listen, DataDir: dir, APIToken: token, ScheduleOffset: offset, OIDC: household, Logger: logger, Version: version, Commit: commit}
 		if host != "" && !guarded {
 			c.Controller = trimlight.NewClient(net.JoinHostPort(host, "8586"), loc)
 		}
@@ -94,9 +100,38 @@ func serveCommand() *cobra.Command {
 		if clix.DryRun {
 			return result(cmd, map[string]any{"dry_run": true, "listen": listen, "controller_enabled": c.Controller != nil, "restore_guarded": guarded}, "Configuration valid; no listener, database or controller connection opened.")
 		}
-		return service.Run(cmd.Context(), c)
+		if err = service.Run(cmd.Context(), c); err != nil {
+			logger.Error("trimlight stopped", "error", service.LogError(err))
+			return terminalError(err)
+		}
+		return nil
 	})
 	return cmd
+}
+
+// terminalError is what serve returns, and clix prints it to stderr, which is
+// the container log. OIDC discovery errors can quote provider response bodies,
+// issuer values and redirect URLs, so they become a fixed message; other errors
+// lose network addresses.
+func terminalError(err error) error {
+	if errors.Is(err, service.ErrHouseholdLogin) {
+		return errors.New("household login setup failed: check the OIDC issuer and its reachability; the log has the category")
+	}
+	return errors.New(service.LogError(err))
+}
+
+func parseLogLevel(value string) (slog.Level, error) {
+	switch value {
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	}
+	return 0, errors.New("--log-level must be debug, info, warn or error")
 }
 
 func apiCommand(refresh bool) *cobra.Command {

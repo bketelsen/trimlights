@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -76,6 +77,9 @@ type Auth struct {
 	// the flow expires. An entry stays only after the IdP accepts the code.
 	spentMu sync.Mutex
 	spent   map[string]time.Time
+	// log records sign-in outcomes. It must never receive codes, state, nonces,
+	// verifiers, tokens, cookies, CSRF values, session hashes or the client secret.
+	log *slog.Logger
 }
 
 // pendingFlow is the sealed content of the flow cookie.
@@ -87,11 +91,15 @@ type pendingFlow struct {
 	Expires   int64  `json:"e"`
 }
 
-func New(ctx context.Context, c Config, store *storage.Store) (*Auth, error) {
-	return newWithClient(ctx, c, store, &http.Client{Timeout: 10 * time.Second})
+// New prepares household login. A nil logger uses slog.Default.
+func New(ctx context.Context, c Config, store *storage.Store, logger *slog.Logger) (*Auth, error) {
+	return newWithClient(ctx, c, store, &http.Client{Timeout: 10 * time.Second}, logger)
 }
 
-func newWithClient(ctx context.Context, c Config, store *storage.Store, client *http.Client) (*Auth, error) {
+func newWithClient(ctx context.Context, c Config, store *storage.Store, client *http.Client, logger *slog.Logger) (*Auth, error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
@@ -118,7 +126,7 @@ func newWithClient(ctx context.Context, c Config, store *storage.Store, client *
 		return nil, err
 	}
 	u, _ := url.Parse(c.Origin)
-	return &Auth{config: c, store: store, host: u.Host, client: client, now: time.Now, flowAEAD: aead, spent: map[string]time.Time{}, verifier: provider.Verifier(&oidc.Config{ClientID: c.ClientID}), oauth: oauth2.Config{ClientID: c.ClientID, ClientSecret: c.ClientSecret, Endpoint: provider.Endpoint(), RedirectURL: c.Origin + "/auth/callback", Scopes: []string{oidc.ScopeOpenID, "profile", "email"}}}, nil
+	return &Auth{config: c, store: store, host: u.Host, client: client, now: time.Now, flowAEAD: aead, spent: map[string]time.Time{}, log: logger, verifier: provider.Verifier(&oidc.Config{ClientID: c.ClientID}), oauth: oauth2.Config{ClientID: c.ClientID, ClientSecret: c.ClientSecret, Endpoint: provider.Endpoint(), RedirectURL: c.Origin + "/auth/callback", Scopes: []string{oidc.ScopeOpenID, "profile"}}}, nil
 }
 func hash(value string) string { v := sha256.Sum256([]byte(value)); return hex.EncodeToString(v[:]) }
 func (a *Auth) sessionHash(value string) string {
@@ -202,6 +210,7 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 	state, browser, nonce, verifier := rand.Text(), rand.Text(), rand.Text(), oauth2.GenerateVerifier()
 	sealed, err := a.sealFlow(pendingFlow{StateHash: hash(state), Browser: browser, Nonce: nonce, Verifier: verifier, Expires: a.now().Add(flowLife).Unix()})
 	if err != nil {
+		a.log.ErrorContext(r.Context(), "sign-in flow unavailable", "status", 503, "error", err)
 		http.Error(w, "Login temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -214,15 +223,28 @@ func (a *Auth) callback(w http.ResponseWriter, r *http.Request) {
 	state, code := q.Get("state"), q.Get("code")
 	browser, err := r.Cookie(flowCookie)
 	if err != nil || state == "" || len(state) > 256 || code == "" || len(code) > 8192 {
+		a.refused(r, "malformed_callback")
 		http.Error(w, "Invalid login callback", 400)
 		return
 	}
 	if iss := q.Get("iss"); iss != "" && iss != a.config.Issuer {
+		a.refused(r, "unexpected_issuer")
 		http.Error(w, "Unexpected identity provider", 400)
 		return
 	}
 	flow, err := a.openFlow(browser.Value)
-	if err != nil || subtle.ConstantTimeCompare([]byte(flow.StateHash), []byte(hash(state))) != 1 || !a.claim(flow) {
+	if err != nil {
+		a.refused(r, "invalid_or_expired_flow")
+		http.Error(w, "Login expired or already used", 400)
+		return
+	}
+	if subtle.ConstantTimeCompare([]byte(flow.StateHash), []byte(hash(state))) != 1 {
+		a.refused(r, "state_mismatch")
+		http.Error(w, "Login expired or already used", 400)
+		return
+	}
+	if !a.claim(flow) {
+		a.refused(r, "flow_already_used")
 		http.Error(w, "Login expired or already used", 400)
 		return
 	}
@@ -230,20 +252,29 @@ func (a *Auth) callback(w http.ResponseWriter, r *http.Request) {
 	token, err := a.oauth.Exchange(ctx, code, oauth2.VerifierOption(flow.Verifier))
 	if err != nil {
 		a.release(flow)
+		a.log.WarnContext(r.Context(), "sign-in token exchange failed", exchangeFailure(err)...)
 		http.Error(w, "Identity provider rejected login", http.StatusUnauthorized)
 		return
 	}
 	raw, ok := token.Extra("id_token").(string)
 	if !ok {
+		a.log.WarnContext(r.Context(), "sign-in verification failed", "reason", "missing_id_token")
 		http.Error(w, "Missing identity token", http.StatusUnauthorized)
 		return
 	}
 	identity, err := a.verifier.Verify(ctx, raw)
 	if err != nil {
+		a.log.WarnContext(r.Context(), "sign-in verification failed", "reason", verifyFailure(err))
 		http.Error(w, "Invalid identity token", http.StatusUnauthorized)
 		return
 	}
-	if identity.Nonce != flow.Nonce || !a.allowed(identity.Subject) {
+	if identity.Nonce != flow.Nonce {
+		a.log.WarnContext(r.Context(), "sign-in verification failed", "reason", "nonce_mismatch")
+		http.Error(w, "Household access denied", http.StatusForbidden)
+		return
+	}
+	if !a.allowed(identity.Subject) {
+		a.log.WarnContext(r.Context(), "sign-in denied", "subject", identity.Subject)
 		http.Error(w, "Household access denied", http.StatusForbidden)
 		return
 	}
@@ -251,15 +282,18 @@ func (a *Auth) callback(w http.ResponseWriter, r *http.Request) {
 		Name string `json:"name"`
 	}
 	if err = identity.Claims(&claims); err != nil {
+		a.log.WarnContext(r.Context(), "sign-in verification failed", "reason", "invalid_claims", "subject", identity.Subject)
 		http.Error(w, "Invalid identity claims", http.StatusUnauthorized)
 		return
 	}
 	id := rand.Text()
 	session := storage.Session{Hash: a.sessionHash(id), Subject: identity.Subject, Name: claims.Name, CSRF: rand.Text(), Expires: a.now().Add(12 * time.Hour)}
 	if err = a.store.SaveSession(r.Context(), session); err != nil {
+		a.log.ErrorContext(r.Context(), "sign-in session not saved", "status", 503, "subject", identity.Subject, "error", err)
 		http.Error(w, "Could not save login", http.StatusServiceUnavailable)
 		return
 	}
+	a.log.InfoContext(r.Context(), "sign-in succeeded", "subject", identity.Subject)
 	cookie(w, sessionCookie, id, 12*60*60)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
@@ -318,6 +352,7 @@ func (a *Auth) Handler(next http.Handler) http.Handler {
 		}
 		if r.URL.Path == "/api/v1/logout" && r.Method == "POST" {
 			if err = a.store.DeleteSession(r.Context(), session.Hash); err != nil {
+				a.log.ErrorContext(r.Context(), "sign-out failed", "status", 503, "subject", session.Subject, "error", err)
 				http.Error(w, "Could not log out", http.StatusServiceUnavailable)
 				return
 			}
@@ -327,6 +362,64 @@ func (a *Auth) Handler(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey{}, session)))
 	})
+}
+
+// refused records why a callback was refused, as a category only. The callback
+// parameters and the flow cookie stay out of the log.
+func (a *Auth) refused(r *http.Request, reason string) {
+	a.log.WarnContext(r.Context(), "sign-in callback refused", "reason", reason)
+}
+
+// oauthErrors are the RFC 6749 section 5.2 token error codes. Any other code
+// comes from the response body unchecked, so it is logged as "unknown".
+var oauthErrors = map[string]bool{"invalid_request": true, "invalid_client": true, "invalid_grant": true, "unauthorized_client": true, "unsupported_grant_type": true, "invalid_scope": true}
+
+// exchangeFailure describes a failed token exchange with fixed categories only.
+// Raw errors can carry response bodies, claim values or URLs with queries.
+func exchangeFailure(err error) []any {
+	var retrieve *oauth2.RetrieveError
+	if errors.As(err, &retrieve) {
+		status := 0
+		if retrieve.Response != nil {
+			status = retrieve.Response.StatusCode
+		}
+		code := "unknown"
+		if oauthErrors[retrieve.ErrorCode] {
+			code = retrieve.ErrorCode
+		}
+		return []any{"reason", "idp_rejected", "idp_status", status, "oauth_error", code}
+	}
+	var transport *url.Error
+	if errors.As(err, &transport) {
+		return []any{"reason", "transport", "timeout", transport.Timeout()}
+	}
+	return []any{"reason", "invalid_token_response"}
+}
+
+// verifyFailure maps an ID token verification error to a fixed category. The
+// error text itself can quote claims, key set response bodies or URLs.
+func verifyFailure(err error) string {
+	var expired *oidc.TokenExpiredError
+	if errors.As(err, &expired) {
+		return "expired_id_token"
+	}
+	text := err.Error()
+	for _, c := range []struct{ fragment, reason string }{
+		{"fetching keys", "jwks_unavailable"},
+		{"get keys failed", "jwks_unavailable"},
+		{"issued by a different provider", "issuer_mismatch"},
+		{"expected audience", "audience_mismatch"},
+		{"malformed jwt", "malformed_id_token"},
+		{"failed to unmarshal claims", "malformed_id_token"},
+		{"before the nbf", "id_token_not_yet_valid"},
+		{"signature", "invalid_signature"},
+		{"not signed", "invalid_signature"},
+	} {
+		if strings.Contains(text, c.fragment) {
+			return c.reason
+		}
+	}
+	return "invalid_id_token"
 }
 func unauthorized(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
