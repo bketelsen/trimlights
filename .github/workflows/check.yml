@@ -126,8 +126,7 @@ jobs:
             tags="$IMAGE:$VERSION"
           else
             # The live app pulls :main and :sha-<commit> today; keep both.
-            # :sha-<commit> is pushed here; :main moves later, only if this
-            # commit is still the head of main.
+            # :sha-<commit> is pushed here; the promote job moves :main.
             tags="$IMAGE:sha-$GITHUB_SHA"
           fi
           echo "tags=$tags" >> "$GITHUB_OUTPUT"
@@ -156,27 +155,6 @@ jobs:
           push-to-registry: true
           # Storage records need an organization-owned repository.
           create-storage-record: false
-      # Main runs can publish at the same time, so an older run must not move
-      # :main back. Remaining race: if main advances between the head check and
-      # the retag (seconds), this run can still move :main to its older commit.
-      # The newer run's own check and retag then come later and correct it,
-      # unless this run stalls in that window for longer than the newer run's
-      # whole check, build and push. :sha-<commit> tags are never affected.
-      - name: Move :main if this commit is still the head of main
-        if: github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          DIGEST: ${{ steps.push.outputs.digest }}
-        run: |
-          head=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
-          if [ "$head" != "$GITHUB_SHA" ]; then
-            echo "Skipped :main: main is now $head, not $GITHUB_SHA." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          docker buildx imagetools create --tag "$IMAGE:main" "$IMAGE@$DIGEST"
-          moved=$(docker buildx imagetools inspect "$IMAGE:main" | awk '/^Digest:/ { print $2; exit }')
-          [ "$moved" = "$DIGEST" ] || { echo ":main is $moved, expected $DIGEST" >&2; exit 1; }
-          echo "Moved :main to $DIGEST." >> "$GITHUB_STEP_SUMMARY"
       - name: Summary
         env:
           TAGS: ${{ steps.tags.outputs.tags }}
@@ -189,3 +167,52 @@ jobs:
             echo
             echo "Verify: \`gh attestation verify oci://$IMAGE@$DIGEST --repo bketelsen/trimlights\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Moves :main to the image of the current head of main, not to this run's
+  # commit. Promotions are serialized across runs. GitHub can replace a pending
+  # promote job with a newer one; nothing is lost, because every promote job
+  # that runs reads the head again. If the head image is not pushed yet, the
+  # job skips and the head's own run promotes it later, so :main can lag the
+  # head for a short time. :sha-<commit> and :vX.Y.Z tags are never changed here.
+  promote:
+    needs: publish
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: promote-main
+      cancel-in-progress: false
+    env:
+      IMAGE: ghcr.io/bketelsen/trimlights
+    steps:
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # If the check after the retag fails, the job fails; the next promotion
+      # moves :main to the head image again and repairs it.
+      - name: Move :main to the image of the head of main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          head=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          printf '%s\n' "$head" | grep -Eqx '[0-9a-f]{40}' || { echo "bad head SHA: $head" >&2; exit 1; }
+          if ! out=$(docker buildx imagetools inspect "$IMAGE:sha-$head" 2>&1); then
+            if printf '%s\n' "$out" | grep -qi 'not found'; then
+              echo "Skipped :main: $IMAGE:sha-$head is not pushed yet; its own run promotes it." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            printf '%s\n' "$out" >&2
+            exit 1
+          fi
+          digest=$(printf '%s\n' "$out" | awk '/^Digest:/ { print $2; exit }')
+          printf '%s\n' "$digest" | grep -Eqx 'sha256:[0-9a-f]{64}' || { echo "no digest for sha-$head" >&2; exit 1; }
+          docker buildx imagetools create --tag "$IMAGE:main" "$IMAGE@$digest"
+          moved=$(docker buildx imagetools inspect "$IMAGE:main" | awk '/^Digest:/ { print $2; exit }')
+          [ "$moved" = "$digest" ] || { echo ":main is $moved, expected $digest" >&2; exit 1; }
+          echo "Moved :main to $IMAGE@$digest (head $head)." >> "$GITHUB_STEP_SUMMARY"

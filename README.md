@@ -60,8 +60,10 @@ included. Python is not required to build, test or run the application.
 The Check workflow publishes `ghcr.io/bketelsen/trimlights` for amd64 and arm64
 after checks pass ([image releases](docs/design/application.md#image-releases)):
 
-- Each push to main publishes a full-commit `:sha-<commit>` tag and moves `:main`
-  to the newest main commit. `:main` moves with every merge; do not deploy it.
+- Each push to main publishes a full-commit `:sha-<commit>` tag. Serialized
+  promotions then move `:main` to the image of the head of main. `:main` can lag
+  the head for a short time while the head image builds. It moves with every
+  merge; do not deploy it.
 - A release is a `vX.Y.Z` tag created by `make bump` (svu, pinned in `mise.toml`;
   run `mise install`). It publishes `:vX.Y.Z`, built with that version.
 

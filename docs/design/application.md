@@ -340,8 +340,16 @@ pnpm, Node or Go.
 
 | Trigger | Tags | Embedded version |
 | --- | --- | --- |
-| Push to main | `:sha-<full commit>`; `:main` only if the commit is still the head of main | `main` |
+| Push to main | `:sha-<full commit>`, then a promotion of `:main` | `main` |
 | `vX.Y.Z` tag from `make bump` | `:vX.Y.Z` | `vX.Y.Z` |
+
+A `promote` job (`contents: read`, `packages: write`) moves `:main`. Promote
+jobs share the concurrency group `promote-main`, so they run one at a time. Each
+one reads the current head of main and retags `:main` to the digest of
+`:sha-<head>`, then checks that digest. If that image is not pushed yet, it
+skips; the head's own run promotes it later. So `:main` always moves to the head
+image at promotion time, and it can lag the head for a short time while the head
+image builds. A failed promotion is repaired by the next one.
 
 Deploy a release tag, or `vX.Y.Z@sha256:<digest>` to fix the exact image; `:main`
 moves with every merge. Verify an image before deployment:

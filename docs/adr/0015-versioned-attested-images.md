@@ -34,9 +34,13 @@ them with the copy-only Containerfile, pushes, and runs
 Main pushes keep `:main` and `:sha-<full commit>`, now attested, so the live app
 keeps working. Each non-PR run has its own concurrency group, because GitHub
 cancels all but 1 pending run in a group, so main runs can publish at the same
-time. Each run always pushes its `:sha-<full commit>` tag. It moves `:main` to
-that digest only when its commit is still the head of main; an older run that
-finishes later skips `:main`. A release is a `vX.Y.Z` tag that only `make bump` creates, with
+time. The publish job always pushes the run's `:sha-<full commit>` tag. A
+separate `promote` job, with only `contents: read` and `packages: write`, then
+moves `:main`. Promote jobs share the concurrency group `promote-main`, so
+promotions are serialized. Each promotion reads the current head of main and
+retags `:main` to the exact digest of `:sha-<head>`; it never promotes its own
+run's commit. When the head image is not pushed yet, it skips, and the head's
+own run promotes it later. A release is a `vX.Y.Z` tag that only `make bump` creates, with
 the svu release pinned in `mise.toml`. A tag run passes the same check gate,
 builds with `VERSION=vX.Y.Z`, and pushes and attests `:vX.Y.Z`. Deployments pin
 a release tag, optionally with its digest, and verify it with
@@ -55,9 +59,12 @@ bound to this workflow run by the attestation. Rollback means choosing an older
 `vX.Y.Z` tag. Releases need svu (`mise install`) and a passing local gate.
 Dependabot adds weekly pull requests to review. A tag pushed outside
 `make bump` still publishes if it is `vX.Y.Z` and passes the gate.
-A narrow race remains: if main advances between a run's head check and its
-retag, `:main` can briefly point to the older commit until the newer run retags
-it. The `:main` tag stays mutable until the live deployment moves to release tags;
+`:main` always moves to the image of the head of main at promotion time, so an
+older run cannot move it back. GitHub can replace a pending promote job with a
+newer one; that loses nothing, because the newer job reads the head again.
+`:main` can lag the head for a short time while the head image builds, and
+longer when the head's run fails. A failed promotion is repaired by the next
+one. The `:main` tag stays mutable until the live deployment moves to release tags;
 removing it is a separate change, coordinated with the TrueNAS app owner.
 Images built before this decision have no `healthcheck` command, so a Compose
 health check needs an image from this change or later.
