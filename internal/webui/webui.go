@@ -3,8 +3,10 @@ package webui
 
 import (
 	"embed"
+	"errors"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"strings"
 )
@@ -19,18 +21,22 @@ const (
 	cacheFixed  = "no-cache"
 )
 
-// Handler serves the embedded frontend build.
-func Handler() http.Handler {
+// Handler serves the embedded frontend. A nil logger uses slog.Default.
+func Handler(logger *slog.Logger) http.Handler {
 	root, err := fs.Sub(assets, "dist")
 	if err != nil {
 		panic(err)
 	}
-	return handler(root)
+	return handler(root, logger)
 }
 
 // handler serves "/" as index.html and regular files under /assets/ from
-// root. It never lists a directory.
-func handler(root fs.FS) http.Handler {
+// root. It never lists a directory. It logs the 503 for a missing build and
+// any 5xx from the serving path once.
+func handler(root fs.FS, logger *slog.Logger) http.Handler {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -42,42 +48,50 @@ func handler(root fs.FS) http.Handler {
 			return
 		}
 		if _, err := fs.Stat(root, "index.html"); err != nil {
+			logger.ErrorContext(r.Context(), "request failed", "route", "GET /", "status", 503, "error", "frontend not built")
 			http.Error(w, "Frontend not built; run make web-build", http.StatusServiceUnavailable)
 			return
 		}
-		f, err := root.Open(name)
-		if err != nil {
-			http.NotFound(w, r)
-			return
+		recorder := &statusWriter{ResponseWriter: w}
+		serveFile(recorder, r, root, name, cache)
+		// The status and path are enough to look; the file system error itself
+		// is not exposed to the client.
+		if recorder.status >= 500 {
+			logger.ErrorContext(r.Context(), "request failed", "route", "GET /", "path", r.URL.Path, "status", recorder.status, "error", "frontend file error")
 		}
-		defer func() { _ = f.Close() }()
-		info, err := f.Stat()
-		if err != nil || !info.Mode().IsRegular() {
-			http.NotFound(w, r)
-			return
-		}
-		content, ok := f.(io.ReadSeeker)
-		if !ok {
-			http.Error(w, "Frontend file is not seekable", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Cache-Control", cache)
-		http.ServeContent(noStoreErrors{w}, r, name, info.ModTime(), content)
 	})
 }
 
-// noStoreErrors makes every error status from http.ServeContent, such as 412
-// or 416, use no-store instead of the cache policy of the file.
-type noStoreErrors struct{ http.ResponseWriter }
-
-func (w noStoreErrors) WriteHeader(status int) {
-	if status >= 400 {
-		w.Header().Set("Cache-Control", "no-store")
+// serveFile answers 404 for a missing file or a directory and 500 for any
+// other file system error.
+func serveFile(w http.ResponseWriter, r *http.Request, root fs.FS, name, cache string) {
+	f, err := root.Open(name)
+	if errors.Is(err, fs.ErrNotExist) {
+		http.NotFound(w, r)
+		return
 	}
-	w.ResponseWriter.WriteHeader(status)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if !info.Mode().IsRegular() {
+		http.NotFound(w, r)
+		return
+	}
+	content, ok := f.(io.ReadSeeker)
+	if !ok {
+		http.Error(w, "Frontend file is not seekable", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Cache-Control", cache)
+	http.ServeContent(w, r, name, info.ModTime(), content)
 }
-
-func (w noStoreErrors) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 // route maps a URL path to a file name in the build and its cache policy.
 func route(path string) (name, cache string, ok bool) {
@@ -90,3 +104,28 @@ func route(path string) (name, cache string, ok bool) {
 	}
 	return "", "", false
 }
+
+// statusWriter records the first status for logging. Every error status,
+// such as a 412 or 416 from http.ServeContent, uses no-store instead of the
+// cache policy of the file.
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (s *statusWriter) WriteHeader(code int) {
+	if s.status == 0 {
+		s.status = code
+		if code >= 400 {
+			s.Header().Set("Cache-Control", "no-store")
+		}
+	}
+	s.ResponseWriter.WriteHeader(code)
+}
+func (s *statusWriter) Write(b []byte) (int, error) {
+	if s.status == 0 {
+		s.status = http.StatusOK
+	}
+	return s.ResponseWriter.Write(b)
+}
+func (s *statusWriter) Unwrap() http.ResponseWriter { return s.ResponseWriter }

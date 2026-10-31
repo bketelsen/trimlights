@@ -7,7 +7,7 @@
     "build": "tsc --noEmit && vite build",
     "dev": "vite --host 127.0.0.1",
     "check": "tsc --noEmit",
-    "test": "node --test src/*.test.mjs"
+    "test": "node scripts/build-component-tests.mjs && node --test src/*.test.mjs"
   },
   "dependencies": {
     "react": "19.3.1",
