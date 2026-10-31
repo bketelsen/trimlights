@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".test-build",
+    "rootDir": "src",
+    "module": "CommonJS",
+    "moduleResolution": "Bundler"
+  },
+  "files": ["src/NativeControls.tsx", "src/HousePreview.tsx"],
+  "include": []
+}

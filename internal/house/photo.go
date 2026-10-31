@@ -35,6 +35,16 @@ func Sanitize(raw []byte) (PhotoImage, error) {
 	if cfg.Width < 1 || cfg.Height < 1 || cfg.Width > 16384 || cfg.Height > 16384 || int64(cfg.Width)*int64(cfg.Height) > MaxPixels {
 		return PhotoImage{}, errors.New("photo exceeds 50 million pixels or 16384 pixels per edge; resize before uploading")
 	}
+	need := decodeBytes(raw, kind, cfg)
+	if need < 0 {
+		return PhotoImage{}, ErrFormat
+	}
+	if need > MaxDecodeBytes {
+		if kind == "webp" {
+			return PhotoImage{}, errors.New("this WebP photo needs too much memory to decode (lossless WebP is not supported); save the photo as JPEG or PNG")
+		}
+		return PhotoImage{}, errors.New("photo needs too much memory to decode (for example a 16-bit PNG or a large progressive JPEG); export it as a standard JPEG")
+	}
 	src, _, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {
 		return PhotoImage{}, errors.New("photo is damaged or incomplete")
@@ -42,8 +52,9 @@ func Sanitize(raw []byte) (PhotoImage, error) {
 	if src.Bounds().Dx() != cfg.Width || src.Bounds().Dy() != cfg.Height {
 		return PhotoImage{}, errors.New("photo dimensions changed while decoding")
 	}
-	oriented := orientedImage{src, orientation(raw, kind)}
-	full := resize(oriented, 4096)
+	// Scale the concrete decoded type (fast paths, no per-sample allocation),
+	// then apply the orientation to the bounded working image.
+	full := orient(resize(src, 4096), orientation(raw, kind))
 	thumb := resize(full, 512)
 	var a, b bytes.Buffer
 	if err = jpeg.Encode(&a, full, &jpeg.Options{Quality: 88}); err != nil {
@@ -63,40 +74,47 @@ func resize(src image.Image, edge int) *image.RGBA {
 	return out
 }
 
-type orientedImage struct {
-	src         image.Image
-	orientation int
+// orient returns m with EXIF orientation o applied.
+func orient(m *image.RGBA, o int) *image.RGBA {
+	if o < 2 || o > 8 {
+		return m
+	}
+	w, h := m.Rect.Dx(), m.Rect.Dy()
+	dw, dh := w, h
+	if o >= 5 {
+		dw, dh = h, w
+	}
+	out := image.NewRGBA(image.Rect(0, 0, dw, dh))
+	for y := range dh {
+		for x := range dw {
+			sx, sy := orientedSource(o, x, y, w, h)
+			s := m.PixOffset(m.Rect.Min.X+sx, m.Rect.Min.Y+sy)
+			copy(out.Pix[y*out.Stride+4*x:y*out.Stride+4*x+4], m.Pix[s:s+4])
+		}
+	}
+	return out
 }
 
-func (o orientedImage) ColorModel() color.Model { return o.src.ColorModel() }
-func (o orientedImage) Bounds() image.Rectangle {
-	b := o.src.Bounds()
-	if o.orientation >= 5 && o.orientation <= 8 {
-		return image.Rect(0, 0, b.Dy(), b.Dx())
-	}
-	return image.Rect(0, 0, b.Dx(), b.Dy())
-}
-func (o orientedImage) At(x, y int) color.Color {
-	b := o.src.Bounds()
-	w, h := b.Dx(), b.Dy()
-	sx, sy := x, y
-	switch o.orientation {
+// orientedSource maps a pixel of the oriented image to its source pixel in a
+// w by h image.
+func orientedSource(o, x, y, w, h int) (int, int) {
+	switch o {
 	case 2:
-		sx = w - 1 - x
+		return w - 1 - x, y
 	case 3:
-		sx, sy = w-1-x, h-1-y
+		return w - 1 - x, h - 1 - y
 	case 4:
-		sy = h - 1 - y
+		return x, h - 1 - y
 	case 5:
-		sx, sy = y, x
+		return y, x
 	case 6:
-		sx, sy = y, h-1-x
+		return y, h - 1 - x
 	case 7:
-		sx, sy = w-1-y, h-1-x
+		return w - 1 - y, h - 1 - x
 	case 8:
-		sx, sy = w-1-y, x
+		return w - 1 - y, x
 	}
-	return o.src.At(b.Min.X+sx, b.Min.Y+sy)
+	return x, y
 }
 
 // Read only the bounded TIFF IFD0 orientation SHORT; never follow pointers to

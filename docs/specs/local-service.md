@@ -7,7 +7,7 @@ foundation, not the authenticated household web application in the v1 contract.
 
 | Command | Required inputs | Behavior |
 | --- | --- | --- |
-| `serve` | `--data-dir`, `--api-token-file` | Loopback HTTP service; optional controller host enables explicit reads |
+| `serve` | `--data-dir`, `--api-token-file` | Loopback HTTP service; optional controller host enables explicit reads; `--log-level` sets [service logs](#service-logs) |
 | `status` | `--api-token-file` | Cached state from the service, never a controller query |
 | `refresh` | `--api-token-file`, `--acknowledge-clock-sync` | Serialized snapshot through the service |
 | `snapshot` | `--host` or `TRIMLIGHT_CONTROLLER_HOST` | Direct diagnostic; optional new `--output` file |
@@ -92,6 +92,34 @@ Refresh accepts exactly one JSON object, with `Content-Type: application/json`:
 - All API responses MUST use `Cache-Control: no-store`. No credentialed CORS or
   cookie authentication exists in this development mode. Use the separate
   [household OIDC mode](household-auth.md) through Caddy instead.
+
+## Service logs
+
+`serve` writes structured JSON lines with Go `log/slog` to standard error, so
+`docker logs` shows them. `--log-level` accepts exactly `debug`, `info` (default),
+`warn` or `error`; any other value MUST fail before the service starts. Both
+bearer development and [household OIDC](household-auth.md#service-log-events) modes use these rules.
+
+| Message | Level | Fields |
+| --- | --- | --- |
+| `trimlight serving` | info | `version`, `commit`, `listen`, `mode` (`oidc` or `bearer-development`), `controller_enabled`, `restore_guard` |
+| `request failed` | error | `route` (matched method and pattern), `status`, `error`; `operation_id` for a failed controller operation; `path` for a frontend file error |
+| `controller operation finished` | info, warn on failure, error on audit failure | `operation_id`, `kind`, `outcome`, `duration_ms`; `action` and `write_attempted` for controls; `error`, `persistence_error` |
+| `request` | debug | `method`, `path` without query, `status`, `duration_ms` |
+| `trimlight shutting down`, `trimlight stopped` | info, error | `error` when the service stops on failure: a category for household login setup, otherwise the error without network addresses |
+
+- Every 5xx response MUST log its underlying cause once at that site. The response
+  body MUST stay the generic message documented for its endpoint.
+- Logs MUST NOT contain the controller host or address. The startup line reports
+  only whether controller access is enabled. Controller network errors are logged
+  as a category, such as `network dial failed: timeout`.
+- A missing embedded frontend (`503`) and a frontend file error (`5xx`) are
+  logged as `request failed` with a fixed `error` text.
+- The error that `serve` returns is printed to standard error, which is also the
+  container log, so it MUST follow the same rules: a failed household login setup
+  returns a fixed message, and other errors lose network addresses.
+- Request lines exist only at debug level, so `/healthz` and `/readyz` probes add
+  no lines at the default level. Query strings are never logged.
 
 ## Observed playback state — 2026-10-28
 

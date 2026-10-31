@@ -3,9 +3,14 @@ export type NativePattern = {id:number;name:string;parameters_hex:string;snapsho
 export type Design = {schema:1;name:string;favorite:boolean;effect:'static'|'chase'|'native';brightness:number;speed:number;reverse:boolean;palette:ColorRun[];native?:NativePattern};
 export type SavedPattern = {id:string;revision:number;design:Design;actor:string;updated:string;archived:boolean};
 
+// Shared household name rule (internal/pattern ValidName): no outer white space,
+// control (Cc) or format (Cf) characters, except zero-width joiner and non-joiner,
+// and no lone surrogate (Go needs valid UTF-8 and would store U+FFFD instead).
+// Both implementations must pass name-vectors.json.
+export function validName(name:unknown):boolean{return typeof name==='string'&&name!==''&&name===name.trim()&&[...name].length<=80&&!/(?![\u200C\u200D])[\p{Cc}\p{Cf}\p{Cs}]/u.test(name);}
 export function validateDesign(d:Design):string|null {
  if(!d||d.schema!==1)return 'Choose a pattern file downloaded from this app.';
- if(typeof d.name!=='string'||!d.name||d.name!==d.name.trim()||[...d.name].length>80||/[\p{Cc}]/u.test(d.name))return 'Give your pattern a name of up to 80 characters, with no spaces at the beginning or end.';
+ if(!validName(d.name))return 'Give your pattern a name of up to 80 characters, with no spaces at the beginning or end and no hidden characters.';
  if(typeof d.favorite!=='boolean'||typeof d.reverse!=='boolean')return 'This pattern file has invalid settings.';
  if(!Array.isArray(d.palette))return 'This pattern file is missing its colors.';
  if(d.effect==='native'){
