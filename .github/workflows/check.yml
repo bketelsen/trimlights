@@ -1,7 +1,9 @@
 # Check, then publish images. Actions are pinned to full commit SHAs and each
 # job gets only the permissions it needs (frostyard/core ADR-0021). The build
-# job runs pnpm and the Go build without a write token; only the publish job can
-# push to GHCR and attest, and it runs no repository build code (ADR-0015).
+# job runs pnpm and the Go build without a write token. The publish job pushes
+# and attests; the promote job moves :main. Both hold packages: write, only
+# publish holds id-token and attestations, and neither runs repository build
+# code (ADR-0015).
 name: Check
 on:
   push:
@@ -194,25 +196,51 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # The registry API tells "no such tag" (404) apart from every other error;
+      # only a 404 for the head image skips. Any other status fails the job.
       # If the check after the retag fails, the job fails; the next promotion
-      # moves :main to the head image again and repairs it.
+      # moves :main to the head image again and repairs it. :sha-<commit> tags
+      # are never touched.
       - name: Move :main to the image of the head of main
         env:
           GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           head=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
           printf '%s\n' "$head" | grep -Eqx '[0-9a-f]{40}' || { echo "bad head SHA: $head" >&2; exit 1; }
-          if ! out=$(docker buildx imagetools inspect "$IMAGE:sha-$head" 2>&1); then
-            if printf '%s\n' "$out" | grep -qi 'not found'; then
+
+          token=$(curl -fsS -u "$GITHUB_ACTOR:$GITHUB_TOKEN" "https://ghcr.io/token?scope=repository:bketelsen/trimlights:pull" | jq -r '.token // empty')
+          [ -n "$token" ] || { echo "GHCR returned no pull token" >&2; exit 1; }
+          echo "::add-mask::$token"
+
+          headers=$(mktemp)
+          accept='application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'
+          # Sets status (000 on a transport error) and digest for 1 reference.
+          manifest() {
+            : > "$headers"
+            status=$(curl -sS -o /dev/null -D "$headers" -w '%{http_code}' -I \
+              -H "Authorization: Bearer $token" -H "Accept: $accept" \
+              "https://ghcr.io/v2/bketelsen/trimlights/manifests/$1") || true
+            digest=$(tr -d '\r' < "$headers" | awk 'tolower($1) == "docker-content-digest:" { d = $2 } END { print d }')
+          }
+
+          manifest "sha-$head"
+          case "$status" in
+            200) ;;
+            404)
               echo "Skipped :main: $IMAGE:sha-$head is not pushed yet; its own run promotes it." >> "$GITHUB_STEP_SUMMARY"
-              exit 0
-            fi
-            printf '%s\n' "$out" >&2
-            exit 1
-          fi
-          digest=$(printf '%s\n' "$out" | awk '/^Digest:/ { print $2; exit }')
-          printf '%s\n' "$digest" | grep -Eqx 'sha256:[0-9a-f]{64}' || { echo "no digest for sha-$head" >&2; exit 1; }
-          docker buildx imagetools create --tag "$IMAGE:main" "$IMAGE@$digest"
-          moved=$(docker buildx imagetools inspect "$IMAGE:main" | awk '/^Digest:/ { print $2; exit }')
-          [ "$moved" = "$digest" ] || { echo ":main is $moved, expected $digest" >&2; exit 1; }
-          echo "Moved :main to $IMAGE@$digest (head $head)." >> "$GITHUB_STEP_SUMMARY"
+              exit 0 ;;
+            *)
+              echo "GHCR answered $status for $IMAGE:sha-$head" >&2
+              exit 1 ;;
+          esac
+          want=$digest
+          printf '%s\n' "$want" | grep -Eqx 'sha256:[0-9a-f]{64}' || { echo "bad digest for sha-$head: $want" >&2; exit 1; }
+
+          docker buildx imagetools create --tag "$IMAGE:main" "$IMAGE@$want"
+
+          manifest main
+          [ "$status" = 200 ] || { echo "GHCR answered $status for $IMAGE:main" >&2; exit 1; }
+          [ "$digest" = "$want" ] || { echo ":main is $digest, expected $want" >&2; exit 1; }
+          echo "Moved :main to $IMAGE@$want (head $head)." >> "$GITHUB_STEP_SUMMARY"

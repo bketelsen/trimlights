@@ -23,13 +23,16 @@ Checkouts do not persist credentials; jobs have timeouts; pull request runs
 cancel superseded runs, main and tag runs never do. Dependabot updates Go
 modules, the pnpm-locked web packages and the action pins weekly.
 
-Image publication has two jobs. The build job holds only `contents: read`. It
+Image publication has 3 jobs: build, publish and promote. The build job holds only `contents: read`. It
 runs pnpm and `make build` for linux/amd64 and linux/arm64 and uploads the two
 static binaries as an artifact. The publish job holds `packages: write`,
 `id-token: write` and `attestations: write`. It downloads the binaries, packages
 them with the copy-only Containerfile, pushes, and runs
 `actions/attest-build-provenance` on the pushed index digest with
-`push-to-registry: true`. It runs no pnpm, Node, Go or repository build code.
+`push-to-registry: true`. The promote job, described below, holds only
+`contents: read` and `packages: write`. Only publish and promote can write to
+the registry, only publish can attest, and neither runs pnpm, Node, Go or
+repository build code.
 
 Main pushes keep `:main` and `:sha-<full commit>`, now attested, so the live app
 keeps working. Each non-PR run has its own concurrency group, because GitHub
@@ -39,8 +42,9 @@ separate `promote` job, with only `contents: read` and `packages: write`, then
 moves `:main`. Promote jobs share the concurrency group `promote-main`, so
 promotions are serialized. Each promotion reads the current head of main and
 retags `:main` to the exact digest of `:sha-<head>`; it never promotes its own
-run's commit. When the head image is not pushed yet, it skips, and the head's
-own run promotes it later. A release is a `vX.Y.Z` tag that only `make bump` creates, with
+run's commit. It asks the registry API for that manifest: only a 404 (the head
+image is not pushed yet) skips, and the head's own run promotes it later; every
+other answer or error fails the job. A release is a `vX.Y.Z` tag that only `make bump` creates, with
 the svu release pinned in `mise.toml`. A tag run passes the same check gate,
 builds with `VERSION=vX.Y.Z`, and pushes and attests `:vX.Y.Z`. Deployments pin
 a release tag, optionally with its digest, and verify it with
