@@ -119,8 +119,7 @@ func apiHandler(store *storage.Store, worker *Worker, logger *slog.Logger) http.
 		jsonResponse(w, 200, map[string]any{"operations": ops})
 	})
 	mux.HandleFunc("POST /api/v1/controller/refresh", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Content-Type") != "application/json" {
-			jsonError(w, 415, "Content-Type must be application/json")
+		if !requireJSON(w, r) {
 			return
 		}
 		var input struct {
@@ -142,14 +141,14 @@ func apiHandler(store *storage.Store, worker *Worker, logger *slog.Logger) http.
 		}
 		id, done, err := worker.Enqueue(r.Context(), actor)
 		if err != nil {
-			serverError(w, r, logger, 503, err.Error(), err)
+			serverError(w, r, logger, 503, enqueueMessage(err), err)
 			return
 		}
 		select {
 		case err = <-done:
 			if err != nil {
 				logFailure(r, logger, 502, err, "operation_id", id)
-				jsonResponse(w, 502, map[string]any{"error": err.Error(), "operation_id": id})
+				jsonResponse(w, 502, map[string]any{"error": operationMessage(err, msgRefreshFailed), "operation_id": id})
 				return
 			}
 			jsonResponse(w, 200, map[string]string{"operation_id": id, "status": "verified"})

@@ -35,6 +35,18 @@ Refresh accepts exactly one JSON object, with `Content-Type: application/json`:
 {"acknowledge_clock_sync": true}
 ```
 
+Every JSON endpoint uses one media type check: the type MUST be
+`application/json`, and parameters such as `charset=utf-8` are accepted. Any
+other or malformed `Content-Type` returns 415.
+
+A refused refresh returns 503 with `controller access is disabled`,
+`controller queue is full` or `controller is unavailable; try again later`. A
+failed refresh returns 502 with `operation_id` and a fixed `error`:
+`controller clock sync is unavailable on Sunday` for the Sunday refusal, otherwise
+`controller refresh failed; see the operation record`. The cause stays in the
+operation record and the [service log](#service-logs); controller and storage
+error text never reaches the client.
+
 ## Rules
 
 - `--dry-run` MUST make no network request and create no database, listener,
@@ -97,7 +109,9 @@ bearer development and [household OIDC](household-auth.md#service-log-events) mo
 | `trimlight shutting down`, `trimlight stopped` | info, error | `error` when the service stops on failure: a category for household login setup, otherwise the error without network addresses |
 
 - Every 5xx response MUST log its underlying cause once at that site. The response
-  body MUST stay the generic message documented for its endpoint.
+  body MUST stay the generic message documented for its endpoint. Controller and
+  storage error text, which can quote the controller address, MUST NOT appear
+  in a 5xx response body. 4xx validation messages stay specific.
 - Logs MUST NOT contain the controller host or address. The startup line reports
   only whether controller access is enabled. Controller network errors are logged
   as a category, such as `network dial failed: timeout`.

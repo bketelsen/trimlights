@@ -24,10 +24,19 @@ func actor(r *http.Request) string {
 func readJSON(w http.ResponseWriter, r *http.Request, value any) bool {
 	return readJSONLimit(w, r, value, 32<<10)
 }
-func readJSONLimit(w http.ResponseWriter, r *http.Request, value any, limit int64) bool {
+
+// requireJSON is the one media type check for every JSON endpoint. It accepts
+// parameters such as charset=utf-8 and answers 415 for any other media type.
+func requireJSON(w http.ResponseWriter, r *http.Request) bool {
 	kind, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || kind != "application/json" {
 		jsonError(w, 415, "Content-Type must be application/json")
+		return false
+	}
+	return true
+}
+func readJSONLimit(w http.ResponseWriter, r *http.Request, value any, limit int64) bool {
+	if !requireJSON(w, r) {
 		return false
 	}
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))

@@ -83,7 +83,7 @@ which exits 0 only when the loopback `/readyz` endpoint answers 200.
 
 1. Register a confidential Pocket ID client with your app's exact HTTPS callback,
    for example `https://trimlights.example.com/auth/callback`. Restrict the client
-   to the household users.
+   to the household users. The app requests only the `openid profile` scopes.
 2. Copy [OIDC configuration](deploy/oidc.example.json) to private storage and fill
    `origin`, `issuer`, `client_id` and `allowed_subjects`. In Pocket ID, open the
    client’s **OIDC Data Preview**, select each user, and copy their `sub` value.
