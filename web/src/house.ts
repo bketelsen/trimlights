@@ -15,3 +15,7 @@ export function positions(m:Mapping,count:number,width:number,height:number):Poi
 }
 export function rotateView(view:View):View {const rotate=(p:Point)=>({x:1-p.y,y:p.x});return {...view,turns:(view.turns+1)%4,mappings:view.mappings.map(m=>({...m,points:m.points.map(rotate),adjustments:m.adjustments.map(a=>({...a,point:rotate(a.point)}))}))};}
 export function sourceRun(run:Run,runs:Run[]):Run{return runs.find(r=>r.id===run.mirror_of)??run;}
+export type CanvasMode='draw'|'points'|'bulbs'|'pan';
+// Let a vertical swipe scroll the page unless the canvas needs the gesture:
+// drawing or dragging corners/bulbs, or moving a zoomed photo.
+export function canvasTouchAction(mode:CanvasMode,zoom:number):'none'|'pan-y'{return mode==='pan'&&zoom<=1?'pan-y':'none';}
