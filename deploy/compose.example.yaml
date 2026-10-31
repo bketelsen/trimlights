@@ -3,7 +3,11 @@
 # Run one instance; keep the live SQLite database on a local dataset.
 services:
   trimlights:
-    image: ghcr.io/bketelsen/trimlights:${TRIMLIGHT_IMAGE_TAG:-main}
+    # Pin a release: vX.Y.Z, or vX.Y.Z@sha256:<digest> to fix the exact image.
+    # :main moves with every merge; do not use it for a stable deployment.
+    # Verify the pin first: gh attestation verify
+    #   oci://ghcr.io/bketelsen/trimlights:<tag> --repo bketelsen/trimlights
+    image: ghcr.io/bketelsen/trimlights:${TRIMLIGHT_IMAGE_TAG:?Set TRIMLIGHT_IMAGE_TAG to a release tag or tag@digest}
     user: "65532:65532"
     restart: unless-stopped
     read_only: true
@@ -23,4 +27,11 @@ services:
       - --oidc-config=/config/oidc.json
       - --timezone=${TRIMLIGHT_TIMEZONE:-UTC}
       - --daily-schedules-offset=${TRIMLIGHT_SCHEDULE_OFFSET:--1}
+    # The scratch image has no shell or curl; the binary checks /readyz itself.
+    healthcheck:
+      test: ["CMD", "/trimlight", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     stop_grace_period: 30s

@@ -23,6 +23,9 @@ Reusable procedures belong in `.agents/skills/`, starting from its TEMPLATE.
 - Use captured protocol fixtures and the simulated controller for ordinary tests.
   Never add hardware access to CI or `make check`.
 - Run `make check` before declaring a change done. CI uses the same gate.
+- Pin workflow actions by full commit SHA with a version comment. Only the
+  publish job holds registry/attestation permissions, and it runs no build code
+  ([ADR-0015](docs/adr/0015-versioned-attested-images.md)). Release tags come from `make bump`.
 
 ## Repository boundary
 

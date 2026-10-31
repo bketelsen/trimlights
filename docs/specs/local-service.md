@@ -13,6 +13,7 @@ foundation, not the authenticated household web application in the v1 contract.
 | `snapshot` | `--host` or `TRIMLIGHT_CONTROLLER_HOST` | Direct diagnostic; optional new `--output` file |
 | `probe-schedule2` | controller host, `--output`, `--baseline-sha256` | Direct bounded experiment with restoration and evidence |
 | `verify-playback` | controller host, `--output`, `--baseline-sha256`, `--pattern-id` | Separate bounded OFF/saved-slot/TIMER [verification](playback-verification.md) |
+| `healthcheck` | none; optional `--url`, `--timeout` | One GET to a loopback URL (default `http://127.0.0.1:8787/readyz`, 3 s); exit 0 only on 200 ([ADR-0015](../adr/0015-versioned-attested-images.md)) |
 
 The service defaults to `127.0.0.1:8787`. CLI API commands accept a literal loopback
 HTTP URL with `--url`. Tokens are read from a file, contain at least 32 characters,
@@ -43,6 +44,10 @@ Refresh accepts exactly one JSON object, with `Content-Type: application/json`:
   Run-time command errors emit clix's `error`, `message`, `details` envelope and
   exit nonzero. Cobra parse/help/version output follows clix conventions.
 - `--silent` MUST suppress application result output. Errors still exit nonzero.
+- `healthcheck` MUST accept only an http(s) URL whose host is `localhost` or a
+  loopback IP address, without credentials. It MUST ignore proxy settings, MUST
+  NOT follow redirects, and MUST exit nonzero on a redirect, a non-200 status,
+  a refused connection or the timeout (positive, at most 1 minute).
 - `status` MUST NOT synchronize the controller clock. `refresh` MUST explicitly
   acknowledge the potential clock mutation. Sundays remain refused by the driver.
 - The queue MUST serialize complete reads, admit at most eight waiting requests,
@@ -109,7 +114,8 @@ and [ADR-0011](../adr/0011-audited-household-native-controls.md).
 ## References
 
 - Rationale: [ADR-0003](../adr/0003-shared-homelab-application.md),
-  [ADR-0002](../adr/0002-agent-portable-instruction-surface.md).
+  [ADR-0002](../adr/0002-agent-portable-instruction-surface.md);
+  health check: [ADR-0015](../adr/0015-versioned-attested-images.md).
 - Context: [application design](../design/application.md).
 - Built in: [roadmap](../plans/roadmap.md).
 - Future household requirements: [v1 acceptance](v1-acceptance.md).

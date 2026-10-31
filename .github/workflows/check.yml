@@ -1,65 +1,165 @@
+# Check, then publish images. Actions are pinned to full commit SHAs and each
+# job gets only the permissions it needs (frostyard/core ADR-0021). The build
+# job runs pnpm and the Go build without a write token; only the publish job can
+# push to GHCR and attest, and it runs no repository build code (ADR-0015).
 name: Check
 on:
   push:
+    branches: ['**']
+    tags: ['v*.*.*']
   pull_request:
-permissions:
-  contents: read
+
+permissions: {}
+
+concurrency:
+  group: check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.27.3'
           cache: true
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24.19.0'
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
         with:
           version: '11.25.0'
       - run: make check
-  image:
+
+  # Main pushes and vX.Y.Z tags compile both architectures here, with no write
+  # token and no id-token, and hand the static binaries to the publish job.
+  build:
     needs: check
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: read
-      packages: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - name: Choose the version
+        id: version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            printf '%s\n' "$GITHUB_REF_NAME" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+' || {
+              echo "tag $GITHUB_REF_NAME is not vX.Y.Z" >&2; exit 1; }
+            echo "version=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=main" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.27.3'
           cache: true
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24.19.0'
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
         with:
           version: '11.25.0'
       - name: Compile static binaries
         env:
+          BUILD_VERSION: ${{ steps.version.outputs.version }}
           BUILD_COMMIT: ${{ github.sha }}
         run: |
-          GOOS=linux GOARCH=amd64 make build VERSION=main COMMIT="$BUILD_COMMIT" BUILT_BY=github-actions
-          GOOS=linux GOARCH=arm64 make build VERSION=main COMMIT="$BUILD_COMMIT" BUILT_BY=github-actions
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+          GOOS=linux GOARCH=amd64 make build VERSION="$BUILD_VERSION" COMMIT="$BUILD_COMMIT" BUILT_BY=github-actions
+          GOOS=linux GOARCH=arm64 make build VERSION="$BUILD_VERSION" COMMIT="$BUILD_COMMIT" BUILT_BY=github-actions
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: binaries
+          path: |
+            build/amd64/trimlight
+            build/arm64/trimlight
+          if-no-files-found: error
+          retention-days: 7
+
+  # Packages the prebuilt binaries into the scratch image, pushes it and attests
+  # its digest. No pnpm, Node or Go runs here; the Containerfile only copies.
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      IMAGE: ghcr.io/bketelsen/trimlights
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: binaries
+          path: build
+      # Artifacts do not keep file modes.
+      - name: Check the binaries
+        run: |
+          chmod 0755 build/amd64/trimlight build/arm64/trimlight
+          file build/amd64/trimlight build/arm64/trimlight
+      - name: Choose the tags
+        id: tags
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tags="$IMAGE:$VERSION"
+          else
+            # The live app pulls :main and :sha-<commit> today; keep both.
+            tags="$IMAGE:main,$IMAGE:sha-$GITHUB_SHA"
+          fi
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+      - id: push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: Containerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ghcr.io/bketelsen/trimlights:main
-            ghcr.io/bketelsen/trimlights:sha-${{ github.sha }}
+          tags: ${{ steps.tags.outputs.tags }}
           labels: |
             org.opencontainers.image.source=https://github.com/bketelsen/trimlights
             org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.build.outputs.version }}
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+          # Storage records need an organization-owned repository.
+          create-storage-record: false
+      - name: Summary
+        env:
+          TAGS: ${{ steps.tags.outputs.tags }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          {
+            echo "Pushed $TAGS"
+            echo
+            echo "Digest: \`$IMAGE@$DIGEST\`"
+            echo
+            echo "Verify: \`gh attestation verify oci://$IMAGE@$DIGEST --repo bketelsen/trimlights\`"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -57,10 +57,27 @@ included. Python is not required to build, test or run the application.
 
 ## Household deployment
 
-The image workflow publishes `ghcr.io/bketelsen/trimlights:main` and a full-commit
-`sha-…` tag for amd64 and arm64 after checks pass. Pin a commit tag or digest for a
-stable deployment. GHCR package visibility/pull access must be configured before
-an unauthenticated TrueNAS install can pull the image.
+The Check workflow publishes `ghcr.io/bketelsen/trimlights` for amd64 and arm64
+after checks pass ([image releases](docs/design/application.md#image-releases)):
+
+- Each push to main publishes `:main` and a full-commit `:sha-<commit>` tag.
+  `:main` moves with every merge; do not deploy it.
+- A release is a `vX.Y.Z` tag created by `make bump` (svu, pinned in `mise.toml`;
+  run `mise install`). It publishes `:vX.Y.Z`, built with that version.
+
+Each pushed image digest carries a GitHub build provenance attestation. Set
+`TRIMLIGHT_IMAGE_TAG` to a release tag, or `vX.Y.Z@sha256:<digest>` to fix the
+exact image, and verify it before you deploy:
+
+```sh
+gh attestation verify oci://ghcr.io/bketelsen/trimlights:vX.Y.Z --repo bketelsen/trimlights
+```
+
+Roll back by deploying an older release tag (after a database restore if its
+schema is older; see [backup and restore](#backup-and-restore)). GHCR package
+visibility/pull access must be configured before an unauthenticated TrueNAS
+install can pull the image. The Compose example runs `/trimlight healthcheck`,
+which exits 0 only when the loopback `/readyz` endpoint answers 200.
 
 1. Register a confidential Pocket ID client with your app's exact HTTPS callback,
    for example `https://trimlights.example.com/auth/callback`. Restrict the client

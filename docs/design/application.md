@@ -9,6 +9,7 @@ Backup contract: [backup and restore](../specs/backups.md).
 Recovery procedure: [backup operations](backup-operations.md).
 Photo rationale: [ADR-0008](../adr/0008-private-photos-and-physical-mapping.md).
 Publication: [ADR-0007](../adr/0007-public-repository-and-private-deployment.md).
+Image releases: [ADR-0015](../adr/0015-versioned-attested-images.md).
 Contracts: [local service](../specs/local-service.md),
 [household authentication](../specs/household-auth.md),
 [house mapping](../specs/house.md), [pattern library](../specs/patterns.md), [calendar](../specs/schedules.md),
@@ -327,6 +328,34 @@ Back up before database migrations; use versioned images and a documented rollba
 path. Credentials stay outside the image/repository. The initial release needs no
 Kubernetes, Redis, message broker or separate database server.
 
+### Image releases
+
+Rationale: [ADR-0015](../adr/0015-versioned-attested-images.md). The Check
+workflow publishes `ghcr.io/bketelsen/trimlights` for linux/amd64 and
+linux/arm64 only after `make check` passes. A build job without write
+permissions compiles both static binaries and hands them over as an artifact.
+A separate publish job packages them with the copy-only Containerfile, pushes,
+and attests the pushed digest with GitHub build provenance. That job runs no
+pnpm, Node or Go.
+
+| Trigger | Tags | Embedded version |
+| --- | --- | --- |
+| Push to main | `:main`, `:sha-<full commit>` | `main` |
+| `vX.Y.Z` tag from `make bump` | `:vX.Y.Z` | `vX.Y.Z` |
+
+Deploy a release tag, or `vX.Y.Z@sha256:<digest>` to fix the exact image; `:main`
+moves with every merge. Verify an image before deployment:
+
+```sh
+gh attestation verify oci://ghcr.io/bketelsen/trimlights:vX.Y.Z --repo bketelsen/trimlights
+```
+
+The [Compose example](../../deploy/compose.example.yaml) runs
+`/trimlight healthcheck`, which requests the loopback `/readyz` endpoint and
+exits nonzero on any status other than 200, a timeout, a refused connection or
+a redirect. See the [local service contract](../specs/local-service.md).
+Dependabot proposes weekly Go module, web package and action pin updates.
+
 Server loss can leave the last lighting state active. Controller-native fallback
 is a separate capability to validate, not a hidden assumption. Keep a documented
 way to return control to the manufacturer app and restore saved native schedules.
@@ -344,4 +373,5 @@ The owner selected public source repository `bketelsen/trimlights` and GHCR imag
 Compose consumes controller and deployment addresses from variables. Public wire
 fixtures are synthetic throughout; private captures are preserved outside Git.
 A probe requires a reviewed non-clock SHA-256 fingerprint before any edit command.
-The image workflow checks the app before publishing amd64 and arm64 binaries.
+The image workflow checks the app before publishing attested amd64 and arm64
+images; see [image releases](#image-releases).
