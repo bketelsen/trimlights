@@ -41,9 +41,10 @@ Layout schema 1 contains `runs` and `views`. Each run has a stable `id`, `name`,
   with advice to save the photo as JPEG or PNG. A three-component JPEG reserves
   a converted RGBA image (4 bytes per pixel) when its component IDs are R, G, B
   or any Adobe APP14 segment in the file has transform 0, because the decoder
-  reads such markers after the point where its configuration stops. A 16-bit PNG or a large progressive JPEG
-  can be refused below the pixel limit; a baseline 4:2:0 JPEG at 48 million pixels is accepted. Scaling MUST
-  read the decoded image directly and apply EXIF orientation to the working
+  reads such markers after the point where its configuration stops. A 16-bit
+  PNG or a large progressive JPEG can be refused below the pixel limit; a
+  baseline 4:2:0 JPEG at 48 million pixels (72 MB) and a progressive 4:2:0 JPEG
+  at 12 million pixels (90 MB) are accepted. Scaling MUST read the decoded image directly and apply EXIF orientation to the working
   image, so one upload peaks near 210 MiB (12 MiB input, 128 MiB decode, 64 MiB
   working image).
 - JPEG, PNG and WebP MUST be decoded and re-encoded without original metadata;
