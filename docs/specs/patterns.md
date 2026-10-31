@@ -23,12 +23,27 @@ existing loopback bearer API. Bodies are one JSON object, at most 32 KiB, with
 Import, archive and restore accept `{}`. List with `?include_archived=1` to include
 archived entries. Create also serves import/duplicate: it always assigns a new
 application ID, never imports identity or overwrites an existing pattern.
+A created native design (a duplicate or a file import) MUST copy a slot of the
+latest cached controller snapshot: equal slot ID, equal raw slot name and equal
+156 parameter bytes (hex case is ignored). Otherwise create answers 400 and saves
+nothing. Native designs therefore come only from controller slots, and
+`native.name` is never free user input.
 
 ```json
 {"schema":1,"name":"Porch warmth","favorite":false,"effect":"static","brightness":60,"speed":0,"reverse":false,"palette":[{"color":"#ffb05a","count":3},{"color":"#000000","count":1}]}
 ```
 
-Names contain 1–80 Unicode characters without control characters or outer spaces.
+Names contain 1–80 Unicode characters without outer white space, control (`Cc`)
+or format (`Cf`) characters; U+FEFF is rejected. Zero-width joiner (U+200D) and
+non-joiner (U+200C) remain allowed for emoji sequences and joined scripts. Go
+(`pattern.ValidName`) and TypeScript (`validName`) MUST agree on the shared name
+vectors; calendar rule names use the same rule. Since 2026-10-30 the format-character
+rule also applies to names saved earlier: such a pattern or calendar keeps its
+retained revisions, but it must be renamed before its next save or preview. A
+calendar pin to such a native revision fails validation, so
+[calendar preparation](calendar-preparation.md) reports `changed_slot`. Renaming
+creates a new revision and does not move existing pins. To recover, rename the
+library pattern, then change each calendar rule to pin the new revision.
 Custom effects are `static` or `chase`; brightness and speed are integers 0–100.
 Palettes contain 1–30 runs, each a #RRGGBB color and count 1–60. Native designs use
 `effect: native`, empty palette, brightness 100, speed 0, reverse false, plus a
@@ -50,6 +65,13 @@ and capture timestamp. A native design has no simulated color output.
   remain editable. Convert by creating a separate design, not changing provenance.
 - Controller import MUST use cached state only. It MUST preserve raw parameters,
   be atomic, and skip previously imported slots without overwriting edits.
+- Import trims the slot name for display. A slot name that is then empty or breaks
+  the name rule (for example blank, control or format characters) MUST NOT block
+  the batch: its display name becomes `Controller pattern N`, where N is the slot
+  ID. `native.name` keeps the original slot name exactly, for provenance; matching
+  uses slot ID and parameters, never names.
+- A design that fails validation, on create, update or import, MUST answer 400
+  with the validation message, never a generic 500.
 - Export/import MUST use only the design schema, excluding IDs and credentials.
 - List views SHOULD refresh shared state while visible. An active editor MUST
   retain unsaved changes when a newer server revision arrives and report conflicts.
@@ -80,6 +102,7 @@ and capture timestamp. A native design has no simulated color output.
 | --- | --- |
 | SQLite schema 3 | Pattern heads, immutable revisions and controller-import registry |
 | `web/src/pattern-vectors.json` | Shared expected logical-pixel colors for Go and browser tests |
+| `web/src/name-vectors.json` | Shared name validation cases for Go pattern/calendar and browser tests |
 | Browser strip preview | Canonical design and renderer; photo mapping reuses these colors |
 
 ## References

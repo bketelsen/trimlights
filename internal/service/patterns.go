@@ -77,6 +77,10 @@ func patternError(w http.ResponseWriter, r *http.Request, logger *slog.Logger, e
 		jsonError(w, 409, storage.ErrConflict.Error())
 	case errors.Is(err, storage.ErrNativeEdit):
 		jsonError(w, 400, storage.ErrNativeEdit.Error())
+	case errors.Is(err, storage.ErrNativeSource):
+		jsonError(w, 400, storage.ErrNativeSource.Error())
+	case errors.Is(err, pattern.ErrInvalid):
+		jsonError(w, 400, err.Error())
 	default:
 		serverError(w, r, logger, 500, "could not save or read the pattern library", err)
 	}

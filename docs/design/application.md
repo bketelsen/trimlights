@@ -273,9 +273,12 @@ The browser polls the shared library while visible and retains a draft on confli
 The editor supports names, favorites, color runs, brightness, reverse, static and
 chase software preview, duplicate, JSON import/export and revision history.
 Captured native patterns import atomically from the cached snapshot, retaining raw
-parameters and capture time. Reimport skips previously imported slots. Their
-palette controls and previews remain unavailable until decoding is verified.
-Go and TypeScript render the same shared golden logical-pixel vectors. Custom
+parameters and capture time. Reimport skips previously imported slots. A slot
+with an unusable name imports as `Controller pattern N`. Duplicates and file
+imports of native designs must match a cached slot exactly. Their palette controls
+and previews remain unavailable until decoding is verified. Go and TypeScript
+render the same shared golden logical-pixel vectors and validate names with
+shared vectors. Custom
 pattern writes remain unavailable; verified saved-slot playback uses the household
 worker. Scheduling pins retained revisions and shows reference impacts before changes.
 Photo uploads, roofline editing and software previews are implemented under the
