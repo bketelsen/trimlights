@@ -2,7 +2,8 @@ import {HousePreview} from './HousePreview';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {APIError,request,SignedOut,userMessage} from './api';
 import {LiveStatus} from './LiveRegion';
-import {exportDesign,newDesign,renderPattern,validateDesign} from './pattern';
+import {exportDesign,newDesign,parsePatternFile,renderPattern,validateDesign} from './pattern';
+import {copyName} from './uiText';
 import type {Design,SavedPattern} from './pattern';
 import {PreviewClock} from './previewClock';
 
@@ -36,7 +37,6 @@ function download(design:Design){
 }
 type Reference={rule_id:string;name:string;enabled:boolean;action:{revision:number}};
 function ReferenceNotice({references}:{references:Reference[]|null}){if(references?.length===0)return null;return <div className="notice">{references===null?'Checking your calendar…':references.length?<><strong>Used by your calendar</strong><ul>{references.map(r=><li key={r.rule_id}>{r.name}{r.enabled?'':' · paused'}</li>)}</ul><p>Your calendar keeps the pattern you originally chose. Choose it again in Calendar to use your latest edits.</p></>:''}</div>}
-function copyName(name:string){return [...name].slice(0,73).join('')+' (copy)'}
 
 export function PatternLibrary({csrf,onError,onDirty}:{csrf:string;onError:(error:unknown)=>void;onDirty:(dirty:boolean)=>void}){
  const [patterns,setPatterns]=useState<SavedPattern[]>([]);
@@ -91,7 +91,7 @@ export function PatternLibrary({csrf,onError,onDirty}:{csrf:string;onError:(erro
  const confirmArchive=async()=>{if(!archiveTarget)return;setBusy(true);try{await request(`/api/v1/patterns/${archiveTarget.id}/archive`,csrf,{}, {revision:archiveTarget.revision});setArchiveTarget(null);setNotice('Pattern archived. You can restore it from Archived.');await load();}catch(e){setArchiveTarget(null);report(e);}finally{setBusy(false)}};
  const toggleFavorite=async(p:SavedPattern)=>{setBusy(true);setError('');setNotice('');try{await request(`/api/v1/patterns/${p.id}`,csrf,{...p.design,favorite:!p.design.favorite},{method:'PUT',revision:p.revision});await load();}catch(e){report(e);}finally{setBusy(false)}};
  const importController=async()=>{setBusy(true);setError('');setNotice('');try{const result=await request<{imported:SavedPattern[];skipped:number;snapshot_at:string}>('/api/v1/patterns/import-controller',csrf,{});setNotice(`Added ${result.imported.length} patterns. ${result.skipped} were already in your library.`);await load();}catch(e){report(e);}finally{setBusy(false)}};
- const importFile=async(input:File)=>{const sequence=editorSequence.current;if(input.size>32768){setError('Choose a pattern file smaller than 32 KB.');return;}try{const design=JSON.parse(await input.text()) as Design;const invalid=validateDesign(design);if(invalid)throw new Error(invalid);if(!mounted.current||sequence!==editorSequence.current||!discardDraft())return;editorSequence.current++;setEditing(null);replaceDraft(design);setHistory(null);setConflict(false);setError('');setNotice('Imported into the editor. Review it, then save to your library.');}catch(e){report(e)}};
+ const importFile=async(input:File)=>{const sequence=editorSequence.current;if(input.size>32768){setError('Choose a pattern file smaller than 32 KB.');return;}try{const design=parsePatternFile(await input.text());if(!mounted.current||sequence!==editorSequence.current||!discardDraft())return;editorSequence.current++;setEditing(null);replaceDraft(design);setHistory(null);setConflict(false);setError('');setNotice('Imported into the editor. Review it, then save to your library.');}catch(e){report(e)}};
  const showHistory=async()=>{if(!editing)return;try{const result=await request<{revisions:SavedPattern[]}>(`/api/v1/patterns/${editing.id}/revisions`);setHistory(result.revisions);}catch(e){report(e)}};
  const reloadDraft=async()=>{if(!editing||busy||!discardDraft())return;const sequence=editorSequence.current;const before=JSON.stringify(draftRef.current);try{const latest=await request<SavedPattern>(`/api/v1/patterns/${editing.id}`);if(!mounted.current||sequence!==editorSequence.current)return;if(JSON.stringify(draftRef.current)!==before){setNotice('You edited the draft while the latest version was loading. Your edits have been kept.');return;}if(latest.archived){setError('This pattern was archived. Save your draft as a new pattern.');return;}open(latest);}catch(e){report(e)}};
  const filtered=patterns.filter(p=>p.archived===archived&&p.design.name.toLowerCase().includes(search.toLowerCase()));

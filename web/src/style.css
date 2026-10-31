@@ -60,6 +60,7 @@ h2 { line-height: 1.25; }
 .library-notice { margin: 0 0 24px; background: #263b2f; border-color: #426348; }
 .library-toolbar { margin-bottom: 24px; }
 .library .section-heading { margin-top: 0; }
+.activity-heading { margin-top: 0; }
 .saved-pattern { padding: 24px; display: flex; flex-direction: column; }
 .saved-pattern .row { align-items: flex-start; }
 .saved-pattern .eyebrow { padding-top: 12px; }

@@ -127,6 +127,16 @@ checkbox rows are at least 44 px high, and the page pads for device safe areas.
 A web app manifest and icons support home-screen shortcuts. The manifest keeps the
 default browser display mode: a standalone mode needs a phone sign-in check first.
 
+As of 2026-10-31, an error boundary around each page (and around the app) replaces
+a render error with a plain message: it says that the page's unsaved changes could
+not be kept, and it reloads only when the person chooses Reload. Reconnect asks
+before it reloads over unsaved Calendar, House or Library edits. Only the newest
+status request applies its answer, so a slow poll cannot overwrite fresher status.
+House shows its own load errors on the page, not in the global banner that the
+status poll clears. Before the first status arrives, Home says it is checking the
+lights. `request()` sends GET only without a CSRF token or body; a mutation without
+a token throws and sends nothing.
+
 Use clix's reserved `--json`, `--verbose/-v`, `--dry-run/-n`, and `--silent/-s`
 without redefining them. `--dry-run` must not call the current snapshot request,
 because that request can synchronize the controller clock. Use cached state for

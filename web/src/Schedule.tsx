@@ -1,9 +1,10 @@
-import {appendNativeRules} from './calendarDraft';
+import {appendNativeRules,repeatChange} from './calendarDraft';
 import {CalendarPreparation} from './CalendarPreparation';
 import {HousePreview} from './HousePreview';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {APIError,request,SignedOut,userMessage} from './api';
 import {LiveStatus} from './LiveRegion';
+import {copyName} from './uiText';
 import type {SavedPattern} from './pattern';
 
 export type Action={kind:'off'|'pattern';pattern_id?:string;revision?:number};
@@ -34,6 +35,8 @@ export function Schedule({csrf,onError,onDirty}:{csrf:string;onError:(error:unkn
  const [fromDate,setFromDate]=useState('');const [days,setDays]=useState(7);const [previewRange,setPreviewRange]=useState('');
  const [history,setHistory]=useState<Saved[]|null>(null);const [overrideAction,setOverrideAction]=useState<Action>({kind:'off'});const [overrideHours,setOverrideHours]=useState(1);
  const importing=useRef(false);const mounted=useRef(true);const draftRef=useRef<Plan|null>(null);const savedRef=useRef<Saved|null>(null);const loadSequence=useRef(0);const previewSequence=useRef(0);
+ // A special date has no weekdays; keep each rule's selection to give it back if it repeats again.
+ const lastWeekdays=useRef(new Map<string,number[]>());
  const dirty=!!draft&&JSON.stringify(draft)!==JSON.stringify(saved?.plan);
  draftRef.current=draft;savedRef.current=saved;
  const report=useCallback((e:unknown)=>{if(e instanceof SignedOut)onError(e);else setError(userMessage(e,'Could not update your calendar. Please try again.'));},[onError]);
@@ -101,7 +104,7 @@ export function Schedule({csrf,onError,onDirty}:{csrf:string;onError:(error:unkn
   {!draft.rules.length&&<section className="panel empty"><h3>Your evenings start here.</h3><p>Choose a pattern and the evenings you want it. Add special dates for holidays and celebrations.</p></section>}
   {rule&&<section className="panel calendar-editor"><div className="section-heading"><h2>Edit routine</h2><button className="button secondary" onClick={()=>setSelected(null)}>Close editor</button></div>
    <div className="calendar-grid"><label className="field">Name<input maxLength={80} value={rule.name} onChange={e=>updateRule({name:e.target.value})}/></label><label className="check-label"><input type="checkbox" checked={rule.enabled} onChange={e=>updateRule({enabled:e.target.checked})}/>Include this routine</label>
-   <label className="field">Repeat<select value={rule.kind} onChange={e=>{const kind=e.target.value as Rule['kind'];const start=rule.from||today(draft.timezone);updateRule({kind,from:kind==='weekly'?undefined:start,through:kind==='weekly'?undefined:kind==='exception'?start:rule.through||start,weekdays:kind==='exception'?[]:[0,1,2,3,4,5,6]})}}><option value="weekly">Weekly routine</option><option value="seasonal">Seasonal date range</option><option value="exception">Special date</option></select></label><details className="routine-priority"><summary>When routines overlap</summary><label className="field">Priority<input type="number" min="0" max="100" step="1" value={rule.priority} onChange={e=>updateRule({priority:Number(e.target.value)})}/><small>A higher number wins between routines of the same type.</small></label></details>
+   <label className="field">Repeat<select value={rule.kind} onChange={e=>{const kind=e.target.value as Rule['kind'];if(kind==='exception'&&rule.weekdays.length)lastWeekdays.current.set(rule.id,rule.weekdays);updateRule(repeatChange(rule,kind,today(draft.timezone),lastWeekdays.current.get(rule.id)))}}><option value="weekly">Weekly routine</option><option value="seasonal">Seasonal date range</option><option value="exception">Special date</option></select></label><details className="routine-priority"><summary>When routines overlap</summary><label className="field">Priority<input type="number" min="0" max="100" step="1" value={rule.priority} onChange={e=>updateRule({priority:Number(e.target.value)})}/><small>A higher number wins between routines of the same type.</small></label></details>
    {rule.kind==='weekly'&&<label className="check-label"><input type="checkbox" checked={!!rule.from} onChange={e=>updateRule(e.target.checked?{from:today(draft.timezone),through:today(draft.timezone)}:{from:undefined,through:undefined})}/>Limit to a date range</label>}
    {(rule.kind!=='weekly'||rule.from)&&<><label className="field">{rule.kind==='exception'?'Date':'First day'}<input type="date" value={rule.from??''} onChange={e=>updateRule({from:e.target.value,...(rule.kind==='exception'?{through:e.target.value}:{})})}/></label>{rule.kind!=='exception'&&<label className="field">Last day<input type="date" value={rule.through??''} onChange={e=>updateRule({through:e.target.value})}/></label>}</>}
    </div>
@@ -110,7 +113,7 @@ export function Schedule({csrf,onError,onDirty}:{csrf:string;onError:(error:unkn
    <label className="check-label"><input type="checkbox" checked={rule.end_next_day} onChange={e=>updateRule({end_next_day:e.target.checked})}/>End on the following day</label>
    <ActionPicker value={rule.action} patterns={patterns} onChange={action=>updateRule({action})}/>
    {rule.action.kind==='pattern'&&<HousePreview patternID={rule.action.pattern_id} revision={rule.action.revision}/>}
-   <div className="action-row"><button className="button secondary" onClick={()=>{const id=crypto.randomUUID();update({rules:[...draft.rules,{...structuredClone(rule),id,name:rule.name.slice(0,73)+' (copy)'}]});setSelected(id)}} disabled={draft.rules.length>=100}>Duplicate routine</button><button className="button secondary" onClick={()=>{if(window.confirm(`Remove ${rule.name} from this draft? You can find earlier versions in History.`)){update({rules:draft.rules.filter(r=>r.id!==rule.id)});setSelected(null)}}}>Remove from draft</button></div>
+   <div className="action-row"><button className="button secondary" onClick={()=>{const id=crypto.randomUUID();update({rules:[...draft.rules,{...structuredClone(rule),id,name:copyName(rule.name)}]});setSelected(id)}} disabled={draft.rules.length>=100}>Duplicate routine</button><button className="button secondary" onClick={()=>{if(window.confirm(`Remove ${rule.name} from this draft? You can find earlier versions in History.`)){update({rules:draft.rules.filter(r=>r.id!==rule.id)});setSelected(null)}}}>Remove from draft</button></div>
   </section>}
   <details className="panel calendar-settings"><summary>Try a temporary change</summary><p>Try a different pattern for a few hours in your plan, then return to your routines.</p>{draft.override?<><p><strong>{describeAction(draft.override.action)}</strong><br/>Starts {new Date(draft.override.starts_at).toLocaleString()}<br/>Ends {new Date(draft.override.expires_at).toLocaleString()}{new Date(draft.override.expires_at)<new Date()?' · Expired':''}</p><button className="button secondary" onClick={()=>update({override:undefined})}>Remove temporary change</button></>:<div className="calendar-grid"><ActionPicker label="Pattern" value={overrideAction} patterns={patterns} onChange={setOverrideAction}/><label className="field">Duration in hours<input type="number" min="0.25" max="168" step="0.25" value={overrideHours} onChange={e=>setOverrideHours(Number(e.target.value))}/></label><button className="button secondary" disabled={!Number.isFinite(overrideHours)||overrideHours<=0||overrideHours>168} onClick={()=>{const now=new Date();update({override:{id:crypto.randomUUID(),action:overrideAction,starts_at:now.toISOString(),expires_at:new Date(now.getTime()+overrideHours*3600000).toISOString()}})}}>Add to plan</button></div>}</details>
   </fieldset>
