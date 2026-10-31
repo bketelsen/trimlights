@@ -80,6 +80,18 @@ error text never reaches the client.
   escaped absolute `file:` URI, so `?`, `%` or `#` in a data directory name
   stay part of the path. The URI applies a 5-second busy timeout, WAL, foreign
   keys and FULL sync to every connection, including a replacement connection.
+- Data files MUST NOT be readable by other users, whatever the umask or the mode of
+  an existing data directory. The store creates `trimlights.db` with mode 0600
+  before SQLite opens it; SQLite gives `-wal` and `-shm` the database mode, and
+  the store checks them again after open. At startup the store sets mode 0600 on
+  the database, `-wal`, `-shm` and `-journal` files that have group or world access,
+  when this process owns them. The store MUST NOT change the data directory mode:
+  an operator dataset (for example on TrueNAS) can carry ACLs or settings that a
+  chmod would disturb. The store logs a `data permissions` warning for each file it
+  changes, each file it cannot change, and a data directory with group or world
+  access. It does not refuse to start. Migration backups are created 0600 before
+  VACUUM INTO writes them.
+  `serve` sets umask 0077 as defence in depth.
 - A process lock does not protect against another machine or another data directory
   owning the same hardware. Deployment MUST use a single active owner.
 - A restored data directory containing `controller-disabled` MUST disable controller

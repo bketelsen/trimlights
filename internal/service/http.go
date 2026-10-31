@@ -193,6 +193,9 @@ func Run(ctx context.Context, c Config) error {
 		return err
 	}
 	defer store.Close()
+	for _, note := range store.PermissionNotes() {
+		logger.Warn("data permissions", "detail", note)
+	}
 	if err := store.RecoverControlIntents(ctx); err != nil {
 		return err
 	}
