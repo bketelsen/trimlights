@@ -174,6 +174,10 @@ func begin(t *testing.T, a *Auth, f *providerFixture) (string, *http.Cookie) {
 	if q.Get("code_challenge_method") != "S256" || q.Get("nonce") == "" || q.Get("state") == "" {
 		t.Fatal(location)
 	}
+	// The service reads only sub and name; it must not ask for email.
+	if q.Get("scope") != "openid profile" {
+		t.Fatal("scope", q.Get("scope"))
+	}
 	f.mu.Lock()
 	f.nonce = q.Get("nonce")
 	f.challenge = q.Get("code_challenge")

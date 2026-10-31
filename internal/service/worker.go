@@ -15,6 +15,12 @@ import (
 var ErrQueueFull = errors.New("controller queue is full")
 var ErrDisabled = errors.New("controller access is disabled")
 
+// controlsUnavailable refuses a control that ControlAvailability does not
+// allow. Its message is the fixed availability reason, safe for clients.
+type controlsUnavailable struct{ reason string }
+
+func (e controlsUnavailable) Error() string { return e.reason }
+
 type Controller interface {
 	Snapshot(context.Context, int) (*trimlight.Snapshot, error)
 }
@@ -80,7 +86,7 @@ func (w *Worker) EnqueueControl(ctx context.Context, actor string, input trimlig
 		return "", nil, err
 	}
 	if available, reason := w.ControlAvailability(state); !available {
-		return "", nil, errors.New(reason)
+		return "", nil, controlsUnavailable{reason}
 	}
 	if state.Snapshot.StableSHA256 != input.BaselineSHA256 {
 		return "", nil, trimlight.ErrStaleBaseline
@@ -166,7 +172,7 @@ func (w *Worker) Run(ctx context.Context) {
 				readErr = err
 				if readErr == nil {
 					if available, reason := w.ControlAvailability(state); !available {
-						readErr = errors.New(reason)
+						readErr = controlsUnavailable{reason}
 					}
 				}
 				if readErr == nil && state.Snapshot.StableSHA256 != r.control.BaselineSHA256 {

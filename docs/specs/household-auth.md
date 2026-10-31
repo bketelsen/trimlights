@@ -16,6 +16,8 @@ The configured origin and issuer MUST be HTTPS URLs without query or fragment.
 The origin MUST contain only scheme and authority. The callback is always that
 origin plus `/auth/callback`. Allowed identities are exact OIDC `sub` values,
 not mutable email addresses. The client is confidential; its secret stays in Go.
+The authorization request asks only for the `openid profile` scopes. The service
+reads only the `sub` and `name` claims and never requests an email address.
 
 ## Rules
 
