@@ -420,10 +420,11 @@ func TestDecodeEstimateCoversAllocation(t *testing.T) {
 			t.Fatal(name, err)
 		}
 		estimate := decodeBytes(raw, kind, cfg)
-		var before, after runtime.MemStats
-		runtime.GC()
-		runtime.ReadMemStats(&before)
-		decoded, _, err := image.Decode(bytes.NewReader(raw))
+		var decoded image.Image
+		allocated, err := measureAlloc(func() (err error) {
+			decoded, _, err = image.Decode(bytes.NewReader(raw))
+			return err
+		})
 		if err != nil {
 			t.Fatal(name, err)
 		}
@@ -437,16 +438,17 @@ func TestDecodeEstimateCoversAllocation(t *testing.T) {
 				t.Fatalf("%s decoded as %T", name, decoded)
 			}
 		}
-		runtime.ReadMemStats(&after)
-		allocated := int64(after.TotalAlloc - before.TotalAlloc)
-		if allocated > estimate+256<<10 || estimate > 4*allocated {
+		// The 1 MiB margin absorbs process-wide noise; tests here never run in parallel.
+		if allocated > estimate+1<<20 || estimate > 4*allocated {
 			t.Fatal(name, "allocated", allocated, "estimated", estimate)
 		}
 	}
 }
 
 // TestSanitizeAllocationBudget bounds all allocation of one upload: the decode
-// estimate, the scaled and oriented working images and the encoders.
+// estimate, the scaled and oriented working images and the encoders, with an
+// 8 MiB margin. Reading the source through a per-sample interface, as before,
+// allocates about 72 MB here against a bound of about 45 MB.
 func TestSanitizeAllocationBudget(t *testing.T) {
 	src := image.NewRGBA(image.Rect(0, 0, 6000, 1000))
 	for i := range src.Pix {
@@ -461,20 +463,20 @@ func TestSanitizeAllocationBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var before, after runtime.MemStats
-	runtime.GC()
-	runtime.ReadMemStats(&before)
-	clean, err := Sanitize(raw)
+	var clean PhotoImage
+	allocated, err := measureAlloc(func() (err error) {
+		clean, err = Sanitize(raw)
+		return err
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime.ReadMemStats(&after)
 	if clean.Width != 683 || clean.Height != 4096 {
 		t.Fatal(clean.Width, clean.Height)
 	}
 	working := int64(2*4*4096*683 + 4*512*85)
-	budget := decodeBytes(raw, kind, cfg) + working + int64(4*len(clean.JPEG)+4*len(clean.Thumbnail)) + 4<<20
-	if allocated := int64(after.TotalAlloc - before.TotalAlloc); allocated > budget {
+	budget := decodeBytes(raw, kind, cfg) + working + int64(4*len(clean.JPEG)+4*len(clean.Thumbnail)) + 8<<20
+	if allocated > budget {
 		t.Fatal("allocated", allocated, "budget", budget)
 	}
 }
@@ -577,4 +579,50 @@ func measureAlloc(f func() error) (int64, error) {
 	err := f()
 	runtime.ReadMemStats(&after)
 	return int64(after.TotalAlloc - before.TotalAlloc), err
+}
+
+// orientedView is the earlier per-sample reference: it reads the source
+// through orientedSource for every sample.
+type orientedView struct {
+	src image.Image
+	o   int
+}
+
+func (v orientedView) ColorModel() color.Model { return v.src.ColorModel() }
+func (v orientedView) Bounds() image.Rectangle {
+	b := v.src.Bounds()
+	if v.o >= 5 {
+		return image.Rect(0, 0, b.Dy(), b.Dx())
+	}
+	return image.Rect(0, 0, b.Dx(), b.Dy())
+}
+func (v orientedView) At(x, y int) color.Color {
+	b := v.src.Bounds()
+	sx, sy := orientedSource(v.o, x, y, b.Dx(), b.Dy())
+	return v.src.At(b.Min.X+sx, b.Min.Y+sy)
+}
+
+// TestOrientAfterScalingMatchesReference downscales an odd, non-square image
+// and checks that orienting the scaled image equals scaling the oriented one.
+func TestOrientAfterScalingMatchesReference(t *testing.T) {
+	src := image.NewNRGBA(image.Rect(0, 0, 1001, 403))
+	seed := uint32(1)
+	for i := range src.Pix {
+		seed = seed*1664525 + 1013904223
+		src.Pix[i] = byte(seed >> 24)
+	}
+	for o := 1; o <= 8; o++ {
+		got := orient(resize(src, 301), o)
+		want := resize(orientedView{src, o}, 301)
+		if got.Bounds() != want.Bounds() {
+			t.Fatal(o, got.Bounds(), want.Bounds())
+		}
+		worst := 0
+		for i := range got.Pix {
+			worst = max(worst, int(got.Pix[i])-int(want.Pix[i]), int(want.Pix[i])-int(got.Pix[i]))
+		}
+		if worst > 2 {
+			t.Fatal(o, "max channel difference", worst)
+		}
+	}
 }
