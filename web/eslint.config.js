@@ -1,11 +1,12 @@
 import js from '@eslint/js';
-import { defineConfig } from 'eslint/config';
+import { defineConfig, globalIgnores } from 'eslint/config';
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig(
+  globalIgnores(['.test-build/']),
   js.configs.recommended,
   tseslint.configs.recommended,
   {
@@ -26,7 +27,7 @@ export default defineConfig(
     },
   },
   {
-    files: ['*.{js,ts}', 'src/**/*.mjs'],
+    files: ['*.{js,ts}', 'scripts/**/*.mjs', 'src/**/*.mjs'],
     languageOptions: { globals: globals.node },
   },
 );

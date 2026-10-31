@@ -1,3 +1,5 @@
 pnpm-lock.yaml
+# Compiled components for src/components.test.mjs.
+.test-build/
 # Golden vectors shared with the Go tests; keep their bytes stable.
 src/*-vectors.json

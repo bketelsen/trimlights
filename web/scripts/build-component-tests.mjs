@@ -10,7 +10,8 @@ import {fileURLToPath} from 'node:url';
 
 const web=fileURLToPath(new URL('../',import.meta.url));
 const out=join(web,'.test-build');
-const tsc=join(dirname(createRequire(import.meta.url).resolve('typescript/package.json')),'bin','tsc');
+// @typescript/native is TypeScript 7; typescript is the TypeScript 6 API for ESLint.
+const tsc=join(dirname(createRequire(import.meta.url).resolve('@typescript/native/package.json')),'bin','tsc');
 rmSync(out,{recursive:true,force:true});
 execFileSync(process.execPath,[tsc,'-p','tsconfig.test.json'],{cwd:web,stdio:'inherit'});
 // package.json declares "type":"module"; mark the output as CommonJS.

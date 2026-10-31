@@ -7,5 +7,8 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "src/*.test.mjs"]
+  "include": ["vite.config.ts", "scripts/*.mjs", "src/*.test.mjs"],
+  // components.test.mjs imports the untyped .test-build output, which exists only
+  // after scripts/build-component-tests.mjs runs.
+  "exclude": ["src/components.test.mjs"]
 }

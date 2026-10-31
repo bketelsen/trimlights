@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {clockTime,repeatLabel} from './uiText.ts';
 
 // The browser's locale decides the format, so compare with the same formatter.
-const local=(hour,minute)=>new Date(2000,0,1,hour,minute).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
+const local=(/** @type {number} */hour,/** @type {number} */minute)=>new Date(2000,0,1,hour,minute).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
 
 test('clockTime formats controller HH:MM times in the local format',()=>{
- for(const [value,hour,minute] of [['00:00',0,0],['07:05',7,5],['12:00',12,0],['19:30',19,30],['23:59',23,59]]){
+ for(const [value,hour,minute] of /** @type {[string,number,number][]} */([['00:00',0,0],['07:05',7,5],['12:00',12,0],['19:30',19,30],['23:59',23,59]])){
   const label=clockTime(value);
   assert.equal(label,local(hour,minute),value);
   assert.ok(label.length>0,value);
