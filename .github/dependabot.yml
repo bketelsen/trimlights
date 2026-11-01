@@ -29,6 +29,13 @@ updates:
     groups:
       web-minor-patch:
         update-types: [minor, patch]
+    # @types/node follows the Node runtime major, which stays on 24: CI pins
+    # node-version 24.19.0 and web/package.json has engines.node >=24.19.0
+    # (Brian, 2026-11-01). Newer type majors could accept APIs that Node 24
+    # lacks. A runtime move changes CI, engines.node and @types/node together.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   # Keeps the SHA pins and their version comments in .github/workflows current.
   - package-ecosystem: github-actions
