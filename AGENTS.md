@@ -32,6 +32,23 @@ Reusable procedures belong in `.agents/skills/`, starting from its TEMPLATE.
   `attestations`; neither runs repository build code
   ([ADR-0015](docs/adr/0015-versioned-attested-images.md)). Release tags come from `make bump`.
 
+## Releases and dependencies
+
+- Tags are `vX.Y.Z`. Brian runs `make bump` on a clean, current main: it runs
+  `make check`, takes `svu next` (Conventional Commits) and pushes the tag. The
+  tag push runs `.github/workflows/check.yml`, which builds, publishes and
+  promotes the attested image. Agents never tag, push tags or release.
+- Internal dependencies: `github.com/frostyard/clix` in `go.mod`
+  (`github.com/frostyard/std` is indirect). No frostyard or bketelsen package
+  is in `web/package.json`. No other repository is known to depend on this one.
+- Dependabot ignores `golang.org/x/crypto/x509roots/fallback`, the CA roots of
+  the scratch image (`.github/dependabot.yml`). At each hygiene pass, compare
+  its pin in `go.mod` with `go list -m golang.org/x/crypto/x509roots/fallback@latest`;
+  when `@latest` is newer, bump it with `go get` and `go mod tidy` in a PR
+  (Brian, T647c, 2026-11-01).
+- Dependabot also ignores `@types/node` majors: the types follow the Node 24
+  runtime that CI pins (Brian, T647a, 2026-11-01).
+
 ## Repository boundary
 
 Do not commit credentials, captures, experiment output, personal photos, runtime

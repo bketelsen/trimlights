@@ -10,7 +10,7 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/nathan-osman/go-sunrise v1.1.0
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/crypto/x509roots/fallback v0.0.0-20261027005312-1da6254a58cf
+	golang.org/x/crypto/x509roots/fallback v0.0.0-20261030153154-30a33513ff6d
 	golang.org/x/image v0.47.0
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sys v0.49.0
