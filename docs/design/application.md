@@ -435,9 +435,9 @@ The [Compose example](../../deploy/compose.example.yaml) runs
 exits nonzero on any status other than 200, a timeout, a refused connection or
 a redirect. See the [local service contract](../specs/local-service.md).
 Dependabot proposes weekly Go module, web package and action pin updates.
-It ignores `golang.org/x/crypto/x509roots/fallback`: that module has only
-pseudo-versions, which Dependabot cannot resolve, so its CA roots are updated
-by hand with `go get golang.org/x/crypto/x509roots/fallback@latest`. It also
+It ignores `golang.org/x/crypto/x509roots/fallback`: that nested module has no
+version tags, and Dependabot takes the parent module's tag, which does not
+contain the package, so its CA roots are updated by hand with `go get golang.org/x/crypto/x509roots/fallback@latest`. It also
 ignores major updates of `@types/node`: the types follow the Node 24 runtime
 that CI pins, and a runtime move changes both together.
 
