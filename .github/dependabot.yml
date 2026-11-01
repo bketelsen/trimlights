@@ -11,6 +11,14 @@ updates:
     groups:
       go-minor-patch:
         update-types: [minor, patch]
+    # golang.org/x/crypto/x509roots/fallback (the CA roots of the scratch image)
+    # is a nested module with no version tags, only pseudo-versions. Dependabot
+    # takes the tag of golang.org/x/crypto (v0.58.0 on 2026-10-31), which does
+    # not contain the package, and the whole gomod job fails with
+    # dependency_file_not_resolvable. Update it by hand:
+    #   go get golang.org/x/crypto/x509roots/fallback@latest && go mod tidy
+    ignore:
+      - dependency-name: golang.org/x/crypto/x509roots/fallback
 
   # npm covers pnpm: Dependabot updates web/pnpm-lock.yaml with package.json.
   - package-ecosystem: npm

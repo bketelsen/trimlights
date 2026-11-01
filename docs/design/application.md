@@ -435,6 +435,9 @@ The [Compose example](../../deploy/compose.example.yaml) runs
 exits nonzero on any status other than 200, a timeout, a refused connection or
 a redirect. See the [local service contract](../specs/local-service.md).
 Dependabot proposes weekly Go module, web package and action pin updates.
+It ignores `golang.org/x/crypto/x509roots/fallback`: that module has only
+pseudo-versions, which Dependabot cannot resolve, so its CA roots are updated
+by hand with `go get golang.org/x/crypto/x509roots/fallback@latest`.
 
 Server loss can leave the last lighting state active. Controller-native fallback
 is a separate capability to validate, not a hidden assumption. Keep a documented
