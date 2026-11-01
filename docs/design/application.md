@@ -438,7 +438,8 @@ Dependabot proposes weekly Go module, web package and action pin updates.
 It ignores `golang.org/x/crypto/x509roots/fallback`: that nested module has no
 version tags, and Dependabot takes the parent module's tag, which does not
 contain the package, so its CA roots are updated by hand with
-`go get golang.org/x/crypto/x509roots/fallback@latest`. It also
+`go get golang.org/x/crypto/x509roots/fallback@latest` at each hygiene pass
+(see [AGENTS.md](../../AGENTS.md#releases-and-dependencies)). It also
 ignores major updates of `@types/node`: the types follow the Node 24 runtime
 that CI pins, and a runtime move changes both together.
 
