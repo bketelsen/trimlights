@@ -1,7 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { canvasTouchAction, positions, rotateView, sourceRun, withAdjustment } from './house.ts';
+import {
+  canvasTouchAction,
+  missingPhotoViews,
+  positions,
+  rotateView,
+  sourceRun,
+  usesPhoto,
+  withAdjustment,
+  withoutMissingPhotos,
+} from './house.ts';
 for (const v of JSON.parse(
   readFileSync(new URL('./house-vectors.json', import.meta.url), 'utf8'),
 )) {
@@ -66,4 +75,28 @@ test('a bulb adjustment replaces, clamps and resets one index', () => {
     adjustments: withAdjustment([], 1, { x: 0.5, y: 0.5 }),
   };
   assert.deepEqual(positions(mapping, 3, 100, 100)[1], { x: 0.5, y: 0.5 });
+});
+test('a view of a deleted photo is found and left out without changing the layout', () => {
+  const layout = {
+    schema: 1,
+    runs: [],
+    views: [
+      { photo_id: 'kept', turns: 0, mappings: [] },
+      { photo_id: 'gone', turns: 1, mappings: [] },
+      { photo_id: 'also-gone', turns: 0, mappings: [] },
+    ],
+  };
+  const photos = [{ id: 'kept', name: 'House photo', width: 80, height: 40, created: '' }];
+  assert.equal(usesPhoto(layout, 'gone'), true);
+  assert.equal(usesPhoto(layout, 'kept'), true);
+  assert.equal(usesPhoto(layout, 'other'), false);
+  assert.deepEqual(missingPhotoViews(layout, photos), ['gone', 'also-gone']);
+  assert.deepEqual(withoutMissingPhotos(layout, photos), {
+    layout: { ...layout, views: [layout.views[0]] },
+    removed: 2,
+  });
+  // The input keeps every view, and a complete photo list removes nothing.
+  assert.equal(layout.views.length, 3);
+  assert.equal(withoutMissingPhotos(layout, [...photos, { ...photos[0], id: 'gone' }]).removed, 1);
+  assert.equal(missingPhotoViews(layout, layout.views.map((v) => ({ id: v.photo_id }))).length, 0);
 });

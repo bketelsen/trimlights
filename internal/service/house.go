@@ -21,6 +21,8 @@ func houseError(w http.ResponseWriter, r *http.Request, logger *slog.Logger, err
 		jsonError(w, 409, err.Error())
 	case errors.Is(err, storage.ErrPhotoReference):
 		jsonError(w, 400, err.Error())
+	case errors.Is(err, storage.ErrPhotoInUse):
+		jsonError(w, 409, err.Error())
 	default:
 		serverError(w, r, logger, 500, "could not read or save house photos and mapping", err)
 	}
@@ -67,6 +69,13 @@ func registerHouse(mux *http.ServeMux, store *storage.Store, logger *slog.Logger
 		}
 		w.Header().Set("Location", "/api/v1/photos/"+saved.ID+"/image")
 		jsonResponse(w, 201, saved)
+	})
+	mux.HandleFunc("DELETE /api/v1/photos/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if err := store.DeletePhoto(r.Context(), r.PathValue("id")); err != nil {
+			houseError(w, r, logger, err)
+			return
+		}
+		w.WriteHeader(204)
 	})
 	for _, kind := range []string{"image", "thumbnail"} {
 		mux.HandleFunc("GET /api/v1/photos/{id}/"+kind, func(w http.ResponseWriter, r *http.Request) {

@@ -13,6 +13,7 @@ import (
 var ErrHouseConflict = errors.New("house mapping changed on another device; keep your draft or reload before saving")
 var ErrPhotoLimit = errors.New("household photo limit reached (20)")
 var ErrPhotoReference = errors.New("layout references a photo that does not exist in this household; restore the matching full backup first")
+var ErrPhotoInUse = errors.New("the saved house layout uses this photo; remove its view and save the house before you delete the photo")
 
 type Photo struct {
 	ID      string    `json:"id"`
@@ -80,6 +81,60 @@ func (s *Store) PhotoBytes(ctx context.Context, id string, thumbnail bool) ([]by
 		err = ErrMissing
 	}
 	return raw, err
+}
+
+// DeletePhoto removes one photo that the current (newest) house revision does not
+// use, with the references that older revisions hold. Older revision bodies keep
+// naming the photo, so they load without it. The connection overwrites freed pages
+// and then truncates the WAL, so the live database keeps no readable copy of the
+// blob after a successful checkpoint; a busy checkpoint does not fail the deletion.
+func (s *Store) DeletePhoto(ctx context.Context, id string) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err = conn.ExecContext(ctx, "PRAGMA secure_delete=ON"); err != nil {
+		return err
+	}
+	// The pragma belongs to this connection, which the pool keeps; restore it last.
+	defer func() { _, _ = conn.ExecContext(context.Background(), "PRAGMA secure_delete=OFF") }()
+	if err = deletePhoto(ctx, conn, id); err != nil {
+		return err
+	}
+	_, _ = conn.ExecContext(context.Background(), "PRAGMA wal_checkpoint(TRUNCATE)")
+	return nil
+}
+func deletePhoto(ctx context.Context, conn *sql.Conn, id string) error {
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var exists, inUse bool
+	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM photos WHERE id=?)", id).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return ErrMissing
+	}
+	var revision int
+	if err = tx.QueryRowContext(ctx, "SELECT MAX(revision) FROM house_revisions").Scan(&revision); err != nil {
+		return err
+	}
+	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM house_photo_refs WHERE revision=? AND photo_id=?)", revision, id).Scan(&inUse); err != nil {
+		return err
+	}
+	if inUse {
+		return ErrPhotoInUse
+	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM house_photo_refs WHERE photo_id=?", id); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM photos WHERE id=?", id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 func scanHouse(row scanner) (SavedHouse, error) {
 	var h SavedHouse

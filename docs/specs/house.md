@@ -11,6 +11,7 @@ previews. Hardware calibration and playback remain separate acceptance work.
 | `/api/v1/photos` | POST | Raw image body; creates a sanitized photo |
 | `/api/v1/photos/{id}/image` | GET | Authenticated full JPEG |
 | `/api/v1/photos/{id}/thumbnail` | GET | Authenticated thumbnail JPEG |
+| `/api/v1/photos/{id}` | DELETE | Delete a photo that the current layout does not use; 204 |
 | `/api/v1/house` | GET, PUT | Current house layout; PUT requires quoted If-Match revision |
 | `/api/v1/house/validate` | POST | Validate an imported layout and existing photo references without saving |
 | `/api/v1/house/revisions` | GET | Immutable saved layouts |
@@ -81,18 +82,35 @@ Layout schema 1 contains `runs` and `views`. Each run has a stable `id`, `name`,
   4xx text is safe to show the household. The browser MUST show that text for a 4xx
   answer, and its own wording for 409 conflicts, the 409 photo limit, 403 and gateway
   pages that are not this JSON (for example a proxy's 413, 429 or 502 HTML).
+- `DELETE /api/v1/photos/{id}` MUST answer 204 with no body, 404 for an unknown
+  photo, and 409 while the current (newest) layout revision has a view of the photo.
+  One transaction MUST check the current revision, delete the photo's
+  `house_photo_refs` rows of older revisions and delete the photo with its image and
+  thumbnail. Revision bodies MUST NOT change. The deletion MUST run with SQLite
+  `secure_delete` on and then request a truncating WAL checkpoint; a busy checkpoint
+  does not fail the deletion. The freed place counts again toward the 20-photo limit.
+- The browser MUST confirm before it deletes a photo. When the draft or the saved
+  layout has a view of the photo, it MUST NOT send the deletion: it offers to remove
+  the view from the draft, and the household saves before it deletes. A 409 answer
+  MUST say that the saved house still uses the photo; a 404 MUST say that the photo
+  is already gone.
+- Saved versions MUST mark each view whose photo no longer exists "photo removed".
+  "Use as draft" MUST leave those views out of the draft and say so. When the photo
+  list changes and the selected photo is gone, the editor selects the first photo.
 - Upload originals MUST NOT be retained or copied into the public repository.
   Physical calibration MUST NOT be inferred from uploaded photos or user geometry.
 
 ## Derived artifacts
 
 SQLite schema 5 includes sanitized photos, layout revisions and photo-reference
-foreign keys. Shared geometry examples exercise Go and TypeScript interpolation.
+foreign keys. Since photo deletion (2026-11-02), `house_photo_refs` lists the photos
+that each retained revision can still show, not every photo its body names. Shared geometry examples exercise Go and TypeScript interpolation.
 House views use the existing pattern renderer and its golden vectors.
 
 ## References
 
-- Rationale: [ADR-0008](../adr/0008-private-photos-and-physical-mapping.md).
+- Rationale: [ADR-0008](../adr/0008-private-photos-and-physical-mapping.md);
+  deletion: [ADR-0017](../adr/0017-delete-unused-house-photos.md).
 - Context: [application design](../design/application.md).
 - Delivery: [roadmap Phase 5](../plans/roadmap.md#phase-5--house-photos-roofline-mapping-and-previews-l).
 - Acceptance: [household v1](v1-acceptance.md).

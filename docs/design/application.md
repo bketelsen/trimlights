@@ -357,7 +357,10 @@ action that restores the previous scene.
 Store image dimensions, orientation and normalized coordinates independently of
 screen size. Normalize iPhone orientation and HEIC input locally with a vetted
 conversion path; support JPEG/PNG/WebP. Bound dimensions/size and remove location
-metadata. Photos stay on the homelab and in its backups.
+metadata. Photos stay on the homelab and in its backups. A photo can be deleted
+when the current layout has no view of it; older revisions keep their bodies and
+show "photo removed" ([ADR-0017](../adr/0017-delete-unused-house-photos.md),
+[house contract](../specs/house.md)).
 
 Canvas renders colored points and optional glow over the photo. Local preview does
 not send controller commands. Editing, preview and controller compilation share a

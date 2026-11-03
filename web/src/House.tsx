@@ -1,8 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { APIError, photoUploadMessage, request, SignedOut, userMessage } from './api';
+import {
+  APIError,
+  photoDeleteMessage,
+  photoUploadMessage,
+  request,
+  SignedOut,
+  userMessage,
+} from './api';
 import { HouseCanvas } from './HouseCanvas';
 import { LiveStatus } from './LiveRegion';
-import { positions, rotateView, withAdjustment } from './house';
+import {
+  missingPhotoViews,
+  positions,
+  rotateView,
+  usesPhoto,
+  withAdjustment,
+  withoutMissingPhotos,
+} from './house';
 import type { CanvasMode, Layout, Mapping, Photo, Run, SavedHouse, View } from './house';
 import type { SavedPattern } from './pattern';
 
@@ -78,7 +92,7 @@ export function House({
           setRedoCount(0);
           setConflict(false);
         }
-        setPhotoID((id) => id || p.photos[0]?.id || '');
+        setPhotoID((id) => (p.photos.some((x) => x.id === id) ? id : p.photos[0]?.id || ''));
         setLoadError('');
       } catch (e) {
         if (e instanceof SignedOut) onError(e);
@@ -271,6 +285,59 @@ export function House({
       if (mounted.current) setBusy(false);
     }
   }
+  function forgetPhoto(id: string) {
+    const rest = photos.filter((p) => p.id !== id);
+    setPhotos(rest);
+    if (photoID === id) setPhotoID(rest[0]?.id ?? '');
+  }
+  // The service refuses a photo that the saved house still uses, so this offers the
+  // 2 steps in order and never saves as a side effect.
+  async function deletePhoto() {
+    if (!photo) return;
+    const id = photo.id;
+    if (draftRef.current && usesPhoto(draftRef.current, id)) {
+      if (
+        window.confirm(
+          'This photo has a view in the house layout. Remove its view (rooflines and rotation) from your draft? Then save the house and delete the photo.',
+        )
+      ) {
+        change((l) => {
+          l.views = l.views.filter((v) => v.photo_id !== id);
+        });
+        setMessage('Photo view removed from your draft. Save the house, then delete the photo.');
+      }
+      return;
+    }
+    if (saved && usesPhoto(saved.layout, id)) {
+      setMessage('Save the house first: the saved house still uses this photo.');
+      return;
+    }
+    if (
+      !window.confirm(
+        'Delete this photo for everyone? Older saved versions will show "photo removed". Only a full backup can bring it back.',
+      )
+    )
+      return;
+    setBusy(true);
+    try {
+      await request<void>('/api/v1/photos/' + encodeURIComponent(id), csrf, undefined, {
+        method: 'DELETE',
+      });
+      if (!mounted.current) return;
+      forgetPhoto(id);
+      setMode('pan');
+      setMessage('Photo deleted.');
+    } catch (e) {
+      if (e instanceof SignedOut) onError(e);
+      else if (mounted.current) {
+        setMessage(photoDeleteMessage(e));
+        // A 404 means another device deleted it first, so this photo list is stale.
+        if (e instanceof APIError && e.status === 404) forgetPhoto(id);
+      }
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  }
   async function save() {
     if (!draft || !saved) return;
     const submitted = JSON.stringify(draft);
@@ -332,6 +399,11 @@ export function House({
         {photo && (
           <button className="button primary" disabled={draft.runs.length >= 40} onClick={addRun}>
             Add roofline
+          </button>
+        )}
+        {photo && (
+          <button className="button secondary" disabled={busy} onClick={() => void deletePhoto()}>
+            Delete photo
           </button>
         )}
         <span className="muted">{photos.length}/20 photos · JPEG, PNG, WebP · up to 12 MB</span>
@@ -788,20 +860,32 @@ export function House({
       {!!history.length && (
         <section className="panel house-history">
           <h2>Saved versions</h2>
-          {history.map((h) => (
-            <div className="row" key={h.revision}>
-              <span>{new Date(h.updated).toLocaleString()}</span>
-              <button
-                className="button secondary"
-                onClick={() => {
-                  if (!dirty || window.confirm('Replace your changes with this saved version?'))
-                    change((l) => Object.assign(l, clone(h.layout)));
-                }}
-              >
-                Use as draft
-              </button>
-            </div>
-          ))}
+          {history.map((h) => {
+            const removed = missingPhotoViews(h.layout, photos);
+            return (
+              <div className="row" key={h.revision}>
+                <span>{new Date(h.updated).toLocaleString()}</span>
+                {!!removed.length && (
+                  <span className="muted">
+                    {removed.length === 1 ? 'photo removed' : `${removed.length} photos removed`}
+                  </span>
+                )}
+                <button
+                  className="button secondary"
+                  onClick={() => {
+                    if (!dirty || window.confirm('Replace your changes with this saved version?')) {
+                      const next = withoutMissingPhotos(clone(h.layout), photos);
+                      change((l) => Object.assign(l, next.layout));
+                      if (next.removed > 0)
+                        setMessage('Views of removed photos were left out of this draft.');
+                    }
+                  }}
+                >
+                  Use as draft
+                </button>
+              </div>
+            );
+          })}
         </section>
       )}
     </>

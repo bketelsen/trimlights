@@ -56,6 +56,22 @@ export function rotateView(view: View): View {
 export function sourceRun(run: Run, runs: Run[]): Run {
   return runs.find((r) => r.id === run.mirror_of) ?? run;
 }
+// A house view names the photo it draws; a deleted photo leaves the view behind.
+export function usesPhoto(layout: Layout, photoID: string): boolean {
+  return layout.views.some((v) => v.photo_id === photoID);
+}
+export function missingPhotoViews(layout: Layout, photos: Photo[]): string[] {
+  return layout.views
+    .filter((v) => !photos.some((p) => p.id === v.photo_id))
+    .map((v) => v.photo_id);
+}
+export function withoutMissingPhotos(
+  layout: Layout,
+  photos: Photo[],
+): { layout: Layout; removed: number } {
+  const kept = layout.views.filter((v) => photos.some((p) => p.id === v.photo_id));
+  return { layout: { ...layout, views: kept }, removed: layout.views.length - kept.length };
+}
 export type CanvasMode = 'draw' | 'points' | 'bulbs' | 'pan';
 // Let a vertical swipe scroll the page unless the canvas needs the gesture:
 // drawing or dragging corners/bulbs, or moving a zoomed photo.
