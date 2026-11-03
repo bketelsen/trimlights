@@ -329,7 +329,12 @@ func TestCalendarRunnerFallBackIntervalAndConflict(t *testing.T) {
 	if c.writes != 2 || c.raw[3] != 0 {
 		t.Fatal("did not end at second repeated end")
 	}
+	// The conflict uses a window after the repeated hour on 2026-11-01, so every
+	// instant in the test is on or before 2026-11-01 07:35 UTC, after the settled
+	// fall-back, and a future tzdata rule cannot change the result.
 	// Conflicting intent pauses rather than silently assigning ownership to a rule.
+	plan.Rules[0].Start.Time = "02:00"
+	plan.Rules[0].End.Time = "03:00"
 	duplicate := plan.Rules[0]
 	duplicate.ID = "conflict"
 	duplicate.Action = schedule.Action{Kind: "off"}
@@ -337,7 +342,7 @@ func TestCalendarRunnerFallBackIntervalAndConflict(t *testing.T) {
 	if _, err := r.store.SaveSchedule(context.Background(), 3, plan, "owner"); err != nil {
 		t.Fatal(err)
 	}
-	clock.Set(time.Date(2026, 11, 8, 6, 35, 0, 0, time.UTC))
+	clock.Set(time.Date(2026, 11, 1, 7, 35, 0, 0, time.UTC))
 	step(t, r)
 	if c.writes != 2 || runtimeState(t, r).Status != "paused" {
 		t.Fatal("conflict was delivered")
