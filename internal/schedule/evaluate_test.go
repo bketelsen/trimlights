@@ -425,38 +425,40 @@ func patternAction(id string) Action { return Action{Kind: "pattern", PatternID:
 var off = Action{Kind: "off"}
 
 func TestMidnightDSTGapAndRepeatEndToEnd(t *testing.T) {
-	// Cuba changes clocks at local midnight: 2026-03-08 00:00 CST becomes 01:00 CDT,
-	// and 2026-11-01 01:00 CDT becomes 00:00 CST, so midnight repeats.
+	// Cuba changes clocks at local midnight: 2025-03-09 00:00 CST becomes 01:00 CDT,
+	// and 2025-11-02 01:00 CDT becomes 00:00 CST, so midnight repeats. Use settled
+	// past transitions: tzdata can change future rules, and the host's copy can differ
+	// from Go's (tzdata 2026f removed Cuba's 2026-11-01 fall-back).
 	havana := zone(t, "America/Havana")
-	assertLocal(t, havana, "2026-03-08T04:59:00Z", "2026-03-07T23:59:00-05:00")
-	assertLocal(t, havana, "2026-03-08T05:00:00Z", "2026-03-08T01:00:00-04:00")
-	assertLocal(t, havana, "2026-11-01T04:00:00Z", "2026-11-01T00:00:00-04:00")
-	assertLocal(t, havana, "2026-11-01T05:00:00Z", "2026-11-01T00:00:00-05:00")
+	assertLocal(t, havana, "2025-03-09T04:59:00Z", "2025-03-08T23:59:00-05:00")
+	assertLocal(t, havana, "2025-03-09T05:00:00Z", "2025-03-09T01:00:00-04:00")
+	assertLocal(t, havana, "2025-11-02T04:00:00Z", "2025-11-02T00:00:00-04:00")
+	assertLocal(t, havana, "2025-11-02T05:00:00Z", "2025-11-02T00:00:00-05:00")
 	p := Default()
 	p.Timezone = "America/Havana"
 	p.Rules = []Rule{allDays("early", "00:00", "02:00", "early")}
 
-	out, err := EvaluateDates(p, "2026-03-08", 1)
+	out, err := EvaluateDates(p, "2025-03-09", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The local day starts at 01:00 CDT and lasts 23 hours.
 	checkSegments(t, out, []Segment{
-		{From: instant("2026-03-08T05:00:00Z"), Until: instant("2026-03-08T06:00:00Z"), Action: patternAction("early")},
-		{From: instant("2026-03-08T06:00:00Z"), Until: instant("2026-03-09T04:00:00Z"), Action: off},
+		{From: instant("2025-03-09T05:00:00Z"), Until: instant("2025-03-09T06:00:00Z"), Action: patternAction("early")},
+		{From: instant("2025-03-09T06:00:00Z"), Until: instant("2025-03-10T04:00:00Z"), Action: off},
 	})
-	checkIssues(t, out, []Issue{{"early", "2026-03-08", "Missing clock time: shifted forward by 1h0m0s.", false}})
+	checkIssues(t, out, []Issue{{"early", "2025-03-09", "Missing clock time: shifted forward by 1h0m0s.", false}})
 
-	out, err = EvaluateDates(p, "2026-11-01", 1)
+	out, err = EvaluateDates(p, "2025-11-02", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The local day starts at the first midnight and lasts 25 hours.
 	checkSegments(t, out, []Segment{
-		{From: instant("2026-11-01T04:00:00Z"), Until: instant("2026-11-01T07:00:00Z"), Action: patternAction("early")},
-		{From: instant("2026-11-01T07:00:00Z"), Until: instant("2026-11-02T05:00:00Z"), Action: off},
+		{From: instant("2025-11-02T04:00:00Z"), Until: instant("2025-11-02T07:00:00Z"), Action: patternAction("early")},
+		{From: instant("2025-11-02T07:00:00Z"), Until: instant("2025-11-03T05:00:00Z"), Action: off},
 	})
-	checkIssues(t, out, []Issue{{"early", "2026-11-01", "Repeated clock time: using the first occurrence for the start.", false}})
+	checkIssues(t, out, []Issue{{"early", "2025-11-02", "Repeated clock time: using the first occurrence for the start.", false}})
 
 	// Lebanon also springs forward at midnight: 2026-03-29 00:00 EET becomes 01:00 EEST.
 	beirut := zone(t, "Asia/Beirut")
