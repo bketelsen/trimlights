@@ -330,8 +330,9 @@ func TestCalendarRunnerFallBackIntervalAndConflict(t *testing.T) {
 		t.Fatal("did not end at second repeated end")
 	}
 	// The conflict uses a window after the repeated hour on 2026-11-01, so every
-	// instant in the test is on or before 2026-11-01 07:35 UTC, after the settled
-	// fall-back, and a future tzdata rule cannot change the result.
+	// asserted current instant is on or before 2026-11-01 07:35 UTC, after the
+	// settled fall-back. The 48-hour preview holds no later Sunday occurrence,
+	// so a future tzdata rule cannot change the result.
 	// Conflicting intent pauses rather than silently assigning ownership to a rule.
 	plan.Rules[0].Start.Time = "02:00"
 	plan.Rules[0].End.Time = "03:00"
