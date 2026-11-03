@@ -56,6 +56,41 @@ export function rotateView(view: View): View {
 export function sourceRun(run: Run, runs: Run[]): Run {
   return runs.find((r) => r.id === run.mirror_of) ?? run;
 }
+// A house view names the photo it draws; a deleted photo leaves the view behind.
+export function usesPhoto(layout: Layout, photoID: string): boolean {
+  return layout.views.some((v) => v.photo_id === photoID);
+}
+export function missingPhotoViews(layout: Layout, photos: Photo[]): string[] {
+  return layout.views
+    .filter((v) => !photos.some((p) => p.id === v.photo_id))
+    .map((v) => v.photo_id);
+}
+export function withoutMissingPhotos(
+  layout: Layout,
+  photos: Photo[],
+): { layout: Layout; removed: number } {
+  const kept = layout.views.filter((v) => photos.some((p) => p.id === v.photo_id));
+  return { layout: { ...layout, views: kept }, removed: layout.views.length - kept.length };
+}
+// A load that started before a deletion can still name the deleted photo, so the
+// editor filters every incoming list through the ids it knows are gone.
+export function withoutPhotos(photos: Photo[], deleted: ReadonlySet<string>): Photo[] {
+  return photos.filter((p) => !deleted.has(p.id));
+}
+export function withoutPhotoViews(layout: Layout, photoID: string): Layout {
+  return { ...layout, views: layout.views.filter((v) => v.photo_id !== photoID) };
+}
+// A deletion outlives the render that started it, so the selection follows the newest
+// list: it stays when it survives, and otherwise it is the first remaining photo.
+export function afterPhotoDeletion(
+  photos: Photo[],
+  selected: string,
+  id: string,
+): { photos: Photo[]; selected: string } {
+  const rest = photos.filter((p) => p.id !== id);
+  if (rest.some((p) => p.id === selected)) return { photos: rest, selected };
+  return { photos: rest, selected: rest[0]?.id ?? '' };
+}
 export type CanvasMode = 'draw' | 'points' | 'bulbs' | 'pan';
 // Let a vertical swipe scroll the page unless the canvas needs the gesture:
 // drawing or dragging corners/bulbs, or moving a zoomed photo.

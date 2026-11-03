@@ -39,6 +39,13 @@ export function photoUploadMessage(error: unknown): string {
     return 'This house already has 20 photos, the most it can keep.';
   return userMessage(error, 'Could not upload this photo. Check your connection and try again.');
 }
+export function photoDeleteMessage(error: unknown): string {
+  // A conflict means the saved house still has a view of the photo, not a racing editor.
+  if (error instanceof APIError && error.status === 409)
+    return 'The saved house still uses this photo. Remove its view, save the house, then delete the photo.';
+  if (error instanceof APIError && error.status === 404) return 'This photo was already deleted.';
+  return userMessage(error, 'Could not delete this photo. Check your connection and try again.');
+}
 // MissingCSRF is a programming error: a mutation was called without the session's CSRF token.
 export class MissingCSRF extends Error {
   constructor() {

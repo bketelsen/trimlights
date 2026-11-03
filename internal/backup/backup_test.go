@@ -428,3 +428,83 @@ func TestSchemaSixBackupMigratesAndRuntimeRestorePauses(t *testing.T) {
 		})
 	}
 }
+
+func TestBackupAfterPhotoDeletionOmitsTheDeletedImage(t *testing.T) {
+	source, dir := fixture(t)
+	ctx := context.Background()
+	photos, err := source.Photos(ctx)
+	if err != nil || len(photos) != 1 {
+		t.Fatal(photos, err)
+	}
+	removed := photos[0].ID
+	image, err := source.PhotoBytes(ctx, removed, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Revision 2 still names the photo; revision 3 drops the view that named it.
+	if _, err = source.SaveHouse(ctx, 2, house.Default(), "one"); err != nil {
+		t.Fatal(err)
+	}
+	if err = source.DeletePhoto(ctx, removed); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "after-delete.zip")
+	report, err := Create(ctx, dir, out, configuration(), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Photos != 0 || report.Layouts != 3 {
+		t.Fatal(report)
+	}
+	restored := filepath.Join(t.TempDir(), "recovered")
+	report, err = Restore(ctx, out, restored)
+	if err != nil || !report.ControllerDisabled {
+		t.Fatal(report, err)
+	}
+	store, err := storage.Open(filepath.Join(restored, "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	before, e1 := source.HouseHistory(ctx)
+	after, e2 := store.HouseHistory(ctx)
+	if e1 != nil || e2 != nil || !reflect.DeepEqual(before, after) {
+		t.Fatal("restored history differs", e1, e2)
+	}
+	if len(after) != 3 || len(after[1].Layout.Views) != 1 || after[1].Layout.Views[0].PhotoID != removed {
+		t.Fatal("revision 2 no longer names the deleted photo", after)
+	}
+	if kept, err := store.Photos(ctx); err != nil || len(kept) != 0 {
+		t.Fatal(kept, err)
+	}
+	if _, err = store.PhotoBytes(ctx, removed, false); !errors.Is(err, storage.ErrMissing) {
+		t.Fatal(err)
+	}
+	// The archive holds a snapshot of the database only after the deletion.
+	archive, err := zip.OpenReader(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	found := false
+	for _, f := range archive.File {
+		if f.Name != "data/trimlights.db" {
+			continue
+		}
+		entry, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := io.ReadAll(entry)
+		if err = errors.Join(err, entry.Close()); err != nil {
+			t.Fatal(err)
+		}
+		found = true
+		if bytes.Contains(raw, image) {
+			t.Fatal("the archive still holds the deleted image")
+		}
+	}
+	if !found {
+		t.Fatal("the archive has no database entry")
+	}
+}

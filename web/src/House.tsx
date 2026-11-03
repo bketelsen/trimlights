@@ -1,8 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { APIError, photoUploadMessage, request, SignedOut, userMessage } from './api';
+import {
+  APIError,
+  photoDeleteMessage,
+  photoUploadMessage,
+  request,
+  SignedOut,
+  userMessage,
+} from './api';
 import { HouseCanvas } from './HouseCanvas';
 import { LiveStatus } from './LiveRegion';
-import { positions, rotateView, withAdjustment } from './house';
+import {
+  afterPhotoDeletion,
+  missingPhotoViews,
+  positions,
+  rotateView,
+  usesPhoto,
+  withAdjustment,
+  withoutMissingPhotos,
+  withoutPhotoViews,
+  withoutPhotos,
+} from './house';
 import type { CanvasMode, Layout, Mapping, Photo, Run, SavedHouse, View } from './house';
 import type { SavedPattern } from './pattern';
 
@@ -51,9 +68,18 @@ export function House({
   const [loadError, setLoadError] = useState('');
   const loadSequence = useRef(0);
   const mounted = useRef(true);
+  // Ids deleted in this session stay out of every later load, including one that
+  // started before the deletion and still names the photo.
+  const deletedPhotos = useRef(new Set<string>());
+  // The delete click can wait for the service while a poll replaces the photo list, so
+  // the newest list and selection live in refs that the next step reads at once.
+  const photosRef = useRef(photos);
+  const photoIDRef = useRef(photoID);
   const draftRef = useRef(draft);
   /* eslint-disable react-hooks/refs -- async callbacks read the latest render state; syncing in an effect changes timing. */ draftRef.current =
     draft;
+  photosRef.current = photos;
+  photoIDRef.current = photoID;
   const dirty = !!draft && !!saved && JSON.stringify(draft) !== JSON.stringify(saved.layout);
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty; /* eslint-enable react-hooks/refs */
@@ -67,7 +93,9 @@ export function House({
           request<{ patterns: SavedPattern[] }>('/api/v1/patterns'),
         ]);
         if (!mounted.current || sequence !== loadSequence.current) return;
-        setPhotos(p.photos);
+        const list = withoutPhotos(p.photos, deletedPhotos.current);
+        photosRef.current = list;
+        setPhotos(list);
         setPatterns(patterns.patterns);
         if (force || !dirtyRef.current) {
           setSaved((old) => (old?.revision === h.revision ? old : h));
@@ -78,7 +106,7 @@ export function House({
           setRedoCount(0);
           setConflict(false);
         }
-        setPhotoID((id) => id || p.photos[0]?.id || '');
+        setPhotoID((id) => (list.some((x) => x.id === id) ? id : list[0]?.id || ''));
         setLoadError('');
       } catch (e) {
         if (e instanceof SignedOut) onError(e);
@@ -98,7 +126,6 @@ export function House({
   useEffect(() => {
     mounted.current = true;
     const sequence = loadSequence;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the first load starts with the effect; changing the load flow changes behaviour.
     void load();
     const timer = setInterval(() => {
       if (!document.hidden && !dirtyRef.current) void load();
@@ -224,7 +251,9 @@ export function House({
       if (file.size > 12 * 1024 * 1024)
         throw new Error('Photo exceeds 12 MiB. Export a smaller JPEG.');
       const p = await request<Photo>('/api/v1/photos', csrf, undefined, { raw: file });
-      setPhotos((old) => [...old, p]);
+      const list = [...photosRef.current, p];
+      photosRef.current = list;
+      setPhotos(list);
       setPhotoID(p.id);
       setMode('pan');
       setMessage('Photo uploaded. Add a roofline, then draw its corners.');
@@ -267,6 +296,81 @@ export function House({
         setMessage(
           userMessage(e, 'Could not open this layout. Choose a layout downloaded from this app.'),
         );
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  }
+  function forgetPhoto(id: string) {
+    const next = afterPhotoDeletion(photosRef.current, photoIDRef.current, id);
+    photosRef.current = next.photos;
+    photoIDRef.current = next.selected;
+    setPhotos(next.photos);
+    setPhotoID(next.selected);
+  }
+  // Two guards cover two different windows, and neither saves the house: a poll that
+  // started before the deletion can return the deleted photo, and undo, redo or an edit
+  // that waits while the deletion is pending can restore a view of it.
+  function dropPhotoViews(id: string) {
+    past.current = past.current.map((l) => withoutPhotoViews(l, id));
+    future.current = future.current.map((l) => withoutPhotoViews(l, id));
+    if (draftRef.current && usesPhoto(draftRef.current, id)) {
+      change((l) => {
+        l.views = l.views.filter((v) => v.photo_id !== id);
+      }, false);
+    }
+  }
+  // The service refuses a photo that the saved house still uses, so this offers the
+  // 2 steps in order and never saves as a side effect.
+  async function deletePhoto() {
+    if (!photo) return;
+    const id = photo.id;
+    if (draftRef.current && usesPhoto(draftRef.current, id)) {
+      if (
+        window.confirm(
+          'This photo has a view in the house layout. Remove its view (rooflines and rotation) from your draft? Then save the house and delete the photo.',
+        )
+      ) {
+        change((l) => {
+          l.views = l.views.filter((v) => v.photo_id !== id);
+        });
+        setMessage('Photo view removed from your draft. Save the house, then delete the photo.');
+      }
+      return;
+    }
+    if (saved && usesPhoto(saved.layout, id)) {
+      setMessage('Save the house first: the saved house still uses this photo.');
+      return;
+    }
+    if (
+      !window.confirm(
+        'Delete this photo for everyone? Older saved versions will show "photo removed". Only a full backup can bring it back.',
+      )
+    )
+      return;
+    setBusy(true);
+    loadSequence.current++;
+    try {
+      await request<void>('/api/v1/photos/' + encodeURIComponent(id), csrf, undefined, {
+        method: 'DELETE',
+      });
+      loadSequence.current++;
+      if (!mounted.current) return;
+      deletedPhotos.current.add(id);
+      forgetPhoto(id);
+      dropPhotoViews(id);
+      setMode('pan');
+      setMessage('Photo deleted.');
+    } catch (e) {
+      if (e instanceof SignedOut) onError(e);
+      else if (mounted.current) {
+        // A 404 means another device deleted it first, so this photo list is stale.
+        if (e instanceof APIError && e.status === 404) {
+          deletedPhotos.current.add(id);
+          forgetPhoto(id);
+          dropPhotoViews(id);
+        }
+        setMessage(photoDeleteMessage(e));
+      }
     } finally {
       if (mounted.current) setBusy(false);
     }
@@ -332,6 +436,11 @@ export function House({
         {photo && (
           <button className="button primary" disabled={draft.runs.length >= 40} onClick={addRun}>
             Add roofline
+          </button>
+        )}
+        {photo && (
+          <button className="button secondary" disabled={busy} onClick={() => void deletePhoto()}>
+            Delete photo
           </button>
         )}
         <span className="muted">{photos.length}/20 photos · JPEG, PNG, WebP · up to 12 MB</span>
@@ -788,20 +897,32 @@ export function House({
       {!!history.length && (
         <section className="panel house-history">
           <h2>Saved versions</h2>
-          {history.map((h) => (
-            <div className="row" key={h.revision}>
-              <span>{new Date(h.updated).toLocaleString()}</span>
-              <button
-                className="button secondary"
-                onClick={() => {
-                  if (!dirty || window.confirm('Replace your changes with this saved version?'))
-                    change((l) => Object.assign(l, clone(h.layout)));
-                }}
-              >
-                Use as draft
-              </button>
-            </div>
-          ))}
+          {history.map((h) => {
+            const removed = missingPhotoViews(h.layout, photos);
+            return (
+              <div className="row" key={h.revision}>
+                <span>{new Date(h.updated).toLocaleString()}</span>
+                {!!removed.length && (
+                  <span className="muted">
+                    {removed.length === 1 ? 'photo removed' : `${removed.length} photos removed`}
+                  </span>
+                )}
+                <button
+                  className="button secondary"
+                  onClick={() => {
+                    if (!dirty || window.confirm('Replace your changes with this saved version?')) {
+                      const next = withoutMissingPhotos(clone(h.layout), photos);
+                      change((l) => Object.assign(l, next.layout));
+                      if (next.removed > 0)
+                        setMessage('Views of removed photos were left out of this draft.');
+                    }
+                  }}
+                >
+                  Use as draft
+                </button>
+              </div>
+            );
+          })}
         </section>
       )}
     </>

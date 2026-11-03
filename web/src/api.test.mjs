@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   APIError,
   MissingCSRF,
+  photoDeleteMessage,
   photoUploadMessage,
   request,
   SignedOut,
@@ -177,6 +178,30 @@ test('photo upload failures explain the cause', async () => {
   assert.equal(
     photoUploadMessage(new Error('Photo exceeds 12 MiB. Export a smaller JPEG.')),
     'Photo exceeds 12 MiB. Export a smaller JPEG.',
+  );
+});
+test('photo delete failures explain the cause', async () => {
+  const path = '/api/v1/photos/p1';
+  const remove = () => request(path, 'token', undefined, { method: 'DELETE' });
+  serve(409, JSON.stringify({ error: 'the saved house layout uses this photo' }));
+  assert.equal(
+    photoDeleteMessage(await failure(remove())),
+    'The saved house still uses this photo. Remove its view, save the house, then delete the photo.',
+  );
+  serve(404, JSON.stringify({ error: 'photo not found' }));
+  assert.equal(photoDeleteMessage(await failure(remove())), 'This photo was already deleted.');
+  serve(502, '<html><body>Bad Gateway</body></html>', 'text/html');
+  assert.equal(
+    photoDeleteMessage(await failure(remove())),
+    'Could not delete this photo. Check your connection and try again.',
+  );
+  assert.equal(
+    photoDeleteMessage(new TypeError('Failed to fetch')),
+    'Could not delete this photo. Check your connection and try again.',
+  );
+  assert.equal(
+    photoDeleteMessage(new Error('the photo could not be removed')),
+    'the photo could not be removed',
   );
 });
 test('request picks an explicit method and sends a body only with a mutation', async () => {

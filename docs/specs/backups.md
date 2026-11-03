@@ -24,7 +24,9 @@ and config files. All restored files are private (0600), directories 0700.
 - Backup MUST use a consistent SQLite snapshot. The source MUST not be migrated or
   modified. A missing database MUST fail rather than create an empty backup.
 - All persisted photos, layout/pattern/calendar revisions, reference indexes and
-  observations and control audit metadata MUST survive restore. Config and secret MUST be bundled together;
+  observations and control audit metadata MUST survive restore. A deleted photo is
+  absent from later backups; an older revision that named it restores with that
+  view marked "photo removed" ([ADR-0017](../adr/0017-delete-unused-house-photos.md)). Config and secret MUST be bundled together;
   the normalized config secret reference is `pocket-id.secret`.
 - Archive creation MUST publish only after the database and archive are complete
   and synced. Existing output files/directories MUST never be overwritten.
@@ -52,6 +54,7 @@ backups remain separate and do not replace a full bundle with private configurat
 ## References
 
 - Rationale: [ADR-0009](../adr/0009-consistent-portable-backups.md).
+- Photo deletion: [ADR-0017](../adr/0017-delete-unused-house-photos.md).
 - Schema 6 rationale: [ADR-0011](../adr/0011-audited-household-native-controls.md),
   [native control audit](native-controls.md).
 - Schema 7 rationale: [ADR-0013](../adr/0013-journal-calendar-execution.md),

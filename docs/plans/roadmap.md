@@ -715,3 +715,20 @@ Android Back, screen-reader announcements and home-screen installation still nee
 physical check. Open: standalone display mode after a phone sign-in check, and an
 automated accessibility check in the web tests.
 
+### House photo deletion — 2026-11-02
+
+Following [ADR-0017](../adr/0017-delete-unused-house-photos.md), the
+[house contract](../specs/house.md) and the [backup contract](../specs/backups.md)
+now cover photo deletion; the [application design](../design/application.md)
+describes it. The House page deletes the selected photo after a confirmation. The
+service refuses while the current layout has a view of the photo; the page offers to
+remove that view from the draft, and the household saves first. Older saved versions
+keep their bodies and mark the view "photo removed". The checkpoint closes the photo
+deletion gap of the 2026-10-28 house workspace checkpoint. Layout-file import closed
+in the recovery drill checkpoint. No schema change, controller operation or
+deployment is part of this change.
+
+Done when: storage, HTTP and backup round-trip tests cover deletion, refusal, the
+older-revision references and the freed photo place; frontend tests cover the
+messages and the "photo removed" marks; `make check` passes in CI.
+
