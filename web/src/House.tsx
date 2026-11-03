@@ -10,6 +10,7 @@ import {
 import { HouseCanvas } from './HouseCanvas';
 import { LiveStatus } from './LiveRegion';
 import {
+  afterPhotoDeletion,
   missingPhotoViews,
   positions,
   rotateView,
@@ -70,9 +71,15 @@ export function House({
   // Ids deleted in this session stay out of every later load, including one that
   // started before the deletion and still names the photo.
   const deletedPhotos = useRef(new Set<string>());
+  // The delete click can wait for the service while a poll replaces the photo list, so
+  // the newest list and selection live in refs that the next step reads at once.
+  const photosRef = useRef(photos);
+  const photoIDRef = useRef(photoID);
   const draftRef = useRef(draft);
   /* eslint-disable react-hooks/refs -- async callbacks read the latest render state; syncing in an effect changes timing. */ draftRef.current =
     draft;
+  photosRef.current = photos;
+  photoIDRef.current = photoID;
   const dirty = !!draft && !!saved && JSON.stringify(draft) !== JSON.stringify(saved.layout);
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty; /* eslint-enable react-hooks/refs */
@@ -87,6 +94,7 @@ export function House({
         ]);
         if (!mounted.current || sequence !== loadSequence.current) return;
         const list = withoutPhotos(p.photos, deletedPhotos.current);
+        photosRef.current = list;
         setPhotos(list);
         setPatterns(patterns.patterns);
         if (force || !dirtyRef.current) {
@@ -118,7 +126,6 @@ export function House({
   useEffect(() => {
     mounted.current = true;
     const sequence = loadSequence;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the first load starts with the effect; changing the load flow changes behaviour.
     void load();
     const timer = setInterval(() => {
       if (!document.hidden && !dirtyRef.current) void load();
@@ -244,7 +251,9 @@ export function House({
       if (file.size > 12 * 1024 * 1024)
         throw new Error('Photo exceeds 12 MiB. Export a smaller JPEG.');
       const p = await request<Photo>('/api/v1/photos', csrf, undefined, { raw: file });
-      setPhotos((old) => [...old, p]);
+      const list = [...photosRef.current, p];
+      photosRef.current = list;
+      setPhotos(list);
       setPhotoID(p.id);
       setMode('pan');
       setMessage('Photo uploaded. Add a roofline, then draw its corners.');
@@ -292,10 +301,11 @@ export function House({
     }
   }
   function forgetPhoto(id: string) {
-    const rest = photos.filter((p) => p.id !== id);
-    const first = rest[0]?.id ?? '';
-    setPhotos((old) => old.filter((p) => p.id !== id));
-    setPhotoID((current) => (current === id ? first : current));
+    const next = afterPhotoDeletion(photosRef.current, photoIDRef.current, id);
+    photosRef.current = next.photos;
+    photoIDRef.current = next.selected;
+    setPhotos(next.photos);
+    setPhotoID(next.selected);
   }
   // Two guards cover two different windows, and neither saves the house: a poll that
   // started before the deletion can return the deleted photo, and undo, redo or an edit

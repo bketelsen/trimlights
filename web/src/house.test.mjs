@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  afterPhotoDeletion,
   canvasTouchAction,
   missingPhotoViews,
   positions,
@@ -115,4 +116,20 @@ test('removing the views of one photo keeps the runs and its input', () => {
   assert.deepEqual(next.runs, [run]);
   // The input keeps both views.
   assert.equal(layout.views.length, 2);
+});
+test('afterPhotoDeletion keeps the newest selection and the input list', () => {
+  const a = { id: 'a', name: 'House photo', width: 80, height: 40, created: '' };
+  const b = { id: 'b', name: 'House photo', width: 80, height: 40, created: '' };
+  const c = { id: 'c', name: 'House photo', width: 80, height: 40, created: '' };
+  const photos = [a, b, c];
+  // A poll dropped b while the delete waited, so deleting a selects c.
+  assert.deepEqual(afterPhotoDeletion([a, c], 'a', 'a'), { photos: [c], selected: 'c' });
+  // Deleting an unselected photo keeps the selection.
+  assert.deepEqual(afterPhotoDeletion(photos, 'a', 'b'), { photos: [a, c], selected: 'a' });
+  // A selection that is already gone moves to the first remaining photo.
+  assert.deepEqual(afterPhotoDeletion(photos, 'gone', 'b'), { photos: [a, c], selected: 'a' });
+  // The last photo leaves no selection.
+  assert.deepEqual(afterPhotoDeletion([a], 'a', 'a'), { photos: [], selected: '' });
+  // The input list is unchanged.
+  assert.deepEqual(photos, [a, b, c]);
 });

@@ -80,6 +80,17 @@ export function withoutPhotos(photos: Photo[], deleted: ReadonlySet<string>): Ph
 export function withoutPhotoViews(layout: Layout, photoID: string): Layout {
   return { ...layout, views: layout.views.filter((v) => v.photo_id !== photoID) };
 }
+// A deletion outlives the render that started it, so the selection follows the newest
+// list: it stays when it survives, and otherwise it is the first remaining photo.
+export function afterPhotoDeletion(
+  photos: Photo[],
+  selected: string,
+  id: string,
+): { photos: Photo[]; selected: string } {
+  const rest = photos.filter((p) => p.id !== id);
+  if (rest.some((p) => p.id === selected)) return { photos: rest, selected };
+  return { photos: rest, selected: rest[0]?.id ?? '' };
+}
 export type CanvasMode = 'draw' | 'points' | 'bulbs' | 'pan';
 // Let a vertical swipe scroll the page unless the canvas needs the gesture:
 // drawing or dragging corners/bulbs, or moving a zoomed photo.
