@@ -16,6 +16,8 @@ import {
   usesPhoto,
   withAdjustment,
   withoutMissingPhotos,
+  withoutPhotoViews,
+  withoutPhotos,
 } from './house';
 import type { CanvasMode, Layout, Mapping, Photo, Run, SavedHouse, View } from './house';
 import type { SavedPattern } from './pattern';
@@ -65,6 +67,9 @@ export function House({
   const [loadError, setLoadError] = useState('');
   const loadSequence = useRef(0);
   const mounted = useRef(true);
+  // Ids deleted in this session stay out of every later load, including one that
+  // started before the deletion and still names the photo.
+  const deletedPhotos = useRef(new Set<string>());
   const draftRef = useRef(draft);
   /* eslint-disable react-hooks/refs -- async callbacks read the latest render state; syncing in an effect changes timing. */ draftRef.current =
     draft;
@@ -81,7 +86,8 @@ export function House({
           request<{ patterns: SavedPattern[] }>('/api/v1/patterns'),
         ]);
         if (!mounted.current || sequence !== loadSequence.current) return;
-        setPhotos(p.photos);
+        const list = withoutPhotos(p.photos, deletedPhotos.current);
+        setPhotos(list);
         setPatterns(patterns.patterns);
         if (force || !dirtyRef.current) {
           setSaved((old) => (old?.revision === h.revision ? old : h));
@@ -92,7 +98,7 @@ export function House({
           setRedoCount(0);
           setConflict(false);
         }
-        setPhotoID((id) => (p.photos.some((x) => x.id === id) ? id : p.photos[0]?.id || ''));
+        setPhotoID((id) => (list.some((x) => x.id === id) ? id : list[0]?.id || ''));
         setLoadError('');
       } catch (e) {
         if (e instanceof SignedOut) onError(e);
@@ -287,8 +293,21 @@ export function House({
   }
   function forgetPhoto(id: string) {
     const rest = photos.filter((p) => p.id !== id);
-    setPhotos(rest);
-    if (photoID === id) setPhotoID(rest[0]?.id ?? '');
+    const first = rest[0]?.id ?? '';
+    setPhotos((old) => old.filter((p) => p.id !== id));
+    setPhotoID((current) => (current === id ? first : current));
+  }
+  // Two guards cover two different windows, and neither saves the house: a poll that
+  // started before the deletion can return the deleted photo, and undo, redo or an edit
+  // that waits while the deletion is pending can restore a view of it.
+  function dropPhotoViews(id: string) {
+    past.current = past.current.map((l) => withoutPhotoViews(l, id));
+    future.current = future.current.map((l) => withoutPhotoViews(l, id));
+    if (draftRef.current && usesPhoto(draftRef.current, id)) {
+      change((l) => {
+        l.views = l.views.filter((v) => v.photo_id !== id);
+      }, false);
+    }
   }
   // The service refuses a photo that the saved house still uses, so this offers the
   // 2 steps in order and never saves as a side effect.
@@ -319,20 +338,28 @@ export function House({
     )
       return;
     setBusy(true);
+    loadSequence.current++;
     try {
       await request<void>('/api/v1/photos/' + encodeURIComponent(id), csrf, undefined, {
         method: 'DELETE',
       });
+      loadSequence.current++;
       if (!mounted.current) return;
+      deletedPhotos.current.add(id);
       forgetPhoto(id);
+      dropPhotoViews(id);
       setMode('pan');
       setMessage('Photo deleted.');
     } catch (e) {
       if (e instanceof SignedOut) onError(e);
       else if (mounted.current) {
-        setMessage(photoDeleteMessage(e));
         // A 404 means another device deleted it first, so this photo list is stale.
-        if (e instanceof APIError && e.status === 404) forgetPhoto(id);
+        if (e instanceof APIError && e.status === 404) {
+          deletedPhotos.current.add(id);
+          forgetPhoto(id);
+          dropPhotoViews(id);
+        }
+        setMessage(photoDeleteMessage(e));
       }
     } finally {
       if (mounted.current) setBusy(false);

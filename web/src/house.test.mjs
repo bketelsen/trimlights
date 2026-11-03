@@ -10,6 +10,8 @@ import {
   usesPhoto,
   withAdjustment,
   withoutMissingPhotos,
+  withoutPhotoViews,
+  withoutPhotos,
 } from './house.ts';
 for (const v of JSON.parse(
   readFileSync(new URL('./house-vectors.json', import.meta.url), 'utf8'),
@@ -76,27 +78,41 @@ test('a bulb adjustment replaces, clamps and resets one index', () => {
   };
   assert.deepEqual(positions(mapping, 3, 100, 100)[1], { x: 0.5, y: 0.5 });
 });
-test('a view of a deleted photo is found and left out without changing the layout', () => {
-  const layout = {
-    schema: 1,
-    runs: [],
-    views: [
-      { photo_id: 'kept', turns: 0, mappings: [] },
-      { photo_id: 'gone', turns: 1, mappings: [] },
-      { photo_id: 'also-gone', turns: 0, mappings: [] },
-    ],
-  };
-  const photos = [{ id: 'kept', name: 'House photo', width: 80, height: 40, created: '' }];
+test('views of deleted photos are found and left out without changing the layout', () => {
+  const kept = { photo_id: 'kept', turns: 0, mappings: [] };
+  const gone = { photo_id: 'gone', turns: 1, mappings: [] };
+  const layout = { schema: 1, runs: [], views: [kept, gone] };
+  const photo = { id: 'kept', name: 'House photo', width: 80, height: 40, created: '' };
   assert.equal(usesPhoto(layout, 'gone'), true);
-  assert.equal(usesPhoto(layout, 'kept'), true);
   assert.equal(usesPhoto(layout, 'other'), false);
-  assert.deepEqual(missingPhotoViews(layout, photos), ['gone', 'also-gone']);
-  assert.deepEqual(withoutMissingPhotos(layout, photos), {
-    layout: { ...layout, views: [layout.views[0]] },
-    removed: 2,
-  });
-  // The input keeps every view, and a complete photo list removes nothing.
-  assert.equal(layout.views.length, 3);
-  assert.equal(withoutMissingPhotos(layout, [...photos, { ...photos[0], id: 'gone' }]).removed, 1);
-  assert.equal(missingPhotoViews(layout, layout.views.map((v) => ({ id: v.photo_id }))).length, 0);
+  assert.deepEqual(missingPhotoViews(layout, [photo]), ['gone']);
+  const next = withoutMissingPhotos(layout, [photo]);
+  assert.deepEqual(next.layout.views, [kept]);
+  assert.equal(next.removed, 1);
+  // The input keeps both views.
+  assert.equal(layout.views.length, 2);
+});
+test('a photo list without the deleted photos keeps its order and its input', () => {
+  const photos = [
+    { id: 'a', name: 'House photo', width: 80, height: 40, created: '' },
+    { id: 'b', name: 'House photo', width: 80, height: 40, created: '' },
+    { id: 'c', name: 'House photo', width: 80, height: 40, created: '' },
+  ];
+  assert.deepEqual(withoutPhotos(photos, new Set(['b'])), [photos[0], photos[2]]);
+  assert.deepEqual(withoutPhotos(photos, new Set()), photos);
+  assert.notEqual(withoutPhotos(photos, new Set()), photos);
+  assert.equal(photos.length, 3);
+});
+test('removing the views of one photo keeps the runs and its input', () => {
+  const run = { id: 'front', name: 'Front', output: 'output-1', start: 1, count: 5 };
+  const views = [
+    { photo_id: 'a', turns: 0, mappings: [] },
+    { photo_id: 'b', turns: 0, mappings: [] },
+  ];
+  const layout = { schema: 1, runs: [run], views };
+  const next = withoutPhotoViews(layout, 'a');
+  assert.deepEqual(next.views, [views[1]]);
+  assert.deepEqual(next.runs, [run]);
+  // The input keeps both views.
+  assert.equal(layout.views.length, 2);
 });

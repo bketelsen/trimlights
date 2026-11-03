@@ -72,6 +72,14 @@ export function withoutMissingPhotos(
   const kept = layout.views.filter((v) => photos.some((p) => p.id === v.photo_id));
   return { layout: { ...layout, views: kept }, removed: layout.views.length - kept.length };
 }
+// A load that started before a deletion can still name the deleted photo, so the
+// editor filters every incoming list through the ids it knows are gone.
+export function withoutPhotos(photos: Photo[], deleted: ReadonlySet<string>): Photo[] {
+  return photos.filter((p) => !deleted.has(p.id));
+}
+export function withoutPhotoViews(layout: Layout, photoID: string): Layout {
+  return { ...layout, views: layout.views.filter((v) => v.photo_id !== photoID) };
+}
 export type CanvasMode = 'draw' | 'points' | 'bulbs' | 'pan';
 // Let a vertical swipe scroll the page unless the canvas needs the gesture:
 // drawing or dragging corners/bulbs, or moving a zoomed photo.

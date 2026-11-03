@@ -93,7 +93,9 @@ Layout schema 1 contains `runs` and `views`. Each run has a stable `id`, `name`,
   layout has a view of the photo, it MUST NOT send the deletion: it offers to remove
   the view from the draft, and the household saves before it deletes. A 409 answer
   MUST say that the saved house still uses the photo; a 404 MUST say that the photo
-  is already gone.
+  is already gone. After a deletion, the editor MUST ignore a photo list from a load
+  that started before it, and MUST remove views of the deleted photo from the draft
+  and from undo and redo without saving.
 - Saved versions MUST mark each view whose photo no longer exists "photo removed".
   "Use as draft" MUST leave those views out of the draft and say so. When the photo
   list changes and the selected photo is gone, the editor selects the first photo.
