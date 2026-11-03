@@ -82,7 +82,11 @@ test('a bulb adjustment replaces, clamps and resets one index', () => {
 test('views of deleted photos are found and left out without changing the layout', () => {
   const kept = { photo_id: 'kept', turns: 0, mappings: [] };
   const gone = { photo_id: 'gone', turns: 1, mappings: [] };
-  const layout = { schema: 1, runs: [], views: [kept, gone] };
+  const layout = /** @type {import('./house.ts').Layout} */ ({
+    schema: 1,
+    runs: [],
+    views: [kept, gone],
+  });
   const photo = { id: 'kept', name: 'House photo', width: 80, height: 40, created: '' };
   assert.equal(usesPhoto(layout, 'gone'), true);
   assert.equal(usesPhoto(layout, 'other'), false);
@@ -110,7 +114,11 @@ test('removing the views of one photo keeps the runs and its input', () => {
     { photo_id: 'a', turns: 0, mappings: [] },
     { photo_id: 'b', turns: 0, mappings: [] },
   ];
-  const layout = { schema: 1, runs: [run], views };
+  const layout = /** @type {import('./house.ts').Layout} */ ({
+    schema: 1,
+    runs: [run],
+    views,
+  });
   const next = withoutPhotoViews(layout, 'a');
   assert.deepEqual(next.views, [views[1]]);
   assert.deepEqual(next.runs, [run]);
