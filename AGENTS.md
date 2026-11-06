@@ -49,7 +49,11 @@ This repository follows frostyard/core's repository baseline
 - `.github/workflows/ci.yml` keeps its job names: the ruleset requires `check`.
 - The root `README.md` follows core's README spec (kind `service`, at most 1000
   words). Runbooks and guides live in `docs/design/` (deployment, development,
-  household guide), not in the README.
+  household guide), not in the README. Check each claim about a command's
+  guard (a baseline fingerprint, sign-in, a clock synchronization, a write)
+  against its flags in `cmd/trimlight` and its handler before you write it:
+  `snapshot` has no fingerprint and can synchronize the clock; `/` serves the
+  app shell without sign-in, and `/api/` requires it.
 - Row B9 (a documentation site) does not apply: this is one household's private
   deployment, not a tool that others install.
 

@@ -36,8 +36,9 @@ controller driver.
 - **Backups:** a private bundle of the database and OIDC configuration,
   restored into a new directory with controller access blocked
   ([backup operations](docs/design/backup-operations.md)).
-- **Bounded diagnostics:** `snapshot`, `probe-schedule2` and `verify-playback`,
-  each behind a reviewed baseline fingerprint
+- **Bounded diagnostics:** `snapshot` reads the controller and can
+  synchronize its clock; `probe-schedule2` and `verify-playback` write only
+  after a reviewed baseline fingerprint matches
   ([controller diagnostics](docs/design/deployment.md#controller-diagnostics)).
 - **Calendar execution:** implemented and tested against a simulated
   controller, but dormant until protocol and handoff verification
@@ -61,9 +62,9 @@ configuration
 
 | Endpoint or command | What it is |
 | --- | --- |
-| `/` | The embedded web app, behind sign-in |
+| `/` | The embedded web app shell; it holds no household data |
 | `/auth/login`, `/auth/callback` | The Pocket ID authorization-code flow |
-| `/api/v1/` | The JSON API of the web app and the CLI |
+| `/api/v1/` | The JSON API of the web app and the CLI; it requires sign-in or, in development mode, the bearer token |
 | `/healthz`, `/readyz` | Liveness and readiness; `trimlight healthcheck` checks `/readyz` |
 | `trimlight serve` | The service: household OIDC mode, or bearer development mode on loopback only |
 | `trimlight status` | Cached controller state, through the development API |

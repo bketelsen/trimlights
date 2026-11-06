@@ -174,8 +174,8 @@ func correctionProblems(line string) []string {
 	if len(unknown) > 0 {
 		problems = append(problems, "unknown key(s): "+strings.Join(unknown, ", "))
 	}
-	if repeated := repeatedNames(line); len(repeated) > 0 {
-		problems = append(problems, "repeated key(s): "+strings.Join(repeated, ", "))
+	if err := duplicateMembers(line); err != nil {
+		problems = append(problems, err.Error())
 	}
 	for _, name := range correctionsMember {
 		v, ok := obj[name]
@@ -201,37 +201,68 @@ func correctionProblems(line string) []string {
 	return problems
 }
 
-// repeatedNames returns each member name of the JSON object line that the line
-// carries more than once, in the order of its 2nd appearance. encoding/json
-// keeps the last value of a repeated name, so the names are read from the text.
-func repeatedNames(line string) []string {
-	dec := json.NewDecoder(strings.NewReader(line))
-	if _, err := dec.Token(); err != nil {
-		return nil
+// duplicateMembers returns an error that names the first object member that its
+// object carries twice, at any depth, and nil when every member appears once.
+// encoding/json keeps the last value of a repeated member, so the names are read
+// from the text; frostyard/core's parser rejects a duplicate key at any level
+// (docs/specs/risk-paths.md), and its corrections script does the same.
+func duplicateMembers(text string) error {
+	if where, ok := findDuplicate(json.NewDecoder(strings.NewReader(text)), ""); ok {
+		return fmt.Errorf("the member %q appears twice; a duplicate key is not allowed", where)
 	}
-	var names []string
-	for dec.More() {
-		tok, err := dec.Token()
-		if err != nil {
-			return nil
+	return nil
+}
+
+// findDuplicate reads 1 JSON value from dec and returns the path of the first
+// object member that its object carries twice, with whether there is 1; at is
+// the path of the value, such as paths[3], and it is empty at the root.
+func findDuplicate(dec *json.Decoder, at string) (string, bool) {
+	tok, err := dec.Token()
+	if err != nil {
+		return "", false
+	}
+	delim, ok := tok.(json.Delim)
+	if !ok {
+		return "", false
+	}
+	switch delim {
+	case '{':
+		seen := make(map[string]bool)
+		for dec.More() {
+			tok, err := dec.Token()
+			if err != nil {
+				return "", false
+			}
+			name, ok := tok.(string)
+			if !ok {
+				return "", false
+			}
+			where := name
+			if at != "" {
+				where = at + "." + name
+			}
+			if seen[name] {
+				return where, true
+			}
+			seen[name] = true
+			if found, ok := findDuplicate(dec, where); ok {
+				return found, true
+			}
 		}
-		if name, ok := tok.(string); ok {
-			names = append(names, name)
+		if _, err := dec.Token(); err != nil {
+			return "", false
 		}
-		var value json.RawMessage
-		if err := dec.Decode(&value); err != nil {
-			return nil
+	case '[':
+		for i := 0; dec.More(); i++ {
+			if found, ok := findDuplicate(dec, fmt.Sprintf("%s[%d]", at, i)); ok {
+				return found, true
+			}
+		}
+		if _, err := dec.Token(); err != nil {
+			return "", false
 		}
 	}
-	var repeated []string
-	seen := make(map[string]bool, len(names))
-	for _, name := range names {
-		if seen[name] && !slices.Contains(repeated, name) {
-			repeated = append(repeated, name)
-		}
-		seen[name] = true
-	}
-	return repeated
+	return "", false
 }
 
 // TestCorrectionsInbox guards row B2 of frostyard/core
@@ -290,6 +321,36 @@ func TestCorrectionProblems(t *testing.T) {
 	}
 }
 
+// TestDuplicateMembers checks the duplicate-key walk on the shapes a risk list
+// and a correction line can hold: frostyard/core's parser rejects a duplicate
+// key at any depth, and encoding/json keeps the last value of a repeated member.
+func TestDuplicateMembers(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		text string
+		want string // the member that appears twice, empty when the text is valid
+	}{
+		{"valid list", `{"schema_version": 1, "paths": [{"glob": "a", "why": "governance: b"}]}`, ""},
+		{"duplicate schema_version", `{"schema_version": 1, "schema_version": 1, "paths": []}`, "schema_version"},
+		{"duplicate paths", `{"schema_version": 1, "paths": [], "paths": []}`, "paths"},
+		{"duplicate glob of an entry", `{"schema_version": 1, "paths": [{"glob": "a", "glob": "b", "why": "governance: c"}]}`, "paths[0].glob"},
+		{"duplicate why of an entry", `{"schema_version": 1, "paths": [{"glob": "a", "why": "governance: b", "why": "governance: c"}]}`, "paths[0].why"},
+		{"duplicate member of a correction", `{"date": "2026-11-05", "date": "2026-11-05"}`, "date"},
+		{"valid correction line", `{"date": "2026-11-05", "scope": "s"}`, ""},
+		{"a scalar has no member", `1`, ""},
+	} {
+		err := duplicateMembers(tc.text)
+		switch {
+		case tc.want == "" && err != nil:
+			t.Errorf("%s: duplicateMembers(%s) = %v, want no error", tc.name, tc.text, err)
+		case tc.want != "" && err == nil:
+			t.Errorf("%s: duplicateMembers(%s) = nil, want an error that names %q", tc.name, tc.text, tc.want)
+		case tc.want != "" && !strings.Contains(err.Error(), `"`+tc.want+`"`):
+			t.Errorf("%s: duplicateMembers(%s) = %v, want it to name %q", tc.name, tc.text, err, tc.want)
+		}
+	}
+}
+
 // riskPath is 1 entry of .github/risk-paths.json.
 type riskPath struct {
 	Glob string `json:"glob"`
@@ -325,12 +386,15 @@ func checkMembers(t *testing.T, where string, data []byte, allowed ...string) {
 }
 
 // readRiskPaths returns .github/risk-paths.json, and fails on a member that the
-// schema does not name.
+// schema does not name, or on a member that appears twice.
 func readRiskPaths(t *testing.T) riskPathFile {
 	t.Helper()
 	const name = ".github/risk-paths.json"
 	data, err := os.ReadFile(filepath.Join("..", "..", ".github", "risk-paths.json"))
 	if err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	if err := duplicateMembers(string(data)); err != nil {
 		t.Fatalf("%s: %v", name, err)
 	}
 	checkMembers(t, name, data, "schema_version", "paths")
@@ -389,6 +453,7 @@ var governedPaths = []string{
 	"deploy/Caddyfile.example",
 	"internal/auth/auth.go",
 	"internal/service/http.go",
+	"internal/service/house.go",
 	"cmd/trimlight/service.go",
 	"cmd/trimlight/main.go",
 	"cmd/trimlight/playback.go",
@@ -399,6 +464,7 @@ var governedPaths = []string{
 	"internal/storage/calendar_runtime.go",
 	"internal/storage/calendar_handoff.go",
 	"internal/backup/backup.go",
+	"cmd/trimlight/backup.go",
 	"internal/trimlight/client.go",
 	"internal/trimlight/control.go",
 	"internal/trimlight/playback.go",
@@ -895,16 +961,21 @@ func TestDependabotCoversManifests(t *testing.T) {
 }
 
 // riskMarkers returns the source fragments that mark a Go file as a risk path:
-// a delete of rows or of a file, a write to the controller, the client's paced
-// session, a private file mode, and the OIDC secret or the private API token.
-// Each names a guard that lives in 1 file today and could move to another.
+// a delete of rows, of a photo or of a file, a write to the controller, a
+// bounded controller write, a backup or a restore of a bundle that holds the
+// OIDC secret, the client's paced session, a private file mode, and the OIDC
+// secret or the private API token. Each names a guard that lives in 1 file
+// today and could move to another.
 func riskMarkers() []string {
 	return []string{
 		"DELETE FROM",
+		".DeletePhoto(",
 		"os.Remove",
 		".Control(",
 		".ProbeSchedule2(",
 		".VerifyPlayback(",
+		"backup.Restore(",
+		"backup.Create(",
 		"withSession(",
 		"0o600",
 		"ClientSecret",
@@ -924,11 +995,11 @@ func riskMarker(src string) (string, bool) {
 }
 
 // TestRiskMarkers guards the risk list against the next omission: a Go file
-// that deletes rows or files, writes to the controller, holds the client's
-// paced session, sets a private file mode or holds the OIDC secret or the
-// private API token is a destructive, secrets or auth path, whatever package it
-// is in. A glob that names files misses such a file when a function moves to a
-// new one.
+// that deletes rows, photos or files, writes to the controller, creates or
+// restores a backup, holds the client's paced session, sets a private file mode
+// or holds the OIDC secret or the private API token is a destructive, secrets or
+// auth path, whatever package it is in. A glob that names files misses such a
+// file when a function moves to a new one.
 func TestRiskMarkers(t *testing.T) {
 	cfg := readRiskPaths(t)
 	globs := make([]string, 0, len(cfg.Paths))
@@ -969,11 +1040,14 @@ func TestRiskMarker(t *testing.T) {
 		want string
 	}{
 		{"delete of rows", "_, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE hash=?`, hash)", "DELETE FROM"},
+		{"delete of a photo", "if err := store.DeletePhoto(r.Context(), r.PathValue(\"id\")); err != nil {", ".DeletePhoto("},
 		{"delete of a file", "return errors.Join(err, os.Remove(backup))", "os.Remove"},
 		{"delete of a tree", "defer os.RemoveAll(temp)", "os.Remove"},
 		{"controller write", "controlResult, err = w.controller.Control(ctx, *op, nil)", ".Control("},
 		{"bounded probe", "report, probeErr := client.ProbeSchedule2(ctx, baseline, nil)", ".ProbeSchedule2("},
 		{"bounded verification", "report, verifyErr := client.VerifyPlayback(ctx, baseline, target, nil)", ".VerifyPlayback("},
+		{"restore of a bundle", "report, err = backup.Restore(cmd.Context(), input, output)", "backup.Restore("},
+		{"backup of a bundle", "report, err = backup.Create(cmd.Context(), dir, output, config, version)", "backup.Create("},
 		{"paced session", "err := c.withSession(ctx, func(s *session) error { return nil })", "withSession("},
 		{"private file mode", "const privateMode fs.FileMode = 0o600", "0o600"},
 		{"OIDC secret", "ClientSecret string `json:\"-\"`", "ClientSecret"},

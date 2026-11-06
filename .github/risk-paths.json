@@ -66,8 +66,16 @@
       "why": "destructive operations: house photo deletion (ADR-0017)"
     },
     {
+      "glob": "internal/service/house.go",
+      "why": "destructive operations: the photo-delete endpoint (ADR-0017)"
+    },
+    {
       "glob": "internal/backup/**",
       "why": "destructive operations: restore, session clearing and bundles that hold the OIDC secret"
+    },
+    {
+      "glob": "cmd/trimlight/backup.go",
+      "why": "secrets and credentials: the backup and restore commands; a bundle holds the OIDC secret"
     },
     {
       "glob": "internal/trimlight/**",
