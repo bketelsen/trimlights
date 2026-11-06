@@ -2,9 +2,11 @@ package workflowcheck
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -16,43 +18,139 @@ import (
 	"unicode/utf8"
 )
 
-// skipped reports whether the repository walk leaves the directory name out:
-// version control, the frontend's dependencies, and build output.
-func skipped(name string) bool {
-	switch name {
-	case ".git", "node_modules", "build", "dist", "target":
-		return true
-	}
-	return false
-}
-
 // repoFiles returns every file of the repository as a path from its root with
 // forward slashes.
 func repoFiles(t *testing.T) []string {
 	t.Helper()
-	root := filepath.Join("..", "..")
-	var out []string
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if skipped(d.Name()) {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		rel, err := filepath.Rel(root, p)
-		if err != nil {
-			return err
-		}
-		out = append(out, filepath.ToSlash(rel))
-		return nil
-	})
+	files, err := gitFiles(filepath.Join("..", ".."))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return out
+	return files
+}
+
+// gitFiles returns the files of the git work tree at root, sorted, as paths
+// from root with forward slashes: the tracked files that still exist as files
+// or symlinks, and the untracked files that git does not ignore. Ignored paths (dependencies, build
+// and test output such as web/.test-build) are not files of the repository, so
+// a local build cannot fail a check that passes in a clean checkout.
+func gitFiles(root string) ([]string, error) {
+	cmd := exec.Command("git", "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	cmd.Dir = root
+	cmd.Env = gitEnv()
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git ls-files in %s: %w: %s", root, err, strings.TrimSpace(stderr.String()))
+	}
+	var files []string
+	for _, f := range strings.Split(string(out), "\x00") {
+		if f == "" {
+			continue
+		}
+		// The index still lists a tracked file that the work tree deleted, or
+		// replaced with a directory.
+		fi, err := os.Lstat(filepath.Join(root, filepath.FromSlash(f)))
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if fi.IsDir() {
+			continue
+		}
+		files = append(files, f)
+	}
+	slices.Sort(files)
+	return slices.Compact(files), nil
+}
+
+// gitEnv returns the environment without the variables that a git hook
+// exports: they would point git at another tree than its working directory.
+func gitEnv() []string {
+	return slices.DeleteFunc(os.Environ(), func(kv string) bool {
+		for _, name := range []string{"GIT_DIR=", "GIT_WORK_TREE=", "GIT_INDEX_FILE=", "GIT_COMMON_DIR="} {
+			if strings.HasPrefix(kv, name) {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+// TestGitFilesSkipsIgnoredPaths guards the repository scan against build
+// output: web/.test-build/package.json, which the frontend tests write and
+// .gitignore lists, failed row B13 in a local checkout and not in CI.
+func TestGitFilesSkipsIgnoredPaths(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Fatal("the repository checks need git:", err)
+	}
+	// No user or system configuration: a global excludes file would hide the
+	// fixture's untracked files.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", home)
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	root := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		cmd.Env = gitEnv()
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	write := func(name, data string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git("init", "-q")
+	write(".gitignore", "web/.test-build/\nweb/node_modules/\n")
+	write("web/package.json", "{}\n")
+	write("web/.test-build/package.json", `{"type":"commonjs"}`+"\n")
+	write("web/node_modules/left-pad/package.json", "{}\n")
+	write("go.mod", "module example\n")
+	write("deleted.go", "package example\n")
+	write("replaced.go", "package example\n")
+	write("AGENTS.md", "# Agents\n")
+	want := []string{".gitignore", "AGENTS.md", "go.mod", "web/package.json"}
+	git("add", ".gitignore", "go.mod", "deleted.go", "replaced.go", "AGENTS.md")
+	if runtime.GOOS != "windows" {
+		if err := os.Symlink("AGENTS.md", filepath.Join(root, "CLAUDE.md")); err != nil {
+			t.Fatal(err)
+		}
+		git("add", "CLAUDE.md")
+		want = []string{".gitignore", "AGENTS.md", "CLAUDE.md", "go.mod", "web/package.json"}
+	}
+	if err := os.Remove(filepath.Join(root, "deleted.go")); err != nil {
+		t.Fatal(err)
+	}
+	// A directory in place of a tracked file is not that file: a required
+	// path must not pass as present.
+	if err := os.Remove(filepath.Join(root, "replaced.go")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "replaced.go"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := gitFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("gitFiles = %q, want %q (tracked files, symlinks and untracked files; no ignored, deleted or replaced file)", got, want)
+	}
 }
 
 // TestInstructionAliases guards row B1 of frostyard/core
