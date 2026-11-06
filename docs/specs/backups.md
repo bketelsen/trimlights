@@ -62,7 +62,8 @@ backups remain separate and do not replace a full bundle with private configurat
 - Transfer provenance: [ADR-0014](../adr/0014-review-calendar-ownership-transfers.md),
   [calendar handoff](calendar-handoff.md).
 - Context: [application design](../design/application.md),
-  [backup operations](../design/backup-operations.md).
+  [backup operations](../design/backup-operations.md),
+  [deployment runbook](../design/deployment.md#backup-and-restore).
 - Login flows: [household auth](household-auth.md). Since 2026-10-30 they live in a
   sealed cookie; restore still clears the unused legacy `login_flows` table.
 - Delivery: [roadmap](../plans/roadmap.md).

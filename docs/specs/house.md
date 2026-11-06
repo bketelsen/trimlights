@@ -113,6 +113,7 @@ House views use the existing pattern renderer and its golden vectors.
 
 - Rationale: [ADR-0008](../adr/0008-private-photos-and-physical-mapping.md);
   deletion: [ADR-0017](../adr/0017-delete-unused-house-photos.md).
-- Context: [application design](../design/application.md).
+- Context: [application design](../design/application.md),
+  [household guide](../design/household-guide.md#house-photos-and-previews).
 - Delivery: [roadmap Phase 5](../plans/roadmap.md#phase-5--house-photos-roofline-mapping-and-previews-l).
 - Acceptance: [household v1](v1-acceptance.md).

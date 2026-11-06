@@ -85,7 +85,7 @@ flowchart LR
   ignored `web/.test-build` directory as CommonJS, and `components.test.mjs`
   renders them with `react-dom/server`. This adds no test dependency.
   ESLint, Prettier and TypeScript checks run in `make check`
-  ([Build](../../README.md#build)).
+  ([Build](development.md#build)).
 - CLI commands proposed: `serve`, `status`, `doctor`, `patterns`, `schedules`,
   `layout`, `backup`, and `restore`. Keep the current snapshot/probe commands as
   explicit diagnostic operations during migration.
@@ -456,7 +456,9 @@ way to return control to the manufacturer app and restore saved native schedules
 - Contracts: [v1 acceptance](../specs/v1-acceptance.md).
 - Built in: [roadmap Phases 1–6](../plans/roadmap.md).
 - Current evidence: [protocol observations](../../protocol-observations.json),
-  [current implementation guide](../../README.md).
+  [current implementation guide](../../README.md),
+  [development guide](development.md), [deployment runbook](deployment.md),
+  [household guide](household-guide.md).
 
 
 The owner selected public source repository `bketelsen/trimlights` and GHCR images.

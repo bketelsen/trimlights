@@ -84,6 +84,7 @@ or persistence error is outstanding. Unknown/missing snapshots require refresh.
 ## References
 
 - Rationale: [ADR-0011](../adr/0011-audited-household-native-controls.md).
-- Context: [application design](../design/application.md).
+- Context: [application design](../design/application.md),
+  [household guide](../design/household-guide.md#calendar-and-preview).
 - Related: [local service](local-service.md), [authentication](household-auth.md),
   [backup contract](backups.md), [roadmap](../plans/roadmap.md).
