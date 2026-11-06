@@ -1,0 +1,6 @@
+# svu configuration (frostyard/core ADR-0012, ADR-0053). svu reads only
+# .svu.yml. make bump tags `svu next` (ADR-0015 here).
+#
+# https://github.com/caarlos0/svu
+tag.prefix: "v"
+v0: true

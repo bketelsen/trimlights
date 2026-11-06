@@ -84,6 +84,7 @@ Evidence recording errors MUST fail the command even if restoration succeeded.
 ## References
 
 - Rationale: [ADR-0010](../adr/0010-bounded-playback-verification.md).
-- Context: [control design](../design/application.md#observed-native-playback--2026-10-28).
+- Context: [control design](../design/application.md#observed-native-playback--2026-10-28),
+  [controller diagnostics](../design/deployment.md#controller-diagnostics).
 - Snapshot fields: [local service](local-service.md#observed-playback-state--2026-10-28).
 - Delivery: [roadmap Phase 2](../plans/roadmap.md#phase-2--reliable-controller-service-l-highest-uncertainty).

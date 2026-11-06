@@ -94,5 +94,6 @@ bounds. Timezones are embedded in the Go binary for scratch-container deployment
 ## References
 
 - Rationale: [ADR-0006](../adr/0006-explicit-calendar-intent.md).
-- Context: [application design](../design/application.md).
+- Context: [application design](../design/application.md),
+  [household guide](../design/household-guide.md#calendar-and-preview).
 - Delivery: [roadmap](../plans/roadmap.md), [v1 acceptance](v1-acceptance.md).

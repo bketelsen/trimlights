@@ -84,5 +84,6 @@ databases before modifications. Runtime databases and secrets stay outside Git.
 ## References
 
 - Rationale: [ADR-0004](../adr/0004-pocket-id-and-truenas.md).
-- Context: [application design](../design/application.md).
+- Context: [application design](../design/application.md),
+  [deployment runbook](../design/deployment.md#household-deployment).
 - Built in: [roadmap Phase 3](../plans/roadmap.md#phase-3--shared-mobile-controls-and-pattern-library-ml).

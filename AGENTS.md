@@ -4,7 +4,7 @@ A shared Go application for one household's Trimlight Edge controller, with
 mobile controls, scheduling and house-photo previews under construction.
 Start at [docs/README.md](docs/README.md) for current implementation and plans.
 
-This is the canonical instruction file. CLAUDE.md, GEMINI.md and
+This is the canonical instruction file. CLAUDE.md, GEMINI.md, .cursorrules and
 .github/copilot-instructions.md link here. Edit canonical paths only.
 [ADR-0002](docs/adr/0002-agent-portable-instruction-surface.md) explains portability.
 
@@ -32,11 +32,32 @@ Reusable procedures belong in `.agents/skills/`, starting from its TEMPLATE.
   `attestations`; neither runs repository build code
   ([ADR-0015](docs/adr/0015-versioned-attested-images.md)). Release tags come from `make bump`.
 
+## Repository baseline
+
+This repository follows frostyard/core's repository baseline
+([org ADRs](docs/org-adrs.md); core ADR-0071, rows B1 to B17).
+
+- `internal/workflowcheck` (run by `make verify`) holds rows B1 (the instruction
+  symlinks), B2 (`.memory/corrections.jsonl`), B5 (pinned, least-privilege
+  workflows), B6 (`.github/risk-paths.json` lists every governed path, with no
+  stale glob) and B13 (a Dependabot entry for each manifest). A new auth,
+  secret, migration, delete or controller-write file goes in the risk list in
+  the same PR.
+- A blocking review point gets a guard (a test, or a rule here) and 1 line in
+  `.memory/corrections.jsonl` (`date`, `scope`, `correction`, `evidence`,
+  `promoted_to`).
+- `.github/workflows/ci.yml` keeps its job names: the ruleset requires `check`.
+- The root `README.md` follows core's README spec (kind `service`, at most 1000
+  words). Runbooks and guides live in `docs/design/` (deployment, development,
+  household guide), not in the README.
+- Row B9 (a documentation site) does not apply: this is one household's private
+  deployment, not a tool that others install.
+
 ## Releases and dependencies
 
 - Tags are `vX.Y.Z`. Brian runs `make bump` on a clean, current main: it runs
-  `make check`, takes `svu next` (Conventional Commits) and pushes the tag. The
-  tag push runs `.github/workflows/check.yml`, which builds, publishes and
+  `make check`, takes `svu next` (Conventional Commits, `.svu.yml`) and pushes the tag.
+  The tag push runs `.github/workflows/ci.yml` (the Check workflow), which builds, publishes and
   attests the image `:vX.Y.Z`; only a push to main also promotes `:main`.
   Agents never tag, push tags or release.
 - Internal dependencies: `github.com/frostyard/clix` in `go.mod`

@@ -185,7 +185,9 @@ and [ADR-0011](../adr/0011-audited-household-native-controls.md).
   [ADR-0002](../adr/0002-agent-portable-instruction-surface.md);
   health check: [ADR-0015](../adr/0015-versioned-attested-images.md);
   gate targets: [ADR-0016](../adr/0016-adopt-the-frostyard-make-gate.md).
-- Context: [application design](../design/application.md).
+- Context: [application design](../design/application.md),
+  [deployment runbook](../design/deployment.md),
+  [development guide](../design/development.md).
 - Built in: [roadmap](../plans/roadmap.md).
 - Future household requirements: [v1 acceptance](v1-acceptance.md).
 

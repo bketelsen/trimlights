@@ -1,6 +1,6 @@
 # Weekly dependency updates (issue #20). Minor and patch updates are grouped
-# per ecosystem; major updates arrive as single PRs. The Containerfile is FROM
-# scratch, so it has no base image to update. Dependabot alerts and security
+# per ecosystem; major updates arrive as single PRs. Each manifest has an entry
+# (frostyard/core ADR-0071, baseline row B13). Dependabot alerts and security
 # updates are repository settings, not part of this file.
 version: 2
 updates:
@@ -36,6 +36,13 @@ updates:
     ignore:
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+
+  # The Containerfile is FROM scratch, so this entry finds no base image to
+  # update today; it watches the file if a base image is added.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
 
   # Keeps the SHA pins and their version comments in .github/workflows current.
   - package-ecosystem: github-actions
