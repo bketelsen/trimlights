@@ -14,11 +14,12 @@ locally without the household controller. The root
 
 ### Build
 
-Run `mise install` for the pinned tools: Go 1.27.3 from go.mod's toolchain line,
-golangci-lint and svu from `mise.toml` (checksums in `mise.lock`). Use Node 24.19.0
-and pnpm 11.25.0 (versions pinned in CI). `web/package.json` also pins pnpm
-(`packageManager`, with its hash) and requires Node 24.19.0 or later (`engines`).
-The minimum Go version in go.mod is 1.26.6. Node is only a build dependency.
+Run `mise install` for the pinned tools: Go 1.27.3 comes from the `go` line of
+`go.mod`, which is both the minimum and the only Go pin. golangci-lint and svu
+come from `mise.toml` (checksums in `mise.lock`). Use Node 24.19.0 and pnpm
+11.25.0 (versions pinned in CI). `web/package.json` also pins pnpm
+(`packageManager`, with its hash) and requires Node 24.19.0 or later
+(`engines`). Node is only a build dependency.
 
 ```sh
 make verify   # tidy, gofmt -l, vet, lint, race tests, doc links; no pnpm, no writes
