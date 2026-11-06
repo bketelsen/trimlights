@@ -30,8 +30,8 @@ func repoFiles(t *testing.T) []string {
 }
 
 // gitFiles returns the files of the git work tree at root, sorted, as paths
-// from root with forward slashes: the tracked files that still exist, and the
-// untracked files that git does not ignore. Ignored paths (dependencies, build
+// from root with forward slashes: the tracked files that still exist as files
+// or symlinks, and the untracked files that git does not ignore. Ignored paths (dependencies, build
 // and test output such as web/.test-build) are not files of the repository, so
 // a local build cannot fail a check that passes in a clean checkout.
 func gitFiles(root string) ([]string, error) {
@@ -49,12 +49,17 @@ func gitFiles(root string) ([]string, error) {
 		if f == "" {
 			continue
 		}
-		// The index still lists a tracked file that the work tree deleted.
-		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(f))); err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				continue
-			}
+		// The index still lists a tracked file that the work tree deleted, or
+		// replaced with a directory.
+		fi, err := os.Lstat(filepath.Join(root, filepath.FromSlash(f)))
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
 			return nil, err
+		}
+		if fi.IsDir() {
+			continue
 		}
 		files = append(files, f)
 	}
@@ -66,8 +71,12 @@ func gitFiles(root string) ([]string, error) {
 // exports: they would point git at another tree than its working directory.
 func gitEnv() []string {
 	return slices.DeleteFunc(os.Environ(), func(kv string) bool {
-		return strings.HasPrefix(kv, "GIT_DIR=") || strings.HasPrefix(kv, "GIT_WORK_TREE=") ||
-			strings.HasPrefix(kv, "GIT_INDEX_FILE=")
+		for _, name := range []string{"GIT_DIR=", "GIT_WORK_TREE=", "GIT_INDEX_FILE=", "GIT_COMMON_DIR="} {
+			if strings.HasPrefix(kv, name) {
+				return true
+			}
+		}
+		return false
 	})
 }
 
@@ -78,6 +87,13 @@ func TestGitFilesSkipsIgnoredPaths(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Fatal("the repository checks need git:", err)
 	}
+	// No user or system configuration: a global excludes file would hide the
+	// fixture's untracked files.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", home)
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	root := t.TempDir()
 	git := func(args ...string) {
 		t.Helper()
@@ -105,8 +121,26 @@ func TestGitFilesSkipsIgnoredPaths(t *testing.T) {
 	write("web/node_modules/left-pad/package.json", "{}\n")
 	write("go.mod", "module example\n")
 	write("deleted.go", "package example\n")
-	git("add", ".gitignore", "go.mod", "deleted.go")
+	write("replaced.go", "package example\n")
+	write("AGENTS.md", "# Agents\n")
+	want := []string{".gitignore", "AGENTS.md", "go.mod", "web/package.json"}
+	git("add", ".gitignore", "go.mod", "deleted.go", "replaced.go", "AGENTS.md")
+	if runtime.GOOS != "windows" {
+		if err := os.Symlink("AGENTS.md", filepath.Join(root, "CLAUDE.md")); err != nil {
+			t.Fatal(err)
+		}
+		git("add", "CLAUDE.md")
+		want = []string{".gitignore", "AGENTS.md", "CLAUDE.md", "go.mod", "web/package.json"}
+	}
 	if err := os.Remove(filepath.Join(root, "deleted.go")); err != nil {
+		t.Fatal(err)
+	}
+	// A directory in place of a tracked file is not that file: a required
+	// path must not pass as present.
+	if err := os.Remove(filepath.Join(root, "replaced.go")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "replaced.go"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -114,9 +148,8 @@ func TestGitFilesSkipsIgnoredPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{".gitignore", "go.mod", "web/package.json"}
 	if !slices.Equal(got, want) {
-		t.Errorf("gitFiles = %q, want %q (tracked and untracked files, no ignored or deleted file)", got, want)
+		t.Errorf("gitFiles = %q, want %q (tracked files, symlinks and untracked files; no ignored, deleted or replaced file)", got, want)
 	}
 }
 
