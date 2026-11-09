@@ -1,96 +1,120 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "default_level": "L3",
   "paths": [
     {
       "glob": ".github/risk-paths.json",
+      "level": "L2",
       "why": "governance: the high-risk path list"
     },
     {
       "glob": ".github/workflows/**",
+      "level": "L2",
       "why": "governance: CI, the risk-paths caller and token permissions"
     },
     {
       "glob": ".github/workflows/ci.yml",
+      "level": "L1",
       "why": "publication: builds, publishes and attests the ghcr.io image and moves :main (ADR-0015)"
     },
     {
       "glob": "Makefile",
+      "level": "L2",
       "why": "governance: the verify, check and ci gate, and make bump, which tags a release"
     },
     {
       "glob": "{mise.toml,mise.lock}",
+      "level": "L2",
       "why": "governance: the checksummed pins of golangci-lint and svu"
     },
     {
       "glob": ".golangci.yml",
+      "level": "L2",
       "why": "governance: the lint policy of the gate (ADR-0016)"
     },
     {
       "glob": "internal/{workflowcheck,doccheck}/**",
+      "level": "L2",
       "why": "governance: the tests that hold the workflows (ADR-0021) and the baseline files, and the doc link check of the gate"
     },
     {
       "glob": ".svu.yml",
+      "level": "L1",
       "why": "publication: the version rule of the vX.Y.Z tags"
     },
     {
       "glob": "{Containerfile,.dockerignore}",
+      "level": "L1",
       "why": "publication: what the published scratch image holds"
     },
     {
       "glob": "deploy/**",
+      "level": "L1",
       "why": "secrets and credentials: the OIDC, secret-file, bind-address and HTTPS examples that a deployment copies"
     },
     {
       "glob": "internal/auth/**",
+      "level": "L1",
       "why": "auth: OIDC login, the subject allowlist, sessions, CSRF and the OIDC client secret"
     },
     {
       "glob": "internal/service/http.go",
+      "level": "L1",
       "why": "auth: mode validation, bearer development mode on loopback only, and the routes behind sign-in"
     },
     {
       "glob": "cmd/trimlight/service.go",
+      "level": "L1",
       "why": "auth: the serve and CLI flags for OIDC, the API token file and the controller host"
     },
     {
       "glob": "internal/storage/{auth,permissions}.go",
+      "level": "L1",
       "why": "secrets and credentials: stored sessions and the 0600 database file modes"
     },
     {
       "glob": "internal/storage/store.go",
+      "level": "L1",
       "why": "destructive operations: the schema, its migrations and their backups"
     },
     {
       "glob": "internal/storage/house.go",
+      "level": "L1",
       "why": "destructive operations: house photo deletion (ADR-0017)"
     },
     {
       "glob": "internal/service/house.go",
+      "level": "L1",
       "why": "destructive operations: the photo-delete endpoint (ADR-0017)"
     },
     {
       "glob": "internal/backup/**",
+      "level": "L1",
       "why": "destructive operations: restore, session clearing and bundles that hold the OIDC secret"
     },
     {
       "glob": "cmd/trimlight/backup.go",
+      "level": "L1",
       "why": "secrets and credentials: the backup and restore commands; a bundle holds the OIDC secret"
     },
     {
       "glob": "internal/trimlight/**",
+      "level": "L1",
       "why": "destructive operations: the controller protocol and its writes to saved schedules, playback and TIMER"
     },
     {
       "glob": "internal/service/{worker,controls,calendar_runner,calendar_handoff}.go",
+      "level": "L1",
       "why": "destructive operations: the household worker and the dormant calendar runner and handoff that send controller writes"
     },
     {
       "glob": "internal/storage/{calendar_runtime,calendar_handoff}.go",
+      "level": "L1",
       "why": "destructive operations: the pending-intent journal that guards controller writes against replay"
     },
     {
       "glob": "cmd/trimlight/{main,playback}.go",
+      "level": "L1",
       "why": "destructive operations: the bounded probe-schedule2 and verify-playback diagnostics, which write to the controller"
     }
   ]

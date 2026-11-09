@@ -43,6 +43,14 @@ This repository follows frostyard/core's repository baseline
   stale glob) and B13 (a Dependabot entry for each manifest). A new auth,
   secret, migration, delete or controller-write file goes in the risk list in
   the same PR.
+- `.github/risk-paths.json` is schema version 2 (core ADR-0078: each glob has a
+  level `L1` to `L4`, and the default is `L3`). The caller
+  `.github/workflows/risk-paths.yml` runs core's `pr-triage.yml` (ADR-0077,
+  ADR-0078). It adds `level:L1` to `level:L4`, and `risk:high` at L1 and L2. It
+  removes `ready-for-human` when the head moves after the label, or when CI is
+  not green at the label. The PR body names each matched path and why the
+  change is safe. A new entry gets a level by the grading rule: `L1` for the
+  risk categories and `L2` for governance. A glob that matches no file fails.
 - A blocking review point gets a guard (a test, or a rule here) and 1 line in
   `.memory/corrections.jsonl` (`date`, `scope`, `correction`, `evidence`,
   `promoted_to`).
