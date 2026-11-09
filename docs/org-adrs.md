@@ -21,9 +21,19 @@ team's organization standard:
   `.memory/corrections.jsonl` is the corrections inbox.
 - [ADR-0019](https://github.com/frostyard/core/blob/main/docs/adr/0019-governance-as-code-and-risk-tiers.md),
   [ADR-0068](https://github.com/frostyard/core/blob/main/docs/adr/0068-label-pull-requests-that-touch-high-risk-paths.md):
-  risk tiers in the PR template; `.github/risk-paths.json` and its caller
-  `.github/workflows/risk-paths.yml` label a PR that touches a high-risk path
-  `risk:high`.
+  risk tiers in the PR template. `.github/risk-paths.json` holds the high-risk
+  paths; its PR triage caller `.github/workflows/risk-paths.yml` labels a PR
+  with its level and with `risk:high` at L1 and L2.
+- [ADR-0076](https://github.com/frostyard/core/blob/main/docs/adr/0076-require-status-checks-on-every-default-branch.md):
+  every default branch requires a status check, so a red or a missing CI
+  blocks a merge.
+- [ADR-0077](https://github.com/frostyard/core/blob/main/docs/adr/0077-bind-ready-for-human-to-the-head-commit.md):
+  `ready-for-human` is bound to the head commit. The PR triage caller removes
+  it when the head moves after the label, or when CI at the label is not green.
+- [ADR-0078](https://github.com/frostyard/core/blob/main/docs/adr/0078-sort-pull-requests-by-levels-l1-to-l4.md):
+  a PR carries 1 level label from `level:L1` to `level:L4`, and
+  `.github/risk-paths.json` is schema version 2 (a level for each glob, and the
+  default `L3`). It amends ADR-0068 in part.
 - [ADR-0021](https://github.com/frostyard/core/blob/main/docs/adr/0021-sha-pinned-actions-and-least-privilege-ci.md):
   CI actions are pinned to full commit SHAs, with least-privilege permissions
   ([ADR-0015](adr/0015-versioned-attested-images.md); `internal/workflowcheck`).

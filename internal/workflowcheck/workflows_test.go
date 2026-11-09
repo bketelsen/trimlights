@@ -17,7 +17,7 @@ var (
 
 // immutable reports whether an action reference names one version for good: a
 // local action, a commit, or an image digest. A reusable workflow of another
-// repository is a commit too: frostyard/core/.github/workflows/risk-paths.yml
+// repository is a commit too: frostyard/core/.github/workflows/pr-triage.yml
 // has no release tags, so the caller pins its main commit.
 func immutable(ref string) bool {
 	return strings.HasPrefix(ref, "./") || commitAction.MatchString(ref) || dockerAction.MatchString(ref)
@@ -26,18 +26,18 @@ func immutable(ref string) bool {
 func TestPinnedReferencesAreImmutable(t *testing.T) {
 	sha, digest := strings.Repeat("a", 40), strings.Repeat("b", 64)
 	for ref, want := range map[string]bool{
-		"actions/checkout@" + sha:                                true,
-		"owner/repo/.github/actions/publish@" + sha:              true,
-		"frostyard/core/.github/workflows/risk-paths.yml@" + sha: true,
-		"docker://alpine@sha256:" + digest:                       true,
-		"./.github/actions/check":                                true,
-		"actions/checkout@v7":                                    false,
-		"owner/repo/.github/actions/publish@main":                false,
-		"frostyard/core/.github/workflows/risk-paths.yml@main":   false,
-		"actions/checkout@deadbeef":                              false,
-		"actions/checkout@${{inputs.ref}}":                       false,
-		"docker://alpine:3.22":                                   false,
-		"actions/checkout@" + strings.ToUpper(sha):               false,
+		"actions/checkout@" + sha:                               true,
+		"owner/repo/.github/actions/publish@" + sha:             true,
+		"frostyard/core/.github/workflows/pr-triage.yml@" + sha: true,
+		"docker://alpine@sha256:" + digest:                      true,
+		"./.github/actions/check":                               true,
+		"actions/checkout@v7":                                   false,
+		"owner/repo/.github/actions/publish@main":               false,
+		"frostyard/core/.github/workflows/pr-triage.yml@main":   false,
+		"actions/checkout@deadbeef":                             false,
+		"actions/checkout@${{inputs.ref}}":                      false,
+		"docker://alpine:3.22":                                  false,
+		"actions/checkout@" + strings.ToUpper(sha):              false,
 	} {
 		if got := immutable(ref); got != want {
 			t.Errorf("immutable(%q) = %v, want %v", ref, got, want)
@@ -261,7 +261,7 @@ jobs:
         with:
           persist-credentials: false
   caller:
-    uses: frostyard/core/.github/workflows/risk-paths.yml@1b02a129026329cef2b46d1fbd0465a863c1cd81 # main
+    uses: frostyard/core/.github/workflows/pr-triage.yml@c996ea3fb54bcf1a3c621113522213702a7673e2 # main
 `
 	fields := scanYAML([]byte(doc))
 
@@ -285,7 +285,7 @@ jobs:
 	if want := "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"; uses[0].value != want {
 		t.Errorf("the first uses value = %q, want %q", uses[0].value, want)
 	}
-	if got := uses[1].value; !strings.HasPrefix(got, "frostyard/core/.github/workflows/risk-paths.yml@") {
+	if got := uses[1].value; !strings.HasPrefix(got, "frostyard/core/.github/workflows/pr-triage.yml@") {
 		t.Errorf("the caller's uses value = %q, want the reusable workflow", got)
 	}
 	if item, ok := itemField(fields, uses[0].item, "persist-credentials"); !ok || item.value != "false" {
