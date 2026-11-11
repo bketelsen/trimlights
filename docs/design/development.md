@@ -14,7 +14,7 @@ locally without the household controller. The root
 
 ### Build
 
-Run `mise install` for the pinned tools: Go 1.27.3 comes from the `go` line of
+Run `mise install` for the pinned tools: Go 1.27.4 comes from the `go` line of
 `go.mod`, which is both the minimum and the only Go version in `go.mod`; the
 CI workflow sets up the same release. golangci-lint and svu
 come from `mise.toml` (checksums in `mise.lock`). Use Node 24.19.0 and pnpm
