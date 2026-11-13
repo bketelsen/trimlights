@@ -1,4 +1,4 @@
-import { StrictMode, useCallback, useEffect, useRef, useState } from 'react';
+import { StrictMode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
 import { request, SignedOut, userMessage } from './api';
@@ -8,6 +8,8 @@ import { House } from './House';
 import { clockTime, repeatLabel } from './uiText';
 import { NativeControls, type NativeSnapshot } from './NativeControls';
 import { LiveStatus } from './LiveRegion';
+import { HomePlanCard, useHomePlan } from './HomePlan';
+import { favoriteShortcuts } from './homePlan';
 import { ErrorBoundary } from './ErrorBoundary';
 import { latestRequests } from './latest';
 import {
@@ -254,6 +256,12 @@ function App() {
     }
   }
   const patterns = status?.observation.snapshot?.patterns ?? [];
+  const homePlan = useHomePlan(!!identity && page === 'home', identity?.csrf_token ?? '', report);
+  const snapshot = status?.observation.snapshot;
+  const favorites = useMemo(
+    () => favoriteShortcuts(homePlan.patterns, snapshot),
+    [homePlan.patterns, snapshot],
+  );
   const schedules = status?.observation.snapshot?.daily_schedules ?? [];
 
   return (
@@ -391,6 +399,7 @@ function App() {
                     checking={!statusChecked}
                     refreshVersion={refreshVersion}
                     snapshot={status?.observation.snapshot}
+                    favorites={favorites}
                     available={status?.capabilities.native_controls ?? false}
                     busy={refreshing || controlling || !!status?.worker.active_operation}
                     csrf={identity.csrf_token}
@@ -398,6 +407,7 @@ function App() {
                     onComplete={load}
                     onError={report}
                   />
+                  <HomePlanCard data={homePlan} onOpenCalendar={() => navigate('schedule')} />
                   <div className="section-heading">
                     <h2>Your light timers</h2>
                     <span>Saved on your lights</span>

@@ -153,9 +153,10 @@ and completes [roadmap Phase 4](roadmap.md#phase-4--full-scheduling-and-first-ho
 under the [handoff](../specs/calendar-handoff.md) and
 [runtime](../specs/calendar-runtime.md) contracts.
 
-- Before the Phase 3 results: add to Home the next change and its reason from
+- [x] Before the Phase 3 results: add to Home the next change and its reason from
   the saved calendar, labeled planning-only, and the favorites. These read the
-  evaluator and send nothing.
+  evaluator and send nothing (done 2026-11-13; see the
+  [roadmap checkpoint](roadmap.md#home-plan-and-favorites--2026-11-13)).
 - Record the timer result in an ADR. If MANUAL or OFF does not suppress native
   timers, stop: the takeover design changes (the likely alternative disables the
   native timers at handoff, which needs a new write authorization).

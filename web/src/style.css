@@ -1403,6 +1403,63 @@ h2 {
   padding-top: 20px;
   margin-bottom: 0;
 }
+.favorite-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 20px;
+}
+.favorite-row .favorite-choice {
+  gap: 8px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.favorite-row .favorite-choice[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.home-plan {
+  margin: 0 0 32px;
+  padding: 28px;
+}
+.home-plan h2 {
+  font-size: 22px;
+  margin: 6px 0 0;
+}
+.home-plan .row {
+  align-items: center;
+  margin-bottom: 20px;
+}
+.plan-steps {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+}
+.plan-steps > div {
+  display: grid;
+  grid-template-columns: minmax(84px, 22%) 1fr;
+  gap: 16px;
+  align-items: baseline;
+}
+.plan-steps dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+.plan-steps dd {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.plan-steps dd span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.home-plan .footnote {
+  margin-bottom: 0;
+}
 .schedule-card {
   padding: 24px 28px;
 }

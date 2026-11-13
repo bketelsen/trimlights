@@ -108,6 +108,10 @@ controls first and shows observation age as “Last checked.” Saved timer time
 the browser's local display format. The UI translates mode and operation names
 into household language; raw snapshots, wire parameters, revision numbers and
 transport errors remain in the service/API contracts rather than ordinary screens.
+As of 2026-11-13, Home also shows favorites that are saved on the lights as
+shortcuts in the controls ([native controls](../specs/native-controls.md#rules)),
+and a "Planned next" card with the current step and next change of the saved
+calendar, labeled as a plan ([calendar contract](../specs/schedules.md#rules)).
 As of 2026-10-30, a rejected entry (a 4xx JSON error) shows the service's own
 validation text, so the household can see what to fix; gateway pages and network
 failures show plain retry advice instead (see the [house contract](../specs/house.md#rules)).
