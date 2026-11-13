@@ -18,15 +18,14 @@ The calendar runner and ownership handoff are implemented and dormant.
 
 Household data in the running instance (read-only inspection, 2026-11-13):
 
-- No one has used the app since the evening of 2026-10-28. The only stored
-  session has expired, and only one household identity has ever signed in.
+- The second household identity has not signed in yet.
 - The library holds the imported controller patterns and one application pattern.
   All imported patterns are opaque: none has a preview.
 - The calendar has no rules. Calendar ownership is disabled.
 - The house has one photo and two placeholder runs of 20 bulbs on one output.
   This is test data, not the real roofline. Nothing is calibrated.
-- The controller history is one refresh and four verified controls, all from the
-  acceptance check of 2026-10-28.
+- The only controller operations on record are those of the acceptance check of
+  2026-10-28.
 
 Hardware evidence: none of the prepared sessions has run. The planned Sunday
 capture of 2026-11-01 did not happen. Five facts are still unknown, and each one
@@ -52,8 +51,10 @@ blocks a part of v1:
 | 6. Patterns on the lights | One short session | Phase 3 |
 | 7. Trial and release | Seven nights | Phases 4 and 5; Phase 6 or its cut |
 
-Phases 1 to 3 need no new code and can all start this week. Phases 4, 5 and 6
-are independent of each other once Phase 3 has run.
+Phases 1 and 3 need no new code; Phase 2 is one small reviewed change. All three
+can start this week. Phases 4 and 5 are independent of each other once Phase 3
+has run. Phase 6 can run beside them, except for its write test, which must not
+touch the ruler entry that Phase 5 uses.
 
 ## Phase 1 — Household setup without hardware (S)
 
@@ -90,9 +91,19 @@ for the [control design](../design/application.md#scheduling-and-control-ownersh
 - Capture the official app's clock query on a real Sunday at midday. The next
   Sundays are **2026-11-15** and **2026-11-22**; United States clocks changed on
   2026-11-01, so neither is near a transition.
-- Add synthetic fixtures for the observed weekday byte, change `clockQuery` in
-  `internal/trimlight/protocol.go` with tests for every weekday, and remove the
-  Sunday refusals in `internal/trimlight/playback.go` in the same reviewed change.
+- Add synthetic fixtures for the observed weekday byte and change `clockQuery`
+  in `internal/trimlight/protocol.go`, with tests for every weekday.
+- Remove every Sunday refusal in the same reviewed change, so Sundays are not
+  left half-blocked:
+  - `ErrSundayClock` in `internal/trimlight/client.go`, which refuses every
+    snapshot on a Sunday;
+  - the Sunday-safe window (`playbackWindowReachesSunday`) in
+    `internal/trimlight/playback.go`;
+  - the fixed Sunday text in `internal/service/controls.go`;
+  - the `sunday_clock_unverified` warning in
+    `internal/service/calendar_preparation.go`;
+  - the matching browser texts in `web/src/api.ts`, `web/src/NativeControls.tsx`
+    and `web/src/CalendarPreparation.tsx`.
 - Run the real-Sunday Go read on the same day if the change is reviewed in time;
   otherwise on the following Sunday.
 - **Done when:** on a Sunday, a refresh through the deployed app succeeds, the
@@ -117,11 +128,17 @@ this order, with a restoration check between stages. Calendar stays disabled.
   low-brightness sequence of distinct colors in fixed blocks (for example 6
   colors of 5 bulbs), with a period longer than any doubt about a run's start.
   Record its exact sequence. Phase 5 plays it through the already verified
-  saved-pattern control, so calibration needs no new wire command.
-- **Layout (only if time remains, last):** add one saved pattern in the official
-  app, capture a refresh, delete it and capture again. The household controls
-  refuse while the count is not 18, which is the safe result. This gives the
-  evidence for variable-layout parsing.
+  saved-pattern control, so calibration needs no new wire command. The ruler
+  entry stays reserved afterward: a later roofline change needs it again.
+- **Layout (only if time remains, last):** a separate stage after the pattern
+  restoration check, because the decoding test forbids creating or deleting
+  entries within its own stage. Add one saved pattern in the official app,
+  capture a refresh, delete it and capture again. The household controls refuse
+  while the count is not 18, which is the safe result. Then read back that the
+  18 original entries keep their IDs, names and bytes. Favorites and the Phase 1
+  calendar draft refer to those entries; if any ID or byte moved, stop and
+  record it before using them. This gives the evidence for variable-layout
+  parsing.
 - Untested hypothesis to check against the captures: the 156-byte parameter
   block fits a 6-byte header and 30 records of 5 bytes, which matches the
   30-run palette limit of the [pattern contract](../specs/patterns.md).
@@ -183,7 +200,8 @@ Closes the pattern items of [roadmap Phase 2](roadmap.md#phase-2--reliable-contr
 and [Phase 3](roadmap.md#phase-3--shared-mobile-controls-and-pattern-library-ml)
 under the [pattern contract](../specs/patterns.md) and
 [pattern design](../design/application.md#pattern-library-and-photo-mapping).
-It can run beside Phases 4 and 5 and must not delay them.
+Its decoding and preview work can run beside Phases 4 and 5 and must not delay
+them.
 
 - Decode the parameter block from the Phase 3 evidence, with synthetic
   fixtures. Imported patterns then get previews: exact for decoded static and
@@ -192,8 +210,11 @@ It can run beside Phases 4 and 5 and must not delay them.
   exists, so an official-app edit no longer disables the controls.
 - Write an ADR and a bounded verification contract, modeled on
   [ADR-0010](../adr/0010-bounded-playback-verification.md), for saving one
-  application pattern into the reserved expendable entry and for brightness.
-  Run it once with the owner present, with baseline, readback and restoration.
+  application pattern into a controller entry and for brightness. The write
+  target is a second owner-approved entry, never the ruler. If the household
+  has only one expendable entry, the write test waits until Phase 5 is done and
+  ends by restoring the ruler, with readback. Run it once with the owner
+  present, with baseline, readback and restoration.
 - After that verification: Apply in the Library and brightness on Home, through
   the existing worker with pending audit and no retry of an ambiguous write.
 - **Cut line:** if the evidence does not support a safe write by the time
