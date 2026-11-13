@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -35,6 +36,16 @@ const slugMax = 60
 // JavaScript's JSON.stringify(record, null, 2) gives with the 5 members in
 // their fixed order, and 1 final newline (frostyard/core ADR-0081).
 func canonicalRecord(record map[string]string) string {
+	literals := make(map[string]string, len(record))
+	for name, value := range record {
+		literals[name] = quoteJS(value)
+	}
+	return canonicalLayout(literals)
+}
+
+// canonicalLayout returns the canonical text of a record whose members are
+// given as their canonical JSON string literals, quotes included.
+func canonicalLayout(literals map[string]string) string {
 	var b strings.Builder
 	b.WriteString("{\n")
 	for i, name := range correctionsMember {
@@ -42,45 +53,179 @@ func canonicalRecord(record map[string]string) string {
 			b.WriteString(",\n")
 		}
 		b.WriteString(`  "` + name + `": `)
-		b.WriteString(quoteJS(record[name]))
+		b.WriteString(literals[name])
 	}
 	b.WriteString("\n}\n")
 	return b.String()
 }
 
-// quoteJS quotes s as JavaScript's JSON.stringify does: it escapes the quote,
-// the backslash and the control characters below U+0020 (with a short escape
-// where JSON has one, else \u00xx in lowercase), and writes every other
-// character as it is. s must be valid UTF-8.
+// quoteJS quotes s as JavaScript's JSON.stringify does. s must be valid
+// UTF-8.
 func quoteJS(s string) string {
 	var b strings.Builder
 	b.WriteByte('"')
 	for _, r := range s {
-		switch r {
-		case '"':
-			b.WriteString(`\"`)
-		case '\\':
-			b.WriteString(`\\`)
-		case '\b':
-			b.WriteString(`\b`)
-		case '\f':
-			b.WriteString(`\f`)
-		case '\n':
-			b.WriteString(`\n`)
-		case '\r':
-			b.WriteString(`\r`)
-		case '\t':
-			b.WriteString(`\t`)
-		default:
-			if r < 0x20 {
-				fmt.Fprintf(&b, `\u%04x`, r)
-			} else {
-				b.WriteRune(r)
-			}
-		}
+		writeJSRune(&b, r)
 	}
 	b.WriteByte('"')
 	return b.String()
+}
+
+// writeJSRune writes 1 character of a string the way JSON.stringify does: it
+// escapes the quote, the backslash and the control characters below U+0020
+// (with a short escape where JSON has one, else \u00xx in lowercase), and
+// writes every other character as it is.
+func writeJSRune(b *strings.Builder, r rune) {
+	switch r {
+	case '"':
+		b.WriteString(`\"`)
+	case '\\':
+		b.WriteString(`\\`)
+	case '\b':
+		b.WriteString(`\b`)
+	case '\f':
+		b.WriteString(`\f`)
+	case '\n':
+		b.WriteString(`\n`)
+	case '\r':
+		b.WriteString(`\r`)
+	case '\t':
+		b.WriteString(`\t`)
+	default:
+		if r < 0x20 {
+			fmt.Fprintf(b, `\u%04x`, r)
+		} else {
+			b.WriteRune(r)
+		}
+	}
+}
+
+// isSurrogate, isHighSurrogate and isLowSurrogate classify 1 UTF-16 code
+// unit.
+func isSurrogate(u rune) bool     { return u >= 0xD800 && u <= 0xDFFF }
+func isHighSurrogate(u rune) bool { return u >= 0xD800 && u <= 0xDBFF }
+func isLowSurrogate(u rune) bool  { return u >= 0xDC00 && u <= 0xDFFF }
+
+// unicodeEscape returns the code unit of the escape \uXXXX at the start of s,
+// and whether s starts with one.
+func unicodeEscape(s string) (rune, bool) {
+	if len(s) < 6 || s[0] != '\\' || s[1] != 'u' {
+		return 0, false
+	}
+	u, err := strconv.ParseUint(s[2:6], 16, 16)
+	if err != nil {
+		return 0, false
+	}
+	return rune(u), true
+}
+
+// shortEscape returns the character of the JSON escape \c, and whether c
+// makes one.
+func shortEscape(c byte) (rune, bool) {
+	switch c {
+	case '"', '\\', '/':
+		return rune(c), true
+	case 'b':
+		return '\b', true
+	case 'f':
+		return '\f', true
+	case 'n':
+		return '\n', true
+	case 'r':
+		return '\r', true
+	case 't':
+		return '\t', true
+	}
+	return 0, false
+}
+
+// stringLiteral holds 1 JSON string literal of a record text: its raw text,
+// quotes included, as the file has it; the same text with each escaped lone
+// surrogate replaced by \ufffd, which a Go JSON decoder accepts; and the
+// literal JSON.stringify writes for its value.
+type stringLiteral struct {
+	raw, decodable, canonical string
+}
+
+// readLiteral reads the JSON string literal at the start of s, which starts
+// with a quote. JSON.parse keeps an escaped lone UTF-16 surrogate, such as
+// \ud800, in its string, and JSON.stringify writes it back as a lowercase
+// escape; a Go string cannot hold it. So the literal is read here, 1 escape
+// at a time. ok is false for a literal with no closing quote.
+func readLiteral(s string) (lit stringLiteral, ok bool) {
+	var decodable, canonical strings.Builder
+	decodable.WriteByte('"')
+	canonical.WriteByte('"')
+	for i := 1; i < len(s); {
+		c := s[i]
+		switch {
+		case c == '"':
+			decodable.WriteByte('"')
+			canonical.WriteByte('"')
+			return stringLiteral{raw: s[:i+1], decodable: decodable.String(), canonical: canonical.String()}, true
+		case c != '\\':
+			r, size := utf8.DecodeRuneInString(s[i:])
+			decodable.WriteString(s[i : i+size])
+			writeJSRune(&canonical, r)
+			i += size
+		case i+1 >= len(s):
+			return stringLiteral{}, false
+		case s[i+1] != 'u':
+			decodable.WriteString(s[i : i+2])
+			if r, ok := shortEscape(s[i+1]); ok {
+				writeJSRune(&canonical, r)
+			}
+			i += 2
+		default:
+			u, ok := unicodeEscape(s[i:])
+			if !ok {
+				// Not valid JSON: the decoder reports it.
+				decodable.WriteString(s[i : i+2])
+				i += 2
+				continue
+			}
+			if low, ok := unicodeEscape(s[i+6:]); ok && isHighSurrogate(u) && isLowSurrogate(low) {
+				decodable.WriteString(s[i : i+12])
+				canonical.WriteRune(0x10000 + (u-0xD800)<<10 + (low - 0xDC00))
+				i += 12
+				continue
+			}
+			if isSurrogate(u) {
+				decodable.WriteString(`\ufffd`)
+				fmt.Fprintf(&canonical, `\u%04x`, u)
+			} else {
+				decodable.WriteString(s[i : i+6])
+				writeJSRune(&canonical, u)
+			}
+			i += 6
+		}
+	}
+	return stringLiteral{}, false
+}
+
+// recordLiterals returns the string literals of a record text in their
+// order, and the text with each escaped lone surrogate replaced by \ufffd.
+// Text outside the literals is copied as it is. A literal with no closing
+// quote ends the scan; the decoder then reports invalid JSON.
+func recordLiterals(text string) ([]stringLiteral, string) {
+	var literals []stringLiteral
+	var decodable strings.Builder
+	for i := 0; i < len(text); {
+		if text[i] != '"' {
+			decodable.WriteByte(text[i])
+			i++
+			continue
+		}
+		lit, ok := readLiteral(text[i:])
+		if !ok {
+			decodable.WriteString(text[i:])
+			break
+		}
+		literals = append(literals, lit)
+		decodable.WriteString(lit.decodable)
+		i += len(lit.raw)
+	}
+	return literals, decodable.String()
 }
 
 // recordFileProblems returns the problems of the record file name with the
@@ -99,22 +244,32 @@ func recordFileProblems(name string, data []byte) []string {
 	if !utf8.Valid(data) {
 		return append(problems, "invalid UTF-8")
 	}
-	content := correctionProblems(string(data))
+	literals, decodable := recordLiterals(string(data))
+	content := correctionProblems(decodable)
 	if len(content) > 0 {
 		return append(problems, content...)
 	}
-	var value map[string]any
-	if err := json.Unmarshal(data, &value); err != nil {
-		return append(problems, fmt.Sprintf("invalid JSON: %v", err))
+	// The content is 1 object of the 5 string members, so its literals are a
+	// name, then its value, 5 times, in the order of the text.
+	canonical := make(map[string]string, len(correctionsMember))
+	var date string
+	for i := 0; i+1 < len(literals); i += 2 {
+		var name, value string
+		if err := json.Unmarshal([]byte(literals[i].decodable), &name); err != nil {
+			return append(problems, fmt.Sprintf("invalid JSON: %v", err))
+		}
+		if err := json.Unmarshal([]byte(literals[i+1].decodable), &value); err != nil {
+			return append(problems, fmt.Sprintf("invalid JSON: %v", err))
+		}
+		canonical[name] = literals[i+1].canonical
+		if name == "date" {
+			date = value
+		}
 	}
-	record := make(map[string]string, len(value))
-	for name, v := range value {
-		record[name], _ = v.(string)
+	if date != match[1] {
+		problems = append(problems, fmt.Sprintf("name date %s does not equal date %s", match[1], date))
 	}
-	if record["date"] != match[1] {
-		problems = append(problems, fmt.Sprintf("name date %s does not equal date %s", match[1], record["date"]))
-	}
-	if string(data) != canonicalRecord(record) {
+	if string(data) != canonicalLayout(canonical) {
 		problems = append(problems, "not in canonical form")
 	}
 	return problems
@@ -296,6 +451,16 @@ func TestRecordFileProblems(t *testing.T) {
 		{"escaped non-ASCII", name, strings.Replace(validRecord, "Pin the", `Pin th\u00e9`, 1), "not in canonical form"},
 		{"escaped slash", name, strings.Replace(validRecord, "test/cache", `test\/cache`, 1), "not in canonical form"},
 		{"uppercase hex escape", name, strings.Replace(validRecord, "Pin the", `Pin\u001Fthe`, 1), "not in canonical form"},
+		{"lone high surrogate", name, strings.Replace(validRecord, "Pin the", `Pin\ud800the`, 1), ""},
+		{"lone low surrogate", name, strings.Replace(validRecord, "Pin the", `Pin\udfffthe`, 1), ""},
+		{"high surrogate before a letter", name, strings.Replace(validRecord, "Pin the", `Pin\ud800Athe`, 1), ""},
+		{"2 high surrogates", name, strings.Replace(validRecord, "Pin the", `Pin\ud800\ud800the`, 1), ""},
+		{"lone surrogate in uppercase", name, strings.Replace(validRecord, "Pin the", `Pin\uD800the`, 1), "not in canonical form"},
+		{"escaped surrogate pair", name, strings.Replace(validRecord, "Pin the", `Pin\ud83d\ude00the`, 1), "not in canonical form"},
+		{"raw astral character", name, strings.Replace(validRecord, "Pin the", "Pin\U0001F600the", 1), ""},
+		{"escaped letter", name, strings.Replace(validRecord, "Pin the", `Pin\u0074he`, 1), "not in canonical form"},
+		{"bad escape", name, strings.Replace(validRecord, "Pin the", `Pin\xthe`, 1), "invalid JSON"},
+		{"unclosed string", name, `{"date": "2026-11-13`, "invalid JSON"},
 		{"invalid UTF-8", name, strings.Replace(validRecord, "Pin", "P\xffn", 1), "invalid UTF-8"},
 		{"missing member", name, strings.Replace(validRecord, ",\n  \"promoted_to\": \"test/cache-key.test.mjs\"", "", 1), "missing key(s): promoted_to"},
 		{"unknown member", name, strings.Replace(validRecord, "\n}", ",\n  \"extra\": \"x\"\n}", 1), "unknown key(s): extra"},
