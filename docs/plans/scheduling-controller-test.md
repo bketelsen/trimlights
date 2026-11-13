@@ -172,6 +172,7 @@ Follows the [handoff](../specs/calendar-handoff.md),
   [native controls](../specs/native-controls.md),
   [calendar handoff](../specs/calendar-handoff.md),
   [calendar runtime](../specs/calendar-runtime.md).
-- Delivery: [roadmap](roadmap.md), [v1 acceptance](../specs/v1-acceptance.md).
+- Delivery: [roadmap](roadmap.md), [completion plan](v1-completion.md),
+  [v1 acceptance](../specs/v1-acceptance.md).
 - Rationale: [ADR-0011](../adr/0011-audited-household-native-controls.md),
   [ADR-0014](../adr/0014-review-calendar-ownership-transfers.md).
