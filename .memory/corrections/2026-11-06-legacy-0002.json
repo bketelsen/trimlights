@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "risk-paths",
+  "correction": "A local check of .github/risk-paths.json must reject a duplicate JSON member at any depth, as core's strict parser does; json.Unmarshal keeps the last value and passes a list that fails the labeling workflow",
+  "evidence": "trimlights#68, cross-review (openai/gpt-6.1-sol) of head e4a2183, finding 2",
+  "promoted_to": "internal/workflowcheck/baseline_test.go"
+}

@@ -38,7 +38,7 @@ This repository follows frostyard/core's repository baseline
 ([org ADRs](docs/org-adrs.md); core ADR-0071, rows B1 to B17).
 
 - `internal/workflowcheck` (run by `make verify`) holds rows B1 (the instruction
-  symlinks), B2 (`.memory/corrections.jsonl`), B5 (pinned, least-privilege
+  symlinks), B2 (`.memory/corrections/`), B5 (pinned, least-privilege
   workflows), B6 (`.github/risk-paths.json` lists every governed path, with no
   stale glob) and B13 (a Dependabot entry for each manifest). A new auth,
   secret, migration, delete or controller-write file goes in the risk list in
@@ -51,9 +51,14 @@ This repository follows frostyard/core's repository baseline
   not green at the label. The PR body names each matched path and why the
   change is safe. A new entry gets a level by the grading rule: `L1` for the
   risk categories and `L2` for governance. A glob that matches no file fails.
-- A blocking review point gets a guard (a test, or a rule here) and 1 line in
-  `.memory/corrections.jsonl` (`date`, `scope`, `correction`, `evidence`,
-  `promoted_to`).
+- A blocking review point gets a guard (a test, or a rule here) and 1 record
+  file in `.memory/corrections/` (`<date>-<slug>.json`, from a PR
+  `<date>-pr-<N>-<words>.json`, in canonical form, with `date`, `scope`,
+  `correction`, `evidence` and `promoted_to`; core's
+  `scripts/new-correction.mjs` writes it). A record is permanent: never remove
+  or rename a file, and change only an empty `promoted_to` (no test checks
+  this). The old single corrections file must not come back (the test fails
+  while it exists); its lines are the `legacy-` records.
 - `.github/workflows/ci.yml` keeps its job names: the ruleset requires `check`.
 - The root `README.md` follows core's README spec (kind `service`, at most 1000
   words). Runbooks and guides live in `docs/design/` (deployment, development,

@@ -18,7 +18,7 @@ team's organization standard:
   `.github/copilot-instructions.md` are relative symlinks to it, and
   `.claude/skills` is a symlink to `.agents/skills/`
   ([ADR-0002](adr/0002-agent-portable-instruction-surface.md)).
-  `.memory/corrections.jsonl` is the corrections inbox.
+  `.memory/corrections/` is the corrections inbox.
 - [ADR-0019](https://github.com/frostyard/core/blob/main/docs/adr/0019-governance-as-code-and-risk-tiers.md),
   [ADR-0068](https://github.com/frostyard/core/blob/main/docs/adr/0068-label-pull-requests-that-touch-high-risk-paths.md):
   risk tiers in the PR template. `.github/risk-paths.json` holds the high-risk
@@ -54,3 +54,9 @@ team's organization standard:
   `svu next` ([ADR-0015](adr/0015-versioned-attested-images.md)).
 - [ADR-0072](https://github.com/frostyard/core/blob/main/docs/adr/0072-write-every-readme-to-one-standard.md):
   the root `README.md` follows core's README spec for the kind `service`.
+- [ADR-0081](https://github.com/frostyard/core/blob/main/docs/adr/0081-store-each-correction-in-a-file-of-its-own.md):
+  each correction is 1 file in `.memory/corrections/`, in canonical form (it
+  amends ADR-0018 and ADR-0071 in part). `internal/workflowcheck` (`make verify`)
+  checks each file's name, content and form, and fails while the old single
+  corrections file exists. It reads only the working tree, so it does not catch
+  a removed, renamed or changed record.
