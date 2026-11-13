@@ -222,6 +222,7 @@ export. Do not let these delay the scheduling beta or required photo feature.
 - Implements: [application design](../design/application.md),
   [v1 acceptance](../specs/v1-acceptance.md).
 - Rationale: [ADR-0003](../adr/0003-shared-homelab-application.md).
+- Remaining work in order: [completing household v1](v1-completion.md) (2026-11-13).
 - Baseline: [current implementation](../../README.md),
   [protocol observations](../../protocol-observations.json).
 - Required foundations: [clix](https://github.com/frostyard/clix),

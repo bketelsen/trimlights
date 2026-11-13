@@ -231,7 +231,8 @@ Follows the [pattern contract](../specs/patterns.md),
 
 - Implements: [application design](../design/application.md),
   [patterns](../specs/patterns.md), [native controls](../specs/native-controls.md).
-- Delivery: [roadmap](roadmap.md), [scheduling test](scheduling-controller-test.md).
+- Delivery: [roadmap](roadmap.md), [completion plan](v1-completion.md),
+  [scheduling test](scheduling-controller-test.md).
 - Rationale: [ADR-0005](../adr/0005-versioned-household-patterns.md),
   [ADR-0011](../adr/0011-audited-household-native-controls.md).
 - UI reference: [official Edge manual](https://trimlight.com/hubfs/Manuals/trimlight-edge-manual.pdf),
