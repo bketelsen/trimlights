@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "workflowcheck",
+  "correction": "The repository scan of the baseline checks walked the file system and read git-ignored build output: web/.test-build/package.json, which the frontend tests write, failed row B13 in make bump on a local checkout while CI passed. The scan must list only the files git does not ignore (git ls-files)",
+  "evidence": "make bump for v0.1.0 on a local checkout, 2026-11-06: TestDependabotCoversManifests reported web/.test-build/package.json",
+  "promoted_to": "internal/workflowcheck/baseline_test.go"
+}

@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-13",
+  "scope": "workflowcheck",
+  "correction": "A Go port of core's content rules must refuse the years 0000 to 0099 (core's Date.UTC reads them as 19YY) and must trim a field with JavaScript's white space (U+FEFF is white space, U+0085 is not). time.Parse and strings.TrimSpace differ from core there.",
+  "evidence": "bketelsen/trimlights#76, cross-review (openai/gpt-6.1-sol) of head 752d796, finding 2",
+  "promoted_to": "internal/workflowcheck/baseline_test.go"
+}

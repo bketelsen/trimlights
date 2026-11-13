@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-13",
+  "scope": "workflowcheck",
+  "correction": "A Go port of core's corrections check must read an escaped lone UTF-16 surrogate (such as \\ud800) the way JSON.parse does, and write it back the way JSON.stringify does (a lowercase escape). A Go JSON decoder refuses or replaces it, so the port refused canonical records that core accepts.",
+  "evidence": "bketelsen/trimlights#76, cross-review (openai/gpt-6.1-sol) of head 752d796, finding 1",
+  "promoted_to": "internal/workflowcheck/corrections_test.go"
+}

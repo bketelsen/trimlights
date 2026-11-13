@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "readme",
+  "correction": "The README said that snapshot needs a reviewed baseline fingerprint and that / is behind sign-in; snapshot has no fingerprint and can synchronize the clock, and only /api/ requires sign-in. Check a command's guards in cmd/trimlight and its handler before a doc claims them",
+  "evidence": "trimlights#68, cross-review (openai/gpt-6.1-sol) of head e4a2183, finding 3 and finding 4",
+  "promoted_to": "AGENTS.md"
+}

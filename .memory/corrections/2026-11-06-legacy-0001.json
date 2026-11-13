@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "risk-paths",
+  "correction": "The risk list must cover each caller of a delete or of the backup bundle, not only the storage or package that implements it: internal/service/house.go (the photo-delete endpoint) and cmd/trimlight/backup.go (backup and restore) were missing",
+  "evidence": "trimlights#68, cross-review (openai/gpt-6.1-sol) of head e4a2183, finding 1",
+  "promoted_to": "internal/workflowcheck/baseline_test.go"
+}

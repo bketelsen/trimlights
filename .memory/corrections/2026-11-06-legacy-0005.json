@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "workflowcheck",
+  "correction": "git ls-files still lists a tracked file that the work tree replaced with a directory, and an existence check alone took it as present, so a required path could pass TestRiskPaths. The scan must keep only entries that are files or symlinks",
+  "evidence": "trimlights#73, cross-review (openai/gpt-6.1-sol) of head e90924a, finding 1",
+  "promoted_to": "internal/workflowcheck/baseline_test.go"
+}
