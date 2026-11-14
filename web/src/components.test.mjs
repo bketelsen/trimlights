@@ -7,10 +7,12 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import native from '../.test-build/NativeControls.js';
 import preview from '../.test-build/HousePreview.js';
 import boundary from '../.test-build/ErrorBoundary.js';
+import homePlan from '../.test-build/HomePlan.js';
 
 const { NativeControls } = native,
   { HousePreview, HousePreviewBody } = preview,
-  { ErrorFallback } = boundary;
+  { ErrorFallback } = boundary,
+  { HomePlanCard } = homePlan;
 const noop = () => {};
 const props = {
   available: true,
@@ -107,4 +109,75 @@ test('ErrorFallback says that unsaved changes are lost and reloads only on reque
   assert.match(html, /role="alert"/);
   assert.match(text(html), /Unsaved changes on this page could not be kept/);
   assert.match(html, /<button[^>]*>Reload the app<\/button>/);
+});
+
+test('NativeControls offers favorites as choices that send nothing by themselves', () => {
+  const html = render(NativeControls, {
+    ...props,
+    snapshot,
+    favorites: [
+      { slot: 1, name: 'Porch', saved: 'Warm white' },
+      { slot: 2, name: 'Pattern 2', saved: 'Pattern 2' },
+    ],
+  });
+  assert.match(html, /<div class="favorite-row" role="group" aria-label="Favorites">/);
+  const favorite = tags(html, 'button').find((button) => /favorite-choice/.test(button));
+  assert.ok(favorite);
+  assert.match(favorite, /aria-pressed="false"/);
+  // A favorite only fills in the choice, so it does not wait for the acknowledgement.
+  assert.doesNotMatch(favorite, /\bdisabled=""/);
+  // A favorite renamed in the Library also shows the name that the lights hold, which
+  // the pattern list and the "Playing …" notice use. Equal names show once.
+  assert.match(text(html), /★ Porch “Warm white” on the lights/);
+  assert.match(text(html), /★ Pattern 2 (?!“)/);
+  assert.equal((html.match(/favorite-saved/g) ?? []).length, 1);
+  const none = render(NativeControls, { ...props, snapshot });
+  assert.doesNotMatch(none, /favorite-row/);
+});
+
+const step = {
+  label: 'Lights off',
+  detail: 'Between routines',
+  from: '2026-11-13T22:00:00Z',
+  until: '2026-11-14T03:00:00Z',
+};
+const planData = { state: 'ready', patterns: [], summary: null, timezone: 'America/New_York' };
+
+test('HomePlanCard always says that the plan is not what the lights are doing', () => {
+  for (const state of ['loading', 'failed', 'ready']) {
+    const html = render(HomePlanCard, { data: { ...planData, state }, onOpenCalendar: noop });
+    assert.match(html, /<section[^>]*aria-labelledby="home-plan-title"/);
+    assert.match(text(html), /Plan only/);
+    assert.match(text(html), /not what the lights are doing now/);
+    assert.match(html, /<button[^>]*>Open calendar<\/button>/);
+  }
+});
+
+test('HomePlanCard shows loading, failure and an empty calendar in words', () => {
+  const show = (/** @type {string} */ state) =>
+    text(render(HomePlanCard, { data: { ...planData, state }, onOpenCalendar: noop }));
+  assert.match(show('loading'), /Loading your plan…/);
+  assert.match(show('failed'), /couldn’t load your calendar plan/);
+  assert.match(show('ready'), /Nothing is planned for the next 7 days/);
+});
+
+test('HomePlanCard shows the current step and the next change', () => {
+  const next = {
+    label: 'Porch',
+    detail: 'Evenings',
+    from: '2026-11-14T03:00:00Z',
+    until: '2026-11-14T05:00:00Z',
+  };
+  const html = render(HomePlanCard, {
+    data: { ...planData, summary: { now: step, next } },
+    onOpenCalendar: noop,
+  });
+  assert.match(text(html), /Now Lights off Between routines · until /);
+  assert.match(html, /<time dateTime="2026-11-14T03:00:00Z">/i);
+  assert.match(text(html), /Porch Evenings/);
+  const alone = text(
+    render(HomePlanCard, { data: { ...planData, summary: { now: step } }, onOpenCalendar: noop }),
+  );
+  assert.match(alone, /No change is planned in the next 7 days/);
+  assert.doesNotMatch(alone, /· until/);
 });

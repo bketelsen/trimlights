@@ -1,19 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { request, SignedOut } from './api';
 import { LiveStatus } from './LiveRegion';
+import type { Favorite } from './homePlan';
 
 export type NativeSnapshot = {
   queried_at: string;
   stable_sha256: string;
-  patterns: { id: number; name: string }[];
+  patterns: { id: number; name: string; uninterpreted_parameters_hex?: string }[];
   playback?: { mode: string; matching_pattern_ids: number[] };
 };
 type Action = 'off' | 'play' | 'timer';
 
 // checking is true while the first status request runs. Nothing is known yet, so the
 // controls say so instead of asking for a refresh, which would look like a failure.
+// A favorite only fills in the pattern choice; "Play pattern" still sends the control.
+// The pattern list and the "Playing …" notice use the name saved on the lights, so a
+// favorite renamed in the Library shows both names.
 export function NativeControls({
   snapshot,
+  favorites = [],
   available,
   checking = false,
   busy,
@@ -24,6 +29,7 @@ export function NativeControls({
   onError,
 }: {
   snapshot?: NativeSnapshot;
+  favorites?: Favorite[];
   available: boolean;
   checking?: boolean;
   busy: boolean;
@@ -116,6 +122,24 @@ export function NativeControls({
             power and Wi-Fi.
           </p>
         )
+      )}
+      {favorites.length > 0 && (
+        <div className="favorite-row" role="group" aria-label="Favorites">
+          {favorites.map((favorite) => (
+            <button
+              key={favorite.slot}
+              className="button secondary favorite-choice"
+              aria-pressed={selected === String(favorite.slot)}
+              disabled={busy}
+              onClick={() => setSelected(String(favorite.slot))}
+            >
+              <span aria-hidden="true">★</span> {favorite.name}
+              {favorite.saved !== favorite.name && (
+                <span className="favorite-saved">“{favorite.saved}” on the lights</span>
+              )}
+            </button>
+          ))}
+        </div>
       )}
       <div className="native-play">
         <label className="field">

@@ -43,7 +43,10 @@ household timezone and coordinates to use sunrise/sunset. “End on the followin
 day” represents overnight windows. Preview up to 30 local days; the timeline shows
 winning and lower-priority rules, conflicts and daylight-saving adjustments.
 Home offers native OFF, saved-slot playback and return to controller TIMER. These
-controls do not upload software Library designs. Keep the official app closed,
+controls do not upload software Library designs. A Library favorite that is saved
+on the lights appears above the pattern list; tapping it chooses that pattern, and
+"Play pattern" sends it. Home's "Planned next" card shows what the saved calendar
+plans now and next. It is a plan only: the lights follow their own timers. Keep the official app closed,
 refresh once to load controller state, and acknowledge possible clock synchronization.
 After an uncertain command, refresh before another action. Native TIMER does not
 mean the lights are currently on; the controller decides that from its timers.

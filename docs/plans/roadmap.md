@@ -733,3 +733,25 @@ Done when: storage, HTTP and backup round-trip tests cover deletion, refusal, th
 older-revision references and the freed photo place; frontend tests cover the
 messages and the "photo removed" marks; `make check` passes in CI.
 
+### Home plan and favorites — 2026-11-13
+
+First item of [completion plan Phase 4](v1-completion.md#phase-4--calendar-ownership-and-the-first-scheduled-evening-l),
+toward the Home row of the [v1 acceptance interface](../specs/v1-acceptance.md#interface).
+Home now shows a "Planned next" card: the current step and the next change of the
+saved calendar, with the routines behind them, under the
+[calendar contract](../specs/schedules.md#rules). The card is labeled as a plan and
+says that the lights follow their own timers. Library favorites that are saved on
+the lights appear as shortcuts in the controls under the
+[native-control contract](../specs/native-controls.md#rules); a shortcut only
+chooses the pattern. The [application design](../design/application.md#application-boundaries)
+and the [household guide](../design/household-guide.md) describe both.
+
+The change is in the browser only. It adds no endpoint, storage, controller
+command or execution path. Calendar ownership stays disabled; temporary change,
+resume and the activation flow still wait for the timer evidence.
+
+Done when: frontend tests cover the favorite matching rules, the plan summary and
+the card's states; `make check` passes in CI. Checked in the isolated browser
+fixture at desktop width and at 375 px without horizontal overflow: a favorite
+filled in the pattern choice and created no controller operation. A phone check
+with household data is still open.
