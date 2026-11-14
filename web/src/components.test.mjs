@@ -115,7 +115,10 @@ test('NativeControls offers favorites as choices that send nothing by themselves
   const html = render(NativeControls, {
     ...props,
     snapshot,
-    favorites: [{ slot: 1, name: 'Porch' }],
+    favorites: [
+      { slot: 1, name: 'Porch', saved: 'Warm white' },
+      { slot: 2, name: 'Pattern 2', saved: 'Pattern 2' },
+    ],
   });
   assert.match(html, /<div class="favorite-row" role="group" aria-label="Favorites">/);
   const favorite = tags(html, 'button').find((button) => /favorite-choice/.test(button));
@@ -123,7 +126,11 @@ test('NativeControls offers favorites as choices that send nothing by themselves
   assert.match(favorite, /aria-pressed="false"/);
   // A favorite only fills in the choice, so it does not wait for the acknowledgement.
   assert.doesNotMatch(favorite, /\bdisabled=""/);
-  assert.match(text(html), /★ Porch/);
+  // A favorite renamed in the Library also shows the name that the lights hold, which
+  // the pattern list and the "Playing …" notice use. Equal names show once.
+  assert.match(text(html), /★ Porch “Warm white” on the lights/);
+  assert.match(text(html), /★ Pattern 2 (?!“)/);
+  assert.equal((html.match(/favorite-saved/g) ?? []).length, 1);
   const none = render(NativeControls, { ...props, snapshot });
   assert.doesNotMatch(none, /favorite-row/);
 });

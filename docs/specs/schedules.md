@@ -86,7 +86,10 @@ bounds. Timezones are embedded in the Go binary for scratch-container deployment
 10. Home shows the current step and the next change of the saved calendar
     (2026-11-13). It MUST evaluate the saved plan with the preview endpoint over
     the next 7 days, name the winning routines, and say when no routine plans
-    anything. While execution is unavailable it MUST be labeled as a plan and say
+    anything. The next change is the first later step whose action or conflict
+    state differs from the current step; a step that only changes the winning or
+    shadowed routines is not a change, and the current step lasts until that
+    change. While execution is unavailable it MUST be labeled as a plan and say
     that the lights follow their own timers. It MUST NOT read or contact the
     controller, change ownership or enable execution. A load failure stays in the
     card; the controls above it remain usable.

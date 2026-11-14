@@ -1415,6 +1415,14 @@ h2 {
   overflow-wrap: anywhere;
   text-align: left;
 }
+.favorite-row .favorite-choice {
+  flex-wrap: wrap;
+}
+.favorite-saved {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
 .favorite-row .favorite-choice[aria-pressed='true'] {
   border-color: var(--accent);
   color: var(--accent);

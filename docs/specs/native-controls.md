@@ -73,7 +73,10 @@ or persistence error is outstanding. Unknown/missing snapshots require refresh.
   original slot holds byte-identical parameters in the cached snapshot. A software
   design, or a favorite whose slot changed after the import, MUST be left out, not
   matched by name. Choosing a shortcut MUST only fill in the pattern choice; the
-  same Play action, acknowledgement and baseline check then apply.
+  same Play action, acknowledgement and baseline check then apply. When the
+  Library name differs from the name the controller holds for that slot, the
+  shortcut MUST show both, because the pattern list and the result notice use
+  the controller's name.
 - Schema 7 ordinary controls MUST pause active Calendar ownership in their pending
   audit transaction before delivery, as specified by the [runtime contract](calendar-runtime.md).
 - Authentication, origin checks, CSRF and restore-guard behavior MUST apply to this

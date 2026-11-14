@@ -14,6 +14,8 @@ type Action = 'off' | 'play' | 'timer';
 // checking is true while the first status request runs. Nothing is known yet, so the
 // controls say so instead of asking for a refresh, which would look like a failure.
 // A favorite only fills in the pattern choice; "Play pattern" still sends the control.
+// The pattern list and the "Playing …" notice use the name saved on the lights, so a
+// favorite renamed in the Library shows both names.
 export function NativeControls({
   snapshot,
   favorites = [],
@@ -132,6 +134,9 @@ export function NativeControls({
               onClick={() => setSelected(String(favorite.slot))}
             >
               <span aria-hidden="true">★</span> {favorite.name}
+              {favorite.saved !== favorite.name && (
+                <span className="favorite-saved">“{favorite.saved}” on the lights</span>
+              )}
             </button>
           ))}
         </div>

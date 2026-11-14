@@ -7,7 +7,9 @@ import type { Action, Preview } from './Schedule';
 type Segment = Preview['segments'][number];
 export type PlannedStep = { label: string; detail: string; from: string; until: string };
 export type PlanSummary = { now: PlannedStep; next?: PlannedStep };
-export type Favorite = { slot: number; name: string };
+// name is the Library name; saved is the name the lights hold for the same slot, which
+// is what the pattern list and the "Playing …" notice show.
+export type Favorite = { slot: number; name: string; saved: string };
 type SnapshotPattern = { id: number; name: string; uninterpreted_parameters_hex?: string };
 
 function step(segment: Segment, name: (action: Action) => string): PlannedStep {
@@ -21,9 +23,22 @@ function step(segment: Segment, name: (action: Action) => string): PlannedStep {
   };
 }
 
-// planSummary returns the current planned step and the next different one, or null
-// when the saved calendar plans nothing in the previewed range (every step is the
-// default "off" with no routine behind it).
+// sameLights is true when two steps ask the same of the lights. The evaluator starts a
+// new segment whenever the winning or shadowed routines change, so adjacent segments
+// can differ only in the routine behind an unchanged action.
+function sameLights(a: Segment, b: Segment) {
+  return (
+    a.conflict === b.conflict &&
+    a.action.kind === b.action.kind &&
+    a.action.pattern_id === b.action.pattern_id &&
+    a.action.revision === b.action.revision
+  );
+}
+
+// planSummary returns the current planned step and the next step that changes the
+// lights, or null when the saved calendar plans nothing in the previewed range (every
+// step is the default "off" with no routine behind it). "Now" lasts until that change,
+// not until the first segment ends.
 export function planSummary(preview: Preview, patterns: SavedPattern[]): PlanSummary | null {
   const segments = preview.segments;
   if (!segments.length || segments.every((s) => !s.winners.length && !s.conflict)) return null;
@@ -31,10 +46,9 @@ export function planSummary(preview: Preview, patterns: SavedPattern[]): PlanSum
     action.kind === 'off'
       ? 'Lights off'
       : (patterns.find((p) => p.id === action.pattern_id)?.design.name ?? 'Saved pattern');
-  return {
-    now: step(segments[0], name),
-    ...(segments[1] ? { next: step(segments[1], name) } : {}),
-  };
+  const change = segments.find((s) => !sameLights(segments[0], s));
+  const now = step(segments[0], name);
+  return change ? { now: { ...now, until: change.from }, next: step(change, name) } : { now };
 }
 
 // favoriteShortcuts lists the favorites that Home can offer for playing: a favorite
@@ -57,7 +71,8 @@ export function favoriteShortcuts(
       out.some((f) => f.slot === native.id)
     )
       continue;
-    out.push({ slot: native.id, name: p.design.name || slot.name || `Pattern ${native.id}` });
+    const saved = slot.name || `Pattern ${native.id}`;
+    out.push({ slot: native.id, name: p.design.name || saved, saved });
   }
   return out;
 }
