@@ -13,6 +13,8 @@ import (
 var ErrScheduleConflict = errors.New("calendar changed on another device; reload before saving")
 var ErrScheduleReference = errors.New("calendar references a missing or newly archived pattern revision")
 
+const currentScheduleQuery = "SELECT revision,body,actor,created FROM schedule_revisions ORDER BY revision DESC LIMIT 1"
+
 type SavedSchedule struct {
 	Revision int           `json:"revision"`
 	Plan     schedule.Plan `json:"plan"`
@@ -52,8 +54,18 @@ func scanSchedule(row scanner) (SavedSchedule, error) {
 	s.Updated, err = time.Parse(time.RFC3339Nano, updated)
 	return s, err
 }
+func scheduleBase(ctx context.Context, tx *sql.Tx, expected int) (SavedSchedule, error) {
+	current, err := scanSchedule(tx.QueryRowContext(ctx, currentScheduleQuery))
+	if err != nil {
+		return SavedSchedule{}, err
+	}
+	if current.Revision != expected {
+		return SavedSchedule{}, ErrScheduleConflict
+	}
+	return current, nil
+}
 func (s *Store) Schedule(ctx context.Context) (SavedSchedule, error) {
-	return scanSchedule(s.db.QueryRowContext(ctx, "SELECT revision,body,actor,created FROM schedule_revisions ORDER BY revision DESC LIMIT 1"))
+	return scanSchedule(s.db.QueryRowContext(ctx, currentScheduleQuery))
 }
 func (s *Store) ScheduleHistory(ctx context.Context) ([]SavedSchedule, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT revision,body,actor,created FROM schedule_revisions ORDER BY revision DESC")
@@ -80,12 +92,9 @@ func (s *Store) SaveSchedule(ctx context.Context, expected int, p schedule.Plan,
 		return SavedSchedule{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	current, err := scanSchedule(tx.QueryRowContext(ctx, "SELECT revision,body,actor,created FROM schedule_revisions ORDER BY revision DESC LIMIT 1"))
+	current, err := scheduleBase(ctx, tx, expected)
 	if err != nil {
 		return SavedSchedule{}, err
-	}
-	if current.Revision != expected {
-		return SavedSchedule{}, ErrScheduleConflict
 	}
 	if err = checkScheduleReferences(ctx, tx, current.Plan, p); err != nil {
 		return SavedSchedule{}, err
@@ -140,20 +149,21 @@ func (s *Store) ValidateSchedule(ctx context.Context, expected int, p schedule.P
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	current, err := scanSchedule(tx.QueryRowContext(ctx, "SELECT revision,body,actor,created FROM schedule_revisions ORDER BY revision DESC LIMIT 1"))
+	current, err := scheduleBase(ctx, tx, expected)
 	if err != nil {
 		return err
-	}
-	if current.Revision != expected {
-		return ErrScheduleConflict
 	}
 	return checkScheduleReferences(ctx, tx, current.Plan, p)
 }
 
 func checkScheduleReferences(ctx context.Context, tx *sql.Tx, current, p schedule.Plan) error {
-	existing := map[schedule.Action]bool{}
+	type reference struct {
+		ruleID string
+		action schedule.Action
+	}
+	existing := map[reference]bool{}
 	for _, r := range scheduleReferences(current) {
-		existing[r.Action] = true
+		existing[reference{r.RuleID, r.Action}] = true
 	}
 	refs := scheduleReferences(p)
 	for _, r := range refs {
@@ -167,14 +177,8 @@ func checkScheduleReferences(ctx context.Context, tx *sql.Tx, current, p schedul
 		}
 		// Retain an existing pinned reference through archival; do not introduce a new
 		// rule/override pointing at an archived pattern merely because another uses it.
-		retained := false
-		for _, old := range scheduleReferences(current) {
-			if old.RuleID == r.RuleID && old.Action == r.Action {
-				retained = true
-				break
-			}
-		}
-		if (headArchived || revisionArchived) && (!existing[r.Action] || !retained) {
+		retained := existing[reference{r.RuleID, r.Action}]
+		if (headArchived || revisionArchived) && !retained {
 			return fmt.Errorf("%w: %s", ErrScheduleReference, r.Name)
 		}
 	}
