@@ -28,12 +28,9 @@ func (s *Store) CalendarInputs(ctx context.Context, expected int, plan schedule.
 		return out, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	current, err := scanSchedule(tx.QueryRowContext(ctx, "SELECT revision,body,actor,created FROM schedule_revisions ORDER BY revision DESC LIMIT 1"))
+	current, err := scheduleBase(ctx, tx, expected)
 	if err != nil {
 		return out, err
-	}
-	if current.Revision != expected {
-		return out, ErrScheduleConflict
 	}
 	out.Revision = current.Revision
 	if err = checkScheduleReferences(ctx, tx, current.Plan, plan); err != nil {
@@ -47,7 +44,7 @@ func (s *Store) CalendarInputs(ctx context.Context, expected int, plan schedule.
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return out, err
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT "+patternFields+" FROM pattern_revisions r JOIN pattern_heads h ON h.id=r.id AND h.revision=r.revision ORDER BY r.id")
+	rows, err := tx.QueryContext(ctx, patternHeads+" ORDER BY r.id")
 	if err != nil {
 		return out, err
 	}

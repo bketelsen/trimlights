@@ -53,16 +53,7 @@ func scanPattern(row scanner) (SavedPattern, error) {
 	return p, err
 }
 
-const patternFields = "r.id,r.revision,r.body,r.actor,r.created,r.archived"
-
-func (s *Store) Pattern(ctx context.Context, id string) (SavedPattern, error) {
-	return scanPattern(s.db.QueryRowContext(ctx, "SELECT "+patternFields+" FROM pattern_revisions r JOIN pattern_heads h ON h.id=r.id AND h.revision=r.revision WHERE h.id=?", id))
-}
-func (s *Store) Patterns(ctx context.Context, includeArchived bool) ([]SavedPattern, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT "+patternFields+" FROM pattern_revisions r JOIN pattern_heads h ON h.id=r.id AND h.revision=r.revision WHERE h.archived=0 OR ?", includeArchived)
-	if err != nil {
-		return nil, err
-	}
+func scanPatterns(rows *sql.Rows) ([]SavedPattern, error) {
 	defer rows.Close()
 	out := []SavedPattern{}
 	for rows.Next() {
@@ -72,6 +63,21 @@ func (s *Store) Patterns(ctx context.Context, includeArchived bool) ([]SavedPatt
 		}
 		out = append(out, p)
 	}
+	return out, rows.Err()
+}
+
+const patternFields = "r.id,r.revision,r.body,r.actor,r.created,r.archived"
+const patternHeads = "SELECT " + patternFields + " FROM pattern_revisions r JOIN pattern_heads h ON h.id=r.id AND h.revision=r.revision"
+
+func (s *Store) Pattern(ctx context.Context, id string) (SavedPattern, error) {
+	return scanPattern(s.db.QueryRowContext(ctx, patternHeads+" WHERE h.id=?", id))
+}
+func (s *Store) Patterns(ctx context.Context, includeArchived bool) ([]SavedPattern, error) {
+	rows, err := s.db.QueryContext(ctx, patternHeads+" WHERE h.archived=0 OR ?", includeArchived)
+	if err != nil {
+		return nil, err
+	}
+	out, err := scanPatterns(rows)
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Design.Favorite != out[j].Design.Favorite {
 			return out[i].Design.Favorite
@@ -82,23 +88,15 @@ func (s *Store) Patterns(ctx context.Context, includeArchived bool) ([]SavedPatt
 		}
 		return a < b
 	})
-	return out, rows.Err()
+	return out, err
 }
 func (s *Store) PatternHistory(ctx context.Context, id string) ([]SavedPattern, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT "+patternFields+" FROM pattern_revisions r WHERE id=? ORDER BY revision DESC", id)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []SavedPattern{}
-	for rows.Next() {
-		p, err := scanPattern(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, p)
-	}
-	if err = rows.Err(); err != nil {
+	out, err := scanPatterns(rows)
+	if err != nil {
 		return nil, err
 	}
 	if len(out) == 0 {
@@ -205,7 +203,7 @@ func (s *Store) mutatePattern(ctx context.Context, id string, expected int, acto
 		return SavedPattern{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	p, err := scanPattern(tx.QueryRowContext(ctx, "SELECT "+patternFields+" FROM pattern_revisions r JOIN pattern_heads h ON h.id=r.id AND h.revision=r.revision WHERE h.id=?", id))
+	p, err := scanPattern(tx.QueryRowContext(ctx, patternHeads+" WHERE h.id=?", id))
 	if err != nil {
 		return p, err
 	}
